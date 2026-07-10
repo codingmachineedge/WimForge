@@ -20,9 +20,9 @@ documentation must agree.
 - Verified `codingmachineedge/WimForge` is the active GitHub repository and the
   live Wiki exists. Its 14 pages matched `docs/wiki`, but it has no sidebar,
   footer, complete application tour, or automatic sync.
-- Audited the current `main` state after `7b1a59e`. Normal startup no longer
-  installs OpenCode, but AI actions can still enter an installation path and
-  the documentation still describes automatic setup.
+- Audited the current `main` state after `b62c20e`. The repository deliberately
+  keeps automatic OpenCode setup at startup; the implementation still needs a
+  bounded, testable process lifecycle and documentation of the host change.
 
 Status values used below:
 
@@ -70,7 +70,7 @@ Status values used below:
 
 | ID | Priority | Status | Requirement | Current contradiction / completion gate |
 | --- | --- | --- | --- | --- |
-| FEAT-001 | P0 | Open | Make `ensureOpenCode()` the only installation entry point. AI helper buttons may verify an existing helper but must never install Node/OpenCode implicitly. Add bounded process timeouts and explicit absent/installed/verified/failed states. | `runOpenCode()` still calls `installOpenCodeThen()` when unverified. Process-injection tests must prove normal startup and each AI action launch no installer. |
+| FEAT-001 | P0 | Open | Make automatic OpenCode setup deterministic and observable: use one queued state machine for startup/helper requests, add bounded verify/npm/WinGet timeouts, explicit absent/installing/verifying/ready/failed states, idempotent retry, and clear documentation of host Node/npm changes. | `installOpenCodeThen()` recursively polls every 500 ms while busy and its install subprocesses are not uniformly bounded. Process-injection tests must cover startup, concurrent helper clicks, hangs, failures, restart, and retry. |
 | FEAT-002 | P0 | Open | Give skipped operations honest dependency semantics and an incomplete/failure result when downstream work cannot safely run. | `JobEngine.cpp:223-300` treats skipped dependencies like failures but ignores skipped states in final success. Add `job_engine_tests`. |
 | FEAT-003 | P0 | Open | Export exactly the reviewed operation graph: omit/mark skips, topologically order dependencies, reject cycles/unsafe reorders, and preserve safety metadata. | `ServicingPlan::exportPowerShell()` emits every operation in list order. Add script-export graph tests. |
 | FEAT-004 | P0 | Open | Make every Customize card map to the operation it names. Separate updates/packages, Appx remove/provision, component packages, scheduled tasks, applied answer files, literal post-setup commands, and staged payloads. | `CustomizePage.qml` currently funnels multiple unlike inputs into the wrong lists; add AppController-to-plan integration tests per card. |
