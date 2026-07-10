@@ -11,7 +11,6 @@
 #include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
-#include <QPointer>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -32,82 +31,6 @@ QString cleanPath(const QString &value)
 {
     const QString trimmed = value.trimmed();
     return trimmed.isEmpty() ? QString() : QDir::cleanPath(trimmed);
-}
-
-QString openCodeExecutablePath()
-{
-#ifdef Q_OS_WIN
-    // npm puts POSIX and cmd shims beside the real native binary. Passing either
-    // shim to CreateProcess is unreliable, and routing prompts through cmd.exe
-    // would unnecessarily expose them to shell expansion. Resolve the native
-    // executable instead.
-    const QStringList names{QStringLiteral("opencode.exe")};
-#else
-    const QStringList names{QStringLiteral("opencode")};
-#endif
-    for (const QString &name : names) {
-        const QString found = QStandardPaths::findExecutable(name);
-        if (!found.isEmpty())
-            return found;
-    }
-    auto environmentFile = [](const char *name, const QString &relative) {
-        const QString root = qEnvironmentVariable(name).trimmed();
-        return root.isEmpty() ? QString() : QDir(root).filePath(relative);
-    };
-    const QStringList candidates{
-        environmentFile("APPDATA", QStringLiteral("npm/node_modules/opencode-ai/bin/opencode.exe")),
-        environmentFile("LOCALAPPDATA", QStringLiteral("npm/node_modules/opencode-ai/bin/opencode.exe")),
-        environmentFile("USERPROFILE", QStringLiteral(".opencode/bin/opencode.exe")),
-        environmentFile("LOCALAPPDATA", QStringLiteral("opencode/bin/opencode.exe")),
-    };
-    for (const QString &candidate : candidates)
-        if (!candidate.trimmed().isEmpty() && QFileInfo(candidate).isFile())
-            return QDir::cleanPath(candidate);
-    return {};
-}
-
-struct ProcessCommand {
-    QString program;
-    QStringList prefixArguments;
-
-    [[nodiscard]] bool isEmpty() const { return program.isEmpty(); }
-};
-
-ProcessCommand npmProcessCommand()
-{
-#ifdef Q_OS_WIN
-    QStringList nodeCandidates;
-    const QString pathNode = QStandardPaths::findExecutable(QStringLiteral("node.exe"));
-    if (!pathNode.isEmpty())
-        nodeCandidates.append(pathNode);
-    auto environmentFile = [](const char *name, const QString &relative) {
-        const QString root = qEnvironmentVariable(name).trimmed();
-        return root.isEmpty() ? QString() : QDir(root).filePath(relative);
-    };
-    nodeCandidates.append(environmentFile("ProgramFiles", QStringLiteral("nodejs/node.exe")));
-    nodeCandidates.append(environmentFile("ProgramFiles(x86)", QStringLiteral("nodejs/node.exe")));
-
-    QStringList npmRoots;
-    const QString npmShim = QStandardPaths::findExecutable(QStringLiteral("npm.cmd"));
-    if (!npmShim.isEmpty())
-        npmRoots.append(QFileInfo(npmShim).absolutePath());
-    for (const QString &node : std::as_const(nodeCandidates)) {
-        if (node.trimmed().isEmpty() || !QFileInfo(node).isFile())
-            continue;
-        QStringList roots = npmRoots;
-        roots.prepend(QFileInfo(node).absolutePath());
-        for (const QString &root : std::as_const(roots)) {
-            const QString npmCli = QDir(root).filePath(
-                QStringLiteral("node_modules/npm/bin/npm-cli.js"));
-            if (QFileInfo(npmCli).isFile())
-                return {QDir::cleanPath(node), {QDir::cleanPath(npmCli)}};
-        }
-    }
-    return {};
-#else
-    const QString npm = QStandardPaths::findExecutable(QStringLiteral("npm"));
-    return npm.isEmpty() ? ProcessCommand{} : ProcessCommand{npm, {}};
-#endif
 }
 
 QString notificationTimestamp(const QDateTime &value)
@@ -326,6 +249,22 @@ AppController::AppController(QObject *parent)
       m_jobEngine(this),
       m_settings(QStringLiteral("WimForge"), QStringLiteral("WimForge"))
 {
+    m_openCodeSetup = std::make_unique<OpenCodeSetup>();
+    connect(m_openCodeSetup.get(), &OpenCodeSetup::changed, this, [this] {
+        if (m_openCodeSetup->busy() || m_openCodeSetup->state() == OpenCodeSetupState::Failed)
+            m_openCodeRequestStatus.clear();
+        emit studioChanged();
+    });
+    connect(m_openCodeSetup.get(), &OpenCodeSetup::becameReady, this,
+            [this](bool installedDuringAttempt) {
+        if (installedDuringAttempt) {
+            notify(QStringLiteral("OpenCode installed and verified"),
+                   m_openCodeSetup->status(), QStringLiteral("success"));
+        }
+    });
+    connect(m_openCodeSetup.get(), &OpenCodeSetup::failed, this,
+            [this](const QString &error) { showError(error); });
+
     m_languageMode = qBound(0, m_settings.value(QStringLiteral("ui/language"), 2).toInt(), 2);
     m_themeMode = qBound(0, m_settings.value(QStringLiteral("ui/theme"), 0).toInt(), 2);
     m_interfaceScale = qBound(0.8, m_settings.value(QStringLiteral("ui/scale"), 1.0).toDouble(), 1.25);
@@ -386,10 +325,6 @@ AppController::AppController(QObject *parent)
                        m_winForgeRuntimeContract.capabilities.join(QStringLiteral(", ")))
             : bridgeError;
     }
-    m_openCodeStatus = openCodeInstalled()
-        ? QStringLiteral("OpenCode was found; live verification is scheduled.")
-        : QStringLiteral("OpenCode will be installed automatically and then live-verified.");
-
     const QString lastProject = m_settings.value(QStringLiteral("project/last")).toString();
     if (!lastProject.isEmpty() && QFileInfo::exists(QDir(lastProject).filePath(QStringLiteral("project.json"))))
         openProject(lastProject);
@@ -398,8 +333,26 @@ AppController::AppController(QObject *parent)
     // in-app progress, so automatic setup never blocks servicing jobs or opens
     // a modal dialog.
     QTimer::singleShot(2'500, this, [this] {
-        installOpenCodeThen([] {});
+        m_openCodeSetup->ensureReady();
     });
+}
+
+AppController::~AppController()
+{
+    if (m_openCodeSetup)
+        m_openCodeSetup->shutdown();
+    if (!m_openCodeProcess)
+        return;
+    disconnect(m_openCodeProcess, nullptr, this, nullptr);
+    if (m_openCodeProcess->state() != QProcess::NotRunning) {
+        m_openCodeProcess->terminate();
+        if (!m_openCodeProcess->waitForFinished(1'500)) {
+            m_openCodeProcess->kill();
+            m_openCodeProcess->waitForFinished(1'500);
+        }
+    }
+    delete m_openCodeProcess;
+    m_openCodeProcess = nullptr;
 }
 
 QString AppController::version() const { return QString::fromLatin1(WIMFORGE_VERSION); }
@@ -638,11 +591,41 @@ QString AppController::computerNameValue() const
 
 bool AppController::openCodeInstalled() const
 {
-    return !openCodeExecutablePath().isEmpty();
+    return m_openCodeSetup && m_openCodeSetup->installed();
 }
 
-bool AppController::openCodeBusy() const { return m_openCodeBusy; }
-QString AppController::openCodeStatus() const { return m_openCodeStatus; }
+bool AppController::openCodeBusy() const
+{
+    return (m_openCodeSetup && m_openCodeSetup->busy()) || m_openCodeRequestBusy;
+}
+
+bool AppController::openCodeReady() const
+{
+    return m_openCodeSetup && m_openCodeSetup->ready();
+}
+
+bool AppController::openCodeCanRetry() const
+{
+    return m_openCodeSetup && m_openCodeSetup->canRetry();
+}
+
+QString AppController::openCodeState() const
+{
+    return m_openCodeSetup ? m_openCodeSetup->stateName() : QStringLiteral("absent");
+}
+
+QString AppController::openCodeStatus() const
+{
+    if (!m_openCodeRequestStatus.isEmpty())
+        return m_openCodeRequestStatus;
+    return m_openCodeSetup ? m_openCodeSetup->status()
+                           : QStringLiteral("OpenCode status is unavailable.");
+}
+
+QString AppController::openCodeError() const
+{
+    return m_openCodeSetup ? m_openCodeSetup->error() : QString();
+}
 
 QVariantList AppController::winForgeBridgeActions() const
 {
@@ -2073,257 +2056,113 @@ bool AppController::exportUnattended(const QString &destinationFile)
     return true;
 }
 
-void AppController::verifyOpenCodeThen(const std::function<void()> &completed, bool installedNow)
-{
-    const QString executable = openCodeExecutablePath();
-    if (executable.isEmpty()) {
-        m_openCodeBusy = false;
-        m_openCodeVerified = false;
-        m_openCodeStatus = QStringLiteral(
-            "OpenCode installation returned success, but no executable was found in PATH or the npm prefix.");
-        showError(m_openCodeStatus);
-        emit studioChanged();
-        return;
-    }
-    auto *process = new QProcess(this);
-    process->setProgram(executable);
-    process->setArguments({QStringLiteral("--version")});
-    process->setProcessChannelMode(QProcess::MergedChannels);
-    connect(process, &QProcess::errorOccurred, this,
-            [this, process](QProcess::ProcessError processError) {
-        if (processError != QProcess::FailedToStart
-            || process->property("wimforgeHandled").toBool()) {
-            return;
-        }
-        process->setProperty("wimforgeHandled", true);
-        m_openCodeBusy = false;
-        m_openCodeVerified = false;
-        m_openCodeStatus = QStringLiteral("OpenCode live verification could not start: %1")
-                               .arg(process->errorString());
-        showError(m_openCodeStatus);
-        emit studioChanged();
-        process->deleteLater();
-    });
-    connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
-            [this, process, completed, installedNow](int code, QProcess::ExitStatus status) {
-        if (process->property("wimforgeHandled").toBool())
-            return;
-        process->setProperty("wimforgeHandled", true);
-        const QString output = QString::fromLocal8Bit(process->readAll()).trimmed();
-        process->deleteLater();
-        m_openCodeBusy = false;
-        if (status != QProcess::NormalExit || code != 0 || output.isEmpty()) {
-            m_openCodeVerified = false;
-            m_openCodeStatus = QStringLiteral("OpenCode live verification failed (exit %1): %2")
-                                   .arg(code).arg(output);
-            showError(m_openCodeStatus);
-            emit studioChanged();
-            return;
-        }
-        m_openCodeStatus = QStringLiteral("OpenCode is installed and live-verified: %1")
-                               .arg(output.split(QLatin1Char('\n')).first().trimmed());
-        m_openCodeVerified = true;
-        if (installedNow)
-            notify(QStringLiteral("OpenCode installed and verified"), m_openCodeStatus,
-                   QStringLiteral("success"));
-        emit studioChanged();
-        completed();
-    });
-    process->start();
-}
-
-void AppController::installOpenCodeThen(const std::function<void()> &completed)
-{
-    if (m_openCodeBusy) {
-        QTimer::singleShot(500, this, [this, completed] { installOpenCodeThen(completed); });
-        return;
-    }
-    if (m_openCodeVerified) {
-        completed();
-        return;
-    }
-    if (openCodeInstalled()) {
-        m_openCodeBusy = true;
-        m_openCodeStatus = QStringLiteral("Live-verifying OpenCode…");
-        emit studioChanged();
-        verifyOpenCodeThen(completed, false);
-        return;
-    }
-    m_openCodeBusy = true;
-    m_openCodeStatus = localized(QStringLiteral("Installing OpenCode automatically…"),
-                                 QStringLiteral("自動安裝 OpenCode…"));
-    emit studioChanged();
-
-    auto installWithNpm = [this, completed]() {
-        const ProcessCommand npm = npmProcessCommand();
-        if (npm.isEmpty()) {
-            m_openCodeBusy = false;
-            m_openCodeStatus = QStringLiteral("Node/npm installation completed but npm was not found; restart WimForge and try again.");
-            showError(m_openCodeStatus);
-            emit studioChanged();
-            return;
-        }
-        auto *npmProcess = new QProcess(this);
-        npmProcess->setProgram(npm.program);
-        QStringList npmArguments = npm.prefixArguments;
-        npmArguments.append({QStringLiteral("install"), QStringLiteral("-g"),
-                             QStringLiteral("opencode-ai@latest")});
-        npmProcess->setArguments(npmArguments);
-        npmProcess->setProcessChannelMode(QProcess::MergedChannels);
-        connect(npmProcess, &QProcess::errorOccurred, this,
-            [this, npmProcess](QProcess::ProcessError processError) {
-                if (processError != QProcess::FailedToStart
-                    || npmProcess->property("wimforgeHandled").toBool()) {
-                    return;
-                }
-                npmProcess->setProperty("wimforgeHandled", true);
-                m_openCodeBusy = false;
-                m_openCodeStatus = QStringLiteral("npm could not start: %1")
-                                       .arg(npmProcess->errorString());
-                showError(m_openCodeStatus);
-                emit studioChanged();
-                npmProcess->deleteLater();
-            });
-        connect(npmProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
-            [this, npmProcess, completed](int code, QProcess::ExitStatus status) {
-                if (npmProcess->property("wimforgeHandled").toBool())
-                    return;
-                npmProcess->setProperty("wimforgeHandled", true);
-                const QString output = QString::fromLocal8Bit(npmProcess->readAll()).trimmed();
-                npmProcess->deleteLater();
-                if (status != QProcess::NormalExit || code != 0) {
-                    m_openCodeBusy = false;
-                    m_openCodeStatus = QStringLiteral("OpenCode installation failed: %1").arg(output);
-                    showError(m_openCodeStatus);
-                    emit studioChanged();
-                    return;
-                }
-                m_openCodeStatus = QStringLiteral("OpenCode installed; running live verification…");
-                emit studioChanged();
-                verifyOpenCodeThen(completed, true);
-            });
-        npmProcess->start();
-    };
-
-    if (!npmProcessCommand().isEmpty()) {
-        installWithNpm();
-        return;
-    }
-    const QString winget = QStandardPaths::findExecutable(QStringLiteral("winget.exe"));
-    if (winget.isEmpty()) {
-        m_openCodeBusy = false;
-        m_openCodeStatus = QStringLiteral("OpenCode needs Node/npm, and neither npm nor WinGet is available.");
-        showError(m_openCodeStatus);
-        emit studioChanged();
-        return;
-    }
-    m_openCodeStatus = localized(QStringLiteral("Installing Node.js LTS, then OpenCode…"),
-                                 QStringLiteral("先裝 Node.js LTS，再裝 OpenCode…"));
-    emit studioChanged();
-    auto *nodeProcess = new QProcess(this);
-    nodeProcess->setProgram(winget);
-    nodeProcess->setArguments({QStringLiteral("install"), QStringLiteral("--id"),
-        QStringLiteral("OpenJS.NodeJS.LTS"), QStringLiteral("--exact"),
-        QStringLiteral("--silent"), QStringLiteral("--accept-package-agreements"),
-        QStringLiteral("--accept-source-agreements"), QStringLiteral("--disable-interactivity")});
-    nodeProcess->setProcessChannelMode(QProcess::MergedChannels);
-    connect(nodeProcess, &QProcess::errorOccurred, this,
-        [this, nodeProcess](QProcess::ProcessError processError) {
-            if (processError != QProcess::FailedToStart
-                || nodeProcess->property("wimforgeHandled").toBool()) {
-                return;
-            }
-            nodeProcess->setProperty("wimforgeHandled", true);
-            m_openCodeBusy = false;
-            m_openCodeStatus = QStringLiteral("WinGet could not start Node.js installation: %1")
-                                   .arg(nodeProcess->errorString());
-            showError(m_openCodeStatus);
-            emit studioChanged();
-            nodeProcess->deleteLater();
-        });
-    connect(nodeProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
-        [this, nodeProcess, installWithNpm](int code, QProcess::ExitStatus status) {
-            if (nodeProcess->property("wimforgeHandled").toBool())
-                return;
-            nodeProcess->setProperty("wimforgeHandled", true);
-            const QString output = QString::fromLocal8Bit(nodeProcess->readAll()).trimmed();
-            nodeProcess->deleteLater();
-            if (status != QProcess::NormalExit || code != 0) {
-                m_openCodeBusy = false;
-                m_openCodeStatus = QStringLiteral("Node.js installation failed: %1").arg(output);
-                showError(m_openCodeStatus);
-                emit studioChanged();
-                return;
-            }
-            installWithNpm();
-        });
-    nodeProcess->start();
-}
-
 void AppController::runOpenCode(const QString &prompt,
                                 const std::function<void(const QString &)> &completed)
 {
-    if (!m_openCodeVerified) {
-        installOpenCodeThen([this, prompt, completed] { runOpenCode(prompt, completed); });
+    if (prompt.trimmed().isEmpty()) {
+        showError(QStringLiteral("OpenCode needs a non-empty request."));
         return;
     }
-    if (m_openCodeBusy) {
-        emit snackbarRequested(localized(QStringLiteral("OpenCode is already helping with another request."),
-                                         QStringLiteral("OpenCode 正幫緊另一個請求。")), QStringLiteral("info"));
+    m_openCodeRequests.enqueue({prompt, completed});
+    processNextOpenCodeRequest();
+}
+
+void AppController::processNextOpenCodeRequest()
+{
+    if (m_openCodeRequestBusy || m_openCodeReadinessPending || m_openCodeRequests.isEmpty())
         return;
-    }
-    const QString executable = openCodeExecutablePath();
-    if (executable.isEmpty()) {
-        m_openCodeVerified = false;
-        installOpenCodeThen([this, prompt, completed] { runOpenCode(prompt, completed); });
-        return;
-    }
-    auto *process = new QProcess(this);
-    process->setProgram(executable);
-    process->setArguments({QStringLiteral("run"), prompt, QStringLiteral("--format"), QStringLiteral("json")});
-    process->setProcessChannelMode(QProcess::MergedChannels);
-    m_openCodeBusy = true;
-    m_openCodeStatus = localized(QStringLiteral("OpenCode is reasoning locally…"),
-                                 QStringLiteral("OpenCode 喺本機諗緊…"));
-    emit studioChanged();
-    QPointer<QProcess> guard(process);
-    QTimer::singleShot(300'000, process, [guard] {
-        if (guard && guard->state() != QProcess::NotRunning)
-            guard->kill();
-    });
-    connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
-        [this, process, completed](int code, QProcess::ExitStatus status) {
-            if (process->property("wimforgeHandled").toBool())
+
+    m_openCodeReadinessPending = true;
+    m_openCodeSetup->ensureReady([this](bool ready, const QString &) {
+        m_openCodeReadinessPending = false;
+        if (!ready) {
+            m_openCodeRequests.clear();
+            emit studioChanged();
+            return;
+        }
+        if (m_openCodeRequestBusy || m_openCodeRequests.isEmpty())
+            return;
+
+        OpenCodeRequest request = m_openCodeRequests.dequeue();
+        const QString executable = m_openCodeSetup->executablePath();
+        if (executable.isEmpty()) {
+            m_openCodeRequestStatus = QStringLiteral(
+                "OpenCode was verified but its executable is no longer available.");
+            showError(m_openCodeRequestStatus);
+            m_openCodeRequests.clear();
+            emit studioChanged();
+            return;
+        }
+
+        auto *process = new QProcess(this);
+        m_openCodeProcess = process;
+        m_openCodeRequestBusy = true;
+        m_openCodeRequestTimedOut = false;
+        m_openCodeRequestStatus = localized(QStringLiteral("OpenCode is reasoning locally…"),
+                                            QStringLiteral("OpenCode 喺本機諗緊…"));
+        process->setProgram(executable);
+        process->setArguments({QStringLiteral("run"), request.prompt,
+                               QStringLiteral("--format"), QStringLiteral("json")});
+        process->setProcessChannelMode(QProcess::MergedChannels);
+        emit studioChanged();
+
+        QTimer::singleShot(300'000, process, [this, process] {
+            if (process != m_openCodeProcess || process->state() == QProcess::NotRunning)
                 return;
-            process->setProperty("wimforgeHandled", true);
-            const QByteArray output = process->readAll();
-            process->deleteLater();
-            m_openCodeBusy = false;
-            if (status != QProcess::NormalExit || code != 0) {
-                m_openCodeStatus = QStringLiteral("OpenCode request failed: %1")
-                    .arg(QString::fromUtf8(output).trimmed());
-                showError(m_openCodeStatus);
+            m_openCodeRequestTimedOut = true;
+            process->terminate();
+            QTimer::singleShot(1'500, process, [this, process] {
+                if (process == m_openCodeProcess
+                    && process->state() != QProcess::NotRunning) {
+                    process->kill();
+                }
+            });
+        });
+        connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+            [this, process, request = std::move(request)](
+                int code, QProcess::ExitStatus status) mutable {
+                if (process->property("wimforgeHandled").toBool())
+                    return;
+                process->setProperty("wimforgeHandled", true);
+                const QByteArray output = process->readAll();
+                const bool timedOut = m_openCodeRequestTimedOut;
+                m_openCodeProcess = nullptr;
+                m_openCodeRequestBusy = false;
+                m_openCodeRequestTimedOut = false;
+                process->deleteLater();
+                if (timedOut || status != QProcess::NormalExit || code != 0) {
+                    m_openCodeRequestStatus = timedOut
+                        ? QStringLiteral("OpenCode request timed out after five minutes.")
+                        : QStringLiteral("OpenCode request failed: %1")
+                              .arg(QString::fromUtf8(output).trimmed());
+                    showError(m_openCodeRequestStatus);
+                } else {
+                    m_openCodeRequestStatus = QStringLiteral("OpenCode completed the request.");
+                    if (request.completed)
+                        request.completed(openCodeText(output));
+                }
                 emit studioChanged();
-                return;
-            }
-            m_openCodeStatus = QStringLiteral("OpenCode completed the request.");
-            emit studioChanged();
-            completed(openCodeText(output));
-        });
-    connect(process, &QProcess::errorOccurred, this,
-        [this, process](QProcess::ProcessError error) {
-            if (error != QProcess::FailedToStart
-                || process->property("wimforgeHandled").toBool())
-                return;
-            process->setProperty("wimforgeHandled", true);
-            m_openCodeBusy = false;
-            m_openCodeVerified = false;
-            m_openCodeStatus = process->errorString();
-            showError(m_openCodeStatus);
-            process->deleteLater();
-            emit studioChanged();
-        });
-    process->start();
+                processNextOpenCodeRequest();
+            });
+        connect(process, &QProcess::errorOccurred, this,
+            [this, process](QProcess::ProcessError error) {
+                if (error != QProcess::FailedToStart
+                    || process->property("wimforgeHandled").toBool()) {
+                    return;
+                }
+                process->setProperty("wimforgeHandled", true);
+                m_openCodeProcess = nullptr;
+                m_openCodeRequestBusy = false;
+                m_openCodeRequestTimedOut = false;
+                m_openCodeRequestStatus = QStringLiteral("OpenCode request could not start: %1")
+                                              .arg(process->errorString());
+                process->deleteLater();
+                showError(m_openCodeRequestStatus);
+                emit studioChanged();
+                processNextOpenCodeRequest();
+            });
+        process->start();
+    });
 }
 
 void AppController::askOpenCodeToFillUnattended(const QString &intent)
@@ -2364,9 +2203,11 @@ void AppController::askOpenCodeToFillUnattended(const QString &intent)
 
 void AppController::ensureOpenCode()
 {
-    installOpenCodeThen([this] {
-        showSuccess(localized(QStringLiteral("OpenCode is ready."),
-                              QStringLiteral("OpenCode 準備好。")));
+    m_openCodeSetup->retry([this](bool ready, const QString &) {
+        if (ready) {
+            showSuccess(localized(QStringLiteral("OpenCode is ready."),
+                                  QStringLiteral("OpenCode 準備好。")));
+        }
     });
 }
 

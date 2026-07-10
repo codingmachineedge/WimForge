@@ -4,6 +4,7 @@
 #include "core/GpoCatalog.h"
 #include "core/ActionHistory.h"
 #include "core/NotificationStore.h"
+#include "core/OpenCodeSetup.h"
 #include "core/PackageStudio.h"
 #include "core/ProjectBundle.h"
 #include "core/ProjectConfig.h"
@@ -14,12 +15,16 @@
 #include <QFileSystemWatcher>
 #include <QObject>
 #include <QSettings>
+#include <QQueue>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
 
 #include <functional>
+#include <memory>
 #include <optional>
+
+class QProcess;
 
 class AppController final : public QObject
 {
@@ -98,7 +103,11 @@ class AppController final : public QObject
     Q_PROPERTY(QString computerNameValue READ computerNameValue NOTIFY studioChanged)
     Q_PROPERTY(bool openCodeInstalled READ openCodeInstalled NOTIFY studioChanged)
     Q_PROPERTY(bool openCodeBusy READ openCodeBusy NOTIFY studioChanged)
+    Q_PROPERTY(bool openCodeReady READ openCodeReady NOTIFY studioChanged)
+    Q_PROPERTY(bool openCodeCanRetry READ openCodeCanRetry NOTIFY studioChanged)
+    Q_PROPERTY(QString openCodeState READ openCodeState NOTIFY studioChanged)
     Q_PROPERTY(QString openCodeStatus READ openCodeStatus NOTIFY studioChanged)
+    Q_PROPERTY(QString openCodeError READ openCodeError NOTIFY studioChanged)
     Q_PROPERTY(QVariantList winForgeBridgeActions READ winForgeBridgeActions NOTIFY studioChanged)
     Q_PROPERTY(bool winForgeBridgeIncludeRuntime READ winForgeBridgeIncludeRuntime NOTIFY studioChanged)
     Q_PROPERTY(QString winForgeBridgeRuntimePath READ winForgeBridgeRuntimePath NOTIFY studioChanged)
@@ -107,6 +116,7 @@ class AppController final : public QObject
 
 public:
     explicit AppController(QObject *parent = nullptr);
+    ~AppController() override;
 
     [[nodiscard]] QString version() const;
     [[nodiscard]] bool projectLoaded() const;
@@ -189,7 +199,11 @@ public:
     [[nodiscard]] QString computerNameValue() const;
     [[nodiscard]] bool openCodeInstalled() const;
     [[nodiscard]] bool openCodeBusy() const;
+    [[nodiscard]] bool openCodeReady() const;
+    [[nodiscard]] bool openCodeCanRetry() const;
+    [[nodiscard]] QString openCodeState() const;
     [[nodiscard]] QString openCodeStatus() const;
+    [[nodiscard]] QString openCodeError() const;
     [[nodiscard]] QVariantList winForgeBridgeActions() const;
     [[nodiscard]] bool winForgeBridgeIncludeRuntime() const;
     [[nodiscard]] QString winForgeBridgeRuntimePath() const;
@@ -330,8 +344,13 @@ private:
                                      const wimforge::WinForgeRecipe &recipe);
     bool applyHistoryState(const wimforge::ActionEvent &event, const QString &message);
     void runOpenCode(const QString &prompt, const std::function<void(const QString &)> &completed);
-    void installOpenCodeThen(const std::function<void()> &completed);
-    void verifyOpenCodeThen(const std::function<void()> &completed, bool installedNow);
+    void processNextOpenCodeRequest();
+
+    struct OpenCodeRequest
+    {
+        QString prompt;
+        std::function<void(const QString &)> completed;
+    };
 
     std::optional<wimforge::ProjectConfig> m_project;
     wimforge::NotificationStore m_notificationStore;
@@ -345,6 +364,7 @@ private:
     wimforge::UnattendProfile m_unattendProfile;
     wimforge::WinForgeRecipe m_winForgeRecipe;
     wimforge::WinForgeRuntimeContract m_winForgeRuntimeContract;
+    std::unique_ptr<wimforge::OpenCodeSetup> m_openCodeSetup;
     QFileSystemWatcher m_watcher;
     QSettings m_settings;
     QStringList m_editionNames{QStringLiteral("Index 1 — Windows edition")};
@@ -355,10 +375,13 @@ private:
     bool m_recoveryUnmountBusy = false;
     bool m_inspecting = false;
     bool m_gpoLoaded = false;
-    bool m_openCodeBusy = false;
-    bool m_openCodeVerified = false;
+    bool m_openCodeReadinessPending = false;
+    bool m_openCodeRequestBusy = false;
+    bool m_openCodeRequestTimedOut = false;
+    QProcess *m_openCodeProcess = nullptr;
+    QQueue<OpenCodeRequest> m_openCodeRequests;
     QString m_gpoStatus = QStringLiteral("Policy catalog has not been loaded yet.");
-    QString m_openCodeStatus = QStringLiteral("OpenCode status has not been checked.");
+    QString m_openCodeRequestStatus;
     QString m_winForgeRuntimePath;
     QString m_winForgeRuntimeStatus = QStringLiteral("No WinForge runtime has been detected yet.");
     QString m_winForgeBridgeStatus = QStringLiteral("Recipe is ready for review.");

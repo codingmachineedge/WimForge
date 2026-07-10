@@ -15,6 +15,7 @@ ApplicationWindow {
     minimumWidth: 1080
     minimumHeight: 700
     visible: true
+    onClosing: Qt.quit()
     title: app.projectLoaded ? "WimForge — " + app.projectName : "WimForge"
     color: Material.theme === Material.Dark ? "#141218" : "#F7F2FA"
 

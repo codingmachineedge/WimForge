@@ -26,6 +26,8 @@ set(WIMFORGE_CORE_SOURCES
     src/core/GitHistory.h
     src/core/NotificationStore.cpp
     src/core/NotificationStore.h
+    src/core/OpenCodeSetup.cpp
+    src/core/OpenCodeSetup.h
     src/core/ProjectConfig.cpp
     src/core/ProjectConfig.h
     src/core/ProjectBundle.cpp

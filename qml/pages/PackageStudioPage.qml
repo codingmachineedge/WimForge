@@ -57,13 +57,14 @@ Item {
         Pane {
             Layout.fillWidth: true
             padding: 10
-            background: Rectangle { radius: 16; color: app.openCodeInstalled ? (Material.theme === Material.Dark ? "#17351F" : "#EAF8E6") : (Material.theme === Material.Dark ? "#3A2E00" : "#FFF4D6") }
+            background: Rectangle { radius: 16; color: app.openCodeReady ? (Material.theme === Material.Dark ? "#17351F" : "#EAF8E6") : app.openCodeState === "failed" ? (Material.theme === Material.Dark ? "#4A1519" : "#FFDAD6") : (Material.theme === Material.Dark ? "#3A2E00" : "#FFF4D6") }
             GridLayout {
                 anchors.fill: parent
-                columns: root.width >= 700 ? 4 : 1
+                columns: root.width >= 900 ? 5 : 1
                 columnSpacing: 8
                 rowSpacing: 6
-                Label { text: app.openCodeInstalled ? "✓" : "⬇"; font.pixelSize: 20 }
+                Label { text: app.openCodeReady ? "✓" : app.openCodeState === "failed" ? "!" : "⬇"; font.pixelSize: 20; Accessible.name: app.openCodeState }
+                Label { text: app.openCodeState.toUpperCase(); font.bold: true; font.pixelSize: 10 }
                 Label { Layout.fillWidth: true; text: app.openCodeStatus; wrapMode: Text.Wrap }
                 BusyIndicator {
                     visible: app.openCodeBusy
@@ -72,7 +73,7 @@ Item {
                     implicitHeight: 28
                     Accessible.name: root.tr("OpenCode installation in progress", "OpenCode 安裝進行中")
                 }
-                Button { visible: !app.openCodeInstalled; Layout.fillWidth: root.width < 700; enabled: !app.openCodeBusy; text: root.tr("Install now", "而家安裝"); onClicked: app.ensureOpenCode() }
+                Button { visible: !app.openCodeReady; Layout.fillWidth: root.width < 900; enabled: app.openCodeCanRetry && !app.openCodeBusy; text: app.openCodeState === "failed" ? root.tr("Retry setup", "再試設定") : root.tr("Install now", "而家安裝"); onClicked: app.ensureOpenCode() }
             }
         }
 

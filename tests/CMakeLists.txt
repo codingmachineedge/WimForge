@@ -36,6 +36,11 @@ wimforge_add_core_test(notification_store_tests
         ${PROJECT_SOURCE_DIR}/src/core/NotificationStore.cpp
 )
 
+wimforge_add_core_test(opencode_setup_tests
+    SOURCES opencode_setup_tests.cpp
+    CORE_SOURCES ${PROJECT_SOURCE_DIR}/src/core/OpenCodeSetup.cpp
+)
+
 wimforge_add_core_test(unattend_builder_tests
     SOURCES unattend_builder_tests.cpp
     CORE_SOURCES ${PROJECT_SOURCE_DIR}/src/core/UnattendBuilder.cpp
