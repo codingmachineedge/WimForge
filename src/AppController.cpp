@@ -386,21 +386,32 @@ AppController::AppController(QObject *parent)
                        m_winForgeRuntimeContract.capabilities.join(QStringLiteral(", ")))
             : bridgeError;
     }
-    m_openCodeStatus = openCodeInstalled()
+    const bool hasOpenCode = openCodeInstalled();
+    m_openCodeStatus = hasOpenCode
         ? QStringLiteral("OpenCode was found; live verification is scheduled.")
-        : QStringLiteral("OpenCode will be installed automatically when an AI helper is used.");
+        : QStringLiteral("OpenCode is optional and is not installed. Install it explicitly before using AI helpers.");
 
     const QString lastProject = m_settings.value(QStringLiteral("project/last")).toString();
     if (!lastProject.isEmpty() && QFileInfo::exists(QDir(lastProject).filePath(QStringLiteral("project.json"))))
         openProject(lastProject);
 
-    // OpenCode is a first-class local helper, not a hidden prerequisite. The
-    // user explicitly opted into automatic installation by installing
-    // WimForge; the process stays asynchronous and reports through the in-app
-    // notification center instead of interrupting image jobs with a dialog.
-    QTimer::singleShot(2'500, this, [this] {
-        installOpenCodeThen([] {});
-    });
+    // Verification is safe to perform in the background, but installing a
+    // global host tool is an explicit user action. A normal WimForge launch
+    // must never install Node.js or OpenCode on its own.
+    if (hasOpenCode) {
+        QTimer::singleShot(2'500, this, [this] {
+            if (!openCodeInstalled()) {
+                m_openCodeStatus = QStringLiteral(
+                    "OpenCode is no longer available. Install it explicitly before using AI helpers.");
+                emit studioChanged();
+                return;
+            }
+            m_openCodeBusy = true;
+            m_openCodeStatus = QStringLiteral("Live-verifying OpenCode…");
+            emit studioChanged();
+            verifyOpenCodeThen([] {}, false);
+        });
+    }
 }
 
 QString AppController::version() const { return QString::fromLatin1(WIMFORGE_VERSION); }
