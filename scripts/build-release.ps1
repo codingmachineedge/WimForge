@@ -261,9 +261,22 @@ Invoke-NativeCommand -FilePath $windeployqt -ArgumentList @(
 # package (which cannot assume that an installer has run first).
 $compilerRuntime = Join-Path $portablePath 'vcruntime140.dll'
 if (-not (Test-Path -LiteralPath $compilerRuntime -PathType Leaf) -and $env:VCToolsRedistDir) {
-    $redistDirectory = Join-Path $env:VCToolsRedistDir 'x64/Microsoft.VC143.CRT'
-    if (Test-Path -LiteralPath $redistDirectory -PathType Container) {
-        Get-ChildItem -LiteralPath $redistDirectory -File -Filter '*.dll' |
+    # The folder name tracks the installed toolset (VC143, VC145, ...), while
+    # the redistributable DLL ABI names remain vcruntime140/msvcp140. Never
+    # hard-code a Visual Studio generation here: hosted runners can advance
+    # independently of Qt's binary-compatible MSVC build label.
+    $redistX64 = Join-Path $env:VCToolsRedistDir 'x64'
+    $redistDirectories = @()
+    if (Test-Path -LiteralPath $redistX64 -PathType Container) {
+        $redistDirectories = @(Get-ChildItem -LiteralPath $redistX64 -Directory |
+            Where-Object { $_.Name -like 'Microsoft.VC*.CRT' } |
+            Sort-Object -Property Name -Descending)
+    }
+    $redistDirectory = $redistDirectories |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'vcruntime140.dll') -PathType Leaf } |
+        Select-Object -First 1
+    if ($redistDirectory) {
+        Get-ChildItem -LiteralPath $redistDirectory.FullName -File -Filter '*.dll' |
             ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $portablePath -Force }
     }
 }
@@ -275,6 +288,8 @@ $requiredRuntimeFiles = @(
     (Join-Path $portablePath 'Qt6Quick.dll'),
     (Join-Path $portablePath 'Qt6QuickControls2.dll'),
     $compilerRuntime,
+    (Join-Path $portablePath 'vcruntime140_1.dll'),
+    (Join-Path $portablePath 'msvcp140.dll'),
     (Join-Path $portablePath 'platforms/qwindows.dll')
 )
 foreach ($runtimeFile in $requiredRuntimeFiles) {
