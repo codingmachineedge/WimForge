@@ -386,32 +386,20 @@ AppController::AppController(QObject *parent)
                        m_winForgeRuntimeContract.capabilities.join(QStringLiteral(", ")))
             : bridgeError;
     }
-    const bool hasOpenCode = openCodeInstalled();
-    m_openCodeStatus = hasOpenCode
+    m_openCodeStatus = openCodeInstalled()
         ? QStringLiteral("OpenCode was found; live verification is scheduled.")
-        : QStringLiteral("OpenCode is optional and is not installed. Install it explicitly before using AI helpers.");
+        : QStringLiteral("OpenCode will be installed automatically and then live-verified.");
 
     const QString lastProject = m_settings.value(QStringLiteral("project/last")).toString();
     if (!lastProject.isEmpty() && QFileInfo::exists(QDir(lastProject).filePath(QStringLiteral("project.json"))))
         openProject(lastProject);
 
-    // Verification is safe to perform in the background, but installing a
-    // global host tool is an explicit user action. A normal WimForge launch
-    // must never install Node.js or OpenCode on its own.
-    if (hasOpenCode) {
-        QTimer::singleShot(2'500, this, [this] {
-            if (!openCodeInstalled()) {
-                m_openCodeStatus = QStringLiteral(
-                    "OpenCode is no longer available. Install it explicitly before using AI helpers.");
-                emit studioChanged();
-                return;
-            }
-            m_openCodeBusy = true;
-            m_openCodeStatus = QStringLiteral("Live-verifying OpenCode…");
-            emit studioChanged();
-            verifyOpenCodeThen([] {}, false);
-        });
-    }
+    // Installation and live verification are asynchronous and surface only
+    // in-app progress, so automatic setup never blocks servicing jobs or opens
+    // a modal dialog.
+    QTimer::singleShot(2'500, this, [this] {
+        installOpenCodeThen([] {});
+    });
 }
 
 QString AppController::version() const { return QString::fromLatin1(WIMFORGE_VERSION); }

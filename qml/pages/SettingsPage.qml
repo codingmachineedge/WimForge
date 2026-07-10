@@ -101,31 +101,6 @@ ScrollView {
             }
         }
 
-        GroupBox {
-            Layout.fillWidth: true
-            title: "✦  " + root.tr("Optional AI helper", "可選 AI 助手")
-            ColumnLayout {
-                anchors.fill: parent
-                Label {
-                    Layout.fillWidth: true
-                    text: root.tr(
-                        "WimForge never installs host software at startup. Install OpenCode only when you want the local AI-assisted policy, unattended, package, or WinForge workflows.",
-                        "WimForge 啟動時絕對唔會自行安裝主機軟件。只喺你想用本機 AI 輔助原則、無人值守、套件或 WinForge 工作流程時先安裝 OpenCode。")
-                    wrapMode: Text.Wrap
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Label { Layout.fillWidth: true; text: app.openCodeStatus; wrapMode: Text.Wrap }
-                    BusyIndicator { visible: app.openCodeBusy; running: visible; implicitWidth: 28; implicitHeight: 28 }
-                    Button {
-                        visible: !app.openCodeInstalled
-                        enabled: !app.openCodeBusy
-                        text: root.tr("Install OpenCode", "安裝 OpenCode")
-                        onClicked: app.ensureOpenCode()
-                    }
-                }
-            }
-        }
         Item { Layout.preferredHeight: 20 }
     }
 }
