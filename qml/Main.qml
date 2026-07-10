@@ -54,6 +54,10 @@ ApplicationWindow {
         return en
     }
 
+    function buttonText(value) {
+        return String(value).replace(/&/g, "&&")
+    }
+
     Connections {
         target: app
         function onSnackbarRequested(message, tone) { snackbar.show(message, tone, "") }
@@ -107,7 +111,7 @@ ApplicationWindow {
         Pane {
             id: navigation
             Layout.fillHeight: true
-            Layout.preferredWidth: 252
+            Layout.preferredWidth: 320
             padding: 12
             background: Rectangle {
                 color: Material.theme === Material.Dark ? "#1D1B20" : "#F3EDF7"
@@ -148,7 +152,7 @@ ApplicationWindow {
                         required property var modelData
                         required property int index
                         Layout.fillWidth: true
-                        text: modelData.icon + "   " + root.tr2(modelData.en, modelData.zh)
+                        text: modelData.icon + "   " + root.buttonText(root.tr2(modelData.en, modelData.zh))
                         highlighted: root.currentPage === index
                         onClicked: root.currentPage = index
                         background: Rectangle {

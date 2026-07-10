@@ -183,7 +183,14 @@ int main(int argc, char *argv[])
                 application.exit(3);
                 return;
             }
-            const QImage image = window->grabWindow();
+            QImage image = window->grabWindow();
+            const QSize viewportSize = window->size();
+            if (image.width() >= viewportSize.width()
+                && image.height() >= viewportSize.height()
+                && image.size() != viewportSize) {
+                image = image.copy(0, 0, viewportSize.width(), viewportSize.height());
+            }
+            image.setDevicePixelRatio(1.0);
             if (image.isNull() || !image.save(screenshotPath, "PNG")) {
                 qCritical().noquote() << QStringLiteral("Unable to save the documentation screenshot: %1")
                                              .arg(screenshotPath);

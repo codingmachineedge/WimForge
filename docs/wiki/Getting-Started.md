@@ -16,7 +16,7 @@ Use only legally obtained Windows images and software payloads. WimForge does no
 
 ## Install or run portable
 
-Download one of the two x64 assets from the [latest release](https://github.com/codingmachineedge/WimForge/releases/latest):
+Open the [Windows releases page](https://github.com/codingmachineedge/WimForge/releases) and choose one of the two x64 assets from the newest successful release:
 
 - `WimForge-Setup-x64-<version>.exe` installs per user under Local AppData.
 - `WimForge-portable-x64-<version>.zip` can be extracted and run in place.

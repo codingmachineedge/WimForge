@@ -2,7 +2,7 @@
 
 WimForge is a standalone, MIT-licensed Windows image customization studio written in C++20 and Qt 6.8. It gives one desktop home to offline Windows servicing, software selection, installed Group Policy definitions, unattended setup, WinForge-family staging, non-blocking notifications, and Git-backed history.
 
-[Source repository](https://github.com/codingmachineedge/WimForge) · [Latest Windows release](https://github.com/codingmachineedge/WimForge/releases/latest) · [Issues](https://github.com/codingmachineedge/WimForge/issues)
+[Material documentation](https://codingmachineedge.github.io/WimForge/) · [Source repository](https://github.com/codingmachineedge/WimForge) · [Windows releases](https://github.com/codingmachineedge/WimForge/releases) · [Issues](https://github.com/codingmachineedge/WimForge/issues)
 
 WimForge is an independent alternative to NTLite, not an NTLite product. It is early software and does not claim commercial feature parity. The central design is different: project state and user mutations are explicit, locally committed, exportable, and reversible, while the Windows image operation graph remains reviewable before it runs.
 
@@ -11,17 +11,26 @@ WimForge is an independent alternative to NTLite, not an NTLite product. It is e
 | Page | What it covers |
 | --- | --- |
 | [Getting Started](Getting-Started) | Install, first launch, first project, shortcuts, and the end-to-end workflow |
+| [Application Tour](Application-Tour) | The global shell and all ten desktop routes |
+| [Projects and Sources](Projects-and-Sources) | Project creation, source inspection, working paths, editions, and outputs |
+| [Customize](Customize) | Updates, drivers, features, apps, components, settings, answer files, and post-setup items |
 | [Image Servicing](Image-Servicing) | Sources, immutable workspaces, DISM plan ordering, outputs, and online mode |
 | [Package Studio](Package-Studio) | Software profiles, Full AI Development, OpenCode, trust, and first-logon staging |
 | [Group Policy Studio](Group-Policy-Studio) | Installed ADMX/ADML catalog, search, schema controls, application, and documentation |
 | [Unattended Studio](Unattended-Studio) | JSON profiles, Windows answer-file XML, templates, names, product keys, and validation |
+| [Review and Run](Review-and-Run) | Exact command review, dependencies, risk flags, checkpoints, concurrency, and cancellation |
 | [History Time Machine](History-Time-Machine) | Contextual undo, selective compensation, redo-of-undo, bookmarks, lanes, and diffs |
 | [Notification Center](Notification-Center) | The separate Git ledger for read, dismiss, delete, restore, and undo events |
 | [Project Bundles](Project-Bundles) | Complete `.wimforge` saves with all local Git data |
+| [Settings](Settings) | Language, theme, job limits, failsafes, automation, and notification storage |
 | [CLI](CLI) | Headless automation, deterministic JSON, response files, and exit codes |
 | [WinForge Bridge](WinForge-Bridge) | Typed recipes, runtime contracts, OEM staging, and resumable replay |
 | [Safety and Recovery](Safety-and-Recovery) | Trust boundaries, atomic publication, crash recovery, and deployment checklist |
+| [Troubleshooting](Troubleshooting) | Startup, source, plan, external-tool, recovery, and studio diagnostics |
+| [Screenshots](Screenshots) | Current gallery, ten-route capture map, and safe capture guidance |
+| [Architecture and Data Layout](Architecture-and-Data-Layout) | QML/controller/core boundaries and on-disk state |
 | [Building and Releases](Building-and-Releases) | Qt/CMake build, tests, installer, portable package, and release automation |
+| [Contributing](Contributing) | Build, test, documentation, safety, and pull-request expectations |
 | [NTLite Feature Comparison](NTLite-Feature-Comparison) | An honest implemented/partial/not-implemented comparison |
 
 ## The application model

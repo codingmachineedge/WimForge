@@ -23,6 +23,7 @@ ScrollView {
 
         Pane {
             Layout.fillWidth: true
+            Layout.preferredHeight: sourceCard.implicitHeight + topPadding + bottomPadding
             padding: 20
             background: Rectangle {
                 radius: 20
@@ -40,15 +41,18 @@ ScrollView {
                 }
             }
             ColumnLayout {
-                anchors.fill: parent
+                id: sourceCard
+                width: parent.width
                 spacing: 12
                 RowLayout {
                     Label { text: "◫"; font.pixelSize: 34; color: Material.accent }
                     ColumnLayout {
                         Layout.fillWidth: true
-                        Label { text: root.tr("Windows media or image", "Windows 安裝碟或者映像"); font.pixelSize: 18; font.weight: Font.DemiBold }
+                        Label { Layout.fillWidth: true; text: root.tr("Windows media or image", "Windows 安裝碟或者映像"); font.pixelSize: 18; font.weight: Font.DemiBold; wrapMode: Text.Wrap }
                         Label {
+                            Layout.fillWidth: true
                             text: root.tr("ISO, extracted media folder, WIM, ESD or SWM", "ISO、已解壓安裝資料夾、WIM、ESD 或 SWM")
+                            wrapMode: Text.Wrap
                             color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"
                         }
                     }
@@ -88,6 +92,7 @@ ScrollView {
                         onEditingFinished: app.setProjectField("mountPath", text)
                     }
                     CheckBox {
+                        Layout.fillWidth: true
                         text: root.tr("Clone source before editing (recommended)", "落手之前複製來源（推薦，咪慳呢啲時間）")
                         checked: app.cloneSource
                         onToggled: app.setProjectBool("cloneSource", checked)

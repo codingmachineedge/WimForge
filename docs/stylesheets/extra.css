@@ -25,6 +25,10 @@
   background: linear-gradient(110deg, #2e1a73, #6750a4 62%, #8b5cf6);
 }
 
+.md-grid {
+  max-width: 78rem;
+}
+
 .md-typeset h1,
 .md-typeset h2,
 .md-typeset h3 {
@@ -38,8 +42,8 @@
 
 .wf-hero {
   display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1.38fr);
-  gap: clamp(2rem, 5vw, 5.5rem);
+  grid-template-columns: minmax(0, 1fr) minmax(400px, 1.12fr);
+  gap: clamp(2rem, 4vw, 4rem);
   align-items: center;
   margin: 1rem 0 3.5rem;
   padding: clamp(1.5rem, 4vw, 4rem);
@@ -54,7 +58,7 @@
 
 .wf-hero__copy h1 {
   margin: 0.6rem 0 1rem;
-  font-size: clamp(2.35rem, 5vw, 4.35rem);
+  font-size: clamp(2.35rem, 4vw, 3.75rem);
   line-height: 1.02;
 }
 
@@ -170,7 +174,7 @@
 .md-typeset .md-button { border-radius: 999px; }
 .md-typeset .grid.cards > ul > li { border-radius: var(--wf-radius-lg); }
 
-@media screen and (max-width: 1100px) {
+@media screen and (max-width: 900px) {
   .wf-hero { grid-template-columns: 1fr; }
   .wf-value-grid,
   .wf-flow { grid-template-columns: repeat(2, 1fr); }
@@ -190,4 +194,3 @@
     transition-duration: 0.01ms !important;
   }
 }
-

@@ -2,6 +2,7 @@
 title: WimForge
 description: A reviewable, Git-backed studio for building customized Windows images.
 hide:
+  - navigation
   - toc
 ---
 
@@ -26,7 +27,7 @@ inspectable, and project changes stay Git-backed.
 </div>
 
 <div class="wf-hero__visual" markdown>
-![WimForge Overview showing the project dashboard, bilingual navigation, build flow, safety rails, and job status](screenshots/overview.png){ loading=eager }
+![WimForge Overview showing the project dashboard, navigation, build flow, safety rails, and job status](screenshots/overview.png){ loading=eager }
 </div>
 </section>
 
@@ -137,4 +138,3 @@ including the Git history needed for recovery and inspection.
 - Auditing the design? Read [Architecture and Data Layout](wiki/Architecture-and-Data-Layout.md).
 - Ready to contribute? See [Building and Releases](wiki/Building-and-Releases.md) and [Contributing](wiki/Contributing.md).
 </div>
-

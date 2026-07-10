@@ -3,7 +3,7 @@ param(
     [string] $BuildDirectory = 'build/Debug',
     [string] $OutputDirectory = 'docs/screenshots',
     [ValidateSet('en', 'zh-HK', 'bilingual')]
-    [string] $Language = 'bilingual'
+    [string] $Language = 'en'
 )
 
 Set-StrictMode -Version Latest
@@ -27,22 +27,42 @@ $pages = [ordered] @{
 $originalEnvironment = @{
     TEMP = $env:TEMP; TMP = $env:TMP; QT_SCALE_FACTOR = $env:QT_SCALE_FACTOR
     QT_SCREEN_SCALE_FACTORS = $env:QT_SCREEN_SCALE_FACTORS
+    LOCALAPPDATA = $env:LOCALAPPDATA; APPDATA = $env:APPDATA
+    WIMFORGE_NOTIFICATION_STORE = $env:WIMFORGE_NOTIFICATION_STORE
 }
 
 try {
     $publicRoot = if ([string]::IsNullOrWhiteSpace($env:PUBLIC)) {
         [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDocuments)
     } else { Join-Path $env:PUBLIC 'Documents' }
-    $neutralTemp = Join-Path $publicRoot 'WimForge-Screenshot-Temp'
-    New-Item -ItemType Directory -Path $neutralTemp -Force | Out-Null
-    $env:TEMP = $neutralTemp; $env:TMP = $neutralTemp
+    $neutralRoot = [System.IO.Path]::GetFullPath((Join-Path $publicRoot 'WimForge-Screenshot'))
+    New-Item -ItemType Directory -Path $neutralRoot -Force | Out-Null
     $env:QT_SCALE_FACTOR = '1'; $env:QT_SCREEN_SCALE_FACTORS = '1'
 
     foreach ($entry in $pages.GetEnumerator()) {
+        $routeRoot = [System.IO.Path]::GetFullPath((Join-Path $neutralRoot $entry.Key))
+        if (-not $routeRoot.StartsWith($neutralRoot + [System.IO.Path]::DirectorySeparatorChar,
+                                       [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Unsafe screenshot fixture path: $routeRoot"
+        }
+        if (Test-Path -LiteralPath $routeRoot) {
+            Remove-Item -LiteralPath $routeRoot -Recurse -Force
+        }
+        $routeTemp = Join-Path $routeRoot 'Temp'
+        $routeLocal = Join-Path $routeRoot 'LocalAppData'
+        $routeRoaming = Join-Path $routeRoot 'AppData'
+        New-Item -ItemType Directory -Path $routeTemp, $routeLocal, $routeRoaming -Force | Out-Null
+        $env:TEMP = $routeTemp; $env:TMP = $routeTemp
+        $env:LOCALAPPDATA = $routeLocal; $env:APPDATA = $routeRoaming
+        $env:WIMFORGE_NOTIFICATION_STORE = Join-Path $routeRoot 'NotificationStore'
+
         $destination = Join-Path $outputPath $entry.Value
-        & $executable --demo --language $Language --page $entry.Key --screenshot $destination
-        if ($LASTEXITCODE -ne 0) {
-            throw "Screenshot capture failed for route '$($entry.Key)' with exit code $LASTEXITCODE"
+        $process = Start-Process -FilePath $executable `
+            -ArgumentList @('--demo', '--language', $Language, '--page', $entry.Key,
+                            '--screenshot', $destination) `
+            -Wait -PassThru -WindowStyle Hidden
+        if ($process.ExitCode -ne 0) {
+            throw "Screenshot capture failed for route '$($entry.Key)' with exit code $($process.ExitCode)"
         }
         if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) {
             throw "Screenshot capture did not create $destination"
@@ -69,4 +89,3 @@ if ($dimensions.Count -ne 1) {
     throw "Documentation screenshots have inconsistent dimensions: $($dimensions -join ', ')"
 }
 $captures | Format-Table -AutoSize
-

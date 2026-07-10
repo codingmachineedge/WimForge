@@ -5,8 +5,8 @@ description: A route-by-route tour of the WimForge Material desktop application.
 
 # Screenshot Gallery
 
-These captures use the populated, non-destructive demo project in bilingual
-mode. Paths are intentionally neutral, every route uses the same viewport and
+These captures use the populated, non-destructive demo project in English.
+Paths are intentionally neutral, every route uses the same viewport and
 scale, and no real Windows image, product key, credential, or private project is
 shown.
 
@@ -45,4 +45,3 @@ shown.
     `scripts/capture-documentation-screenshots.ps1`. The script launches each
     route in demo mode and asks WimForge to save a frame directly from its Qt
     Quick window.
-
