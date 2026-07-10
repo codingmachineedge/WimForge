@@ -77,9 +77,14 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+O"; onActivated: openProjectSheet.open() }
     Shortcut {
         sequence: "Ctrl+Z"
+        context: Qt.ApplicationShortcut
         onActivated: app.undoContext(root.navigationItems[root.currentPage].context, "")
     }
-    Shortcut { sequence: "Ctrl+Shift+Z"; onActivated: root.openContextHistory(root.width / 2 - 210, 90) }
+    Shortcut {
+        sequence: "Ctrl+Shift+Z"
+        context: Qt.ApplicationShortcut
+        onActivated: root.openContextHistory(root.width / 2 - 210, 90)
+    }
     Shortcut { sequence: "Ctrl+Enter"; onActivated: app.requestRunPlan() }
 
     MouseArea {
