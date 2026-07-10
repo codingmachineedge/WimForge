@@ -22,7 +22,7 @@ real Windows image, private project, account name, or secret.
 
 ### Group Policy Studio
 
-![Group Policy Studio showing the installed ADMX catalog, policy search, regular-expression controls, result list, and documentation panel](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/group-policy.png)
+![Group Policy Studio showing the installed ADMX catalog, a selected Delivery Optimization policy, three-state draft controls, a schema-generated numeric editor, registry target, and Git-backed commit action](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/group-policy.png)
 
 ### Unattended Studio
 
@@ -111,4 +111,3 @@ and [Contributing](Contributing).
 ---
 
 [← Application Tour](Application-Tour) · [Troubleshooting →](Troubleshooting)
-

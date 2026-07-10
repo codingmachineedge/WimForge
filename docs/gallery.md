@@ -20,7 +20,7 @@ shown.
 ![Customize page with image change categories, reversible project controls, and configuration fields](screenshots/customize.png)
 
 ## Group Policy Studio
-![Group Policy Studio with installed-policy search, policy details, state controls, and bilingual documentation actions](screenshots/group-policy.png)
+![Group Policy Studio with the installed-policy catalog, a selected Delivery Optimization policy, desired-state tabs, a schema-generated numeric editor, and a Git-backed commit action](screenshots/group-policy.png)
 
 ## Unattended Studio
 ![Unattended Studio with answer-file profile controls, setup passes, validation, and computer-name settings](screenshots/unattended.png)

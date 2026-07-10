@@ -16,6 +16,25 @@ $executable = Join-Path $buildPath 'WimForge.exe'
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
     throw "Build WimForge first. The desktop executable was not found at $executable"
 }
+
+# A developer build intentionally does not copy the Qt runtime beside the
+# executable. Resolve the Qt kit recorded by CMake so Debug captures can find
+# Qt6Guid.dll and Release captures can find Qt6Gui.dll on a clean shell.
+$cachePath = Join-Path $repositoryRoot 'build/CMakeCache.txt'
+$qtRoot = $env:QT_ROOT_DIR
+if ([string]::IsNullOrWhiteSpace($qtRoot) -and (Test-Path -LiteralPath $cachePath)) {
+    $qtDirectoryLine = Get-Content -LiteralPath $cachePath |
+        Where-Object { $_ -match '^Qt6_DIR:[^=]*=' } |
+        Select-Object -First 1
+    if ($qtDirectoryLine) {
+        $qtDirectory = ($qtDirectoryLine -split '=', 2)[1]
+        $qtRoot = [System.IO.Path]::GetFullPath((Join-Path $qtDirectory '../../..'))
+    }
+}
+$qtBin = if ([string]::IsNullOrWhiteSpace($qtRoot)) { $null } else { Join-Path $qtRoot 'bin' }
+if (-not $qtBin -or -not (Test-Path -LiteralPath (Join-Path $qtBin 'Qt6Core.dll') -PathType Leaf)) {
+    throw 'Unable to locate the Qt runtime. Configure CMake first or set QT_ROOT_DIR.'
+}
 New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
 
 $pages = [ordered] @{
@@ -29,6 +48,7 @@ $originalEnvironment = @{
     QT_SCREEN_SCALE_FACTORS = $env:QT_SCREEN_SCALE_FACTORS
     LOCALAPPDATA = $env:LOCALAPPDATA; APPDATA = $env:APPDATA
     WIMFORGE_NOTIFICATION_STORE = $env:WIMFORGE_NOTIFICATION_STORE
+    PATH = $env:PATH
 }
 
 try {
@@ -38,6 +58,7 @@ try {
     $neutralRoot = [System.IO.Path]::GetFullPath((Join-Path $publicRoot 'WimForge-Screenshot'))
     New-Item -ItemType Directory -Path $neutralRoot -Force | Out-Null
     $env:QT_SCALE_FACTOR = '1'; $env:QT_SCREEN_SCALE_FACTORS = '1'
+    $env:PATH = $qtBin + [System.IO.Path]::PathSeparator + $env:PATH
 
     foreach ($entry in $pages.GetEnumerator()) {
         $routeRoot = [System.IO.Path]::GetFullPath((Join-Path $neutralRoot $entry.Key))
