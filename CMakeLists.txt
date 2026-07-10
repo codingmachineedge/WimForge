@@ -42,6 +42,8 @@ set(WIMFORGE_CORE_SOURCES
     src/core/PackageStudio.h
     src/core/ServicingPlan.cpp
     src/core/ServicingPlan.h
+    src/core/SearchIndex.cpp
+    src/core/SearchIndex.h
     src/core/UnattendBuilder.cpp
     src/core/UnattendBuilder.h
     src/core/VmLab.cpp
@@ -79,6 +81,7 @@ qt_add_qml_module(WimForge
         qml/components/NotificationCenter.qml
         qml/components/ContextHistoryPanel.qml
         qml/components/Snackbar.qml
+        qml/components/SearchPalette.qml
         qml/pages/CustomizePage.qml
         qml/pages/DashboardPage.qml
         qml/pages/HistoryPage.qml

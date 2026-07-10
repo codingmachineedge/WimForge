@@ -9,6 +9,7 @@
 #include "core/ProjectBundle.h"
 #include "core/ProjectConfig.h"
 #include "core/ServicingPlan.h"
+#include "core/SearchIndex.h"
 #include "core/UnattendBuilder.h"
 #include "core/WinForgeBridge.h"
 
@@ -113,6 +114,8 @@ class AppController final : public QObject
     Q_PROPERTY(QString winForgeBridgeRuntimePath READ winForgeBridgeRuntimePath NOTIFY studioChanged)
     Q_PROPERTY(QString winForgeBridgeRuntimeStatus READ winForgeBridgeRuntimeStatus NOTIFY studioChanged)
     Q_PROPERTY(QString winForgeBridgeStatus READ winForgeBridgeStatus NOTIFY studioChanged)
+    Q_PROPERTY(QString searchQuery READ searchQuery NOTIFY searchChanged)
+    Q_PROPERTY(QVariantList searchResults READ searchResults NOTIFY searchChanged)
 
 public:
     explicit AppController(QObject *parent = nullptr);
@@ -209,6 +212,8 @@ public:
     [[nodiscard]] QString winForgeBridgeRuntimePath() const;
     [[nodiscard]] QString winForgeBridgeRuntimeStatus() const;
     [[nodiscard]] QString winForgeBridgeStatus() const;
+    [[nodiscard]] QString searchQuery() const;
+    [[nodiscard]] QVariantList searchResults() const;
 
     Q_INVOKABLE void requestNewProject();
     Q_INVOKABLE void requestOpenProject();
@@ -263,6 +268,8 @@ public:
     Q_INVOKABLE void safeUnmountRecovery();
     Q_INVOKABLE void openUnattendGenerator();
     Q_INVOKABLE void search(const QString &query);
+    Q_INVOKABLE void clearSearch();
+    Q_INVOKABLE void activateSearchResult(const QVariantMap &result);
     Q_INVOKABLE void copyText(const QString &text);
 
     Q_INVOKABLE void loadGpoCatalog();
@@ -321,6 +328,8 @@ signals:
     void unattendedStudioRequested();
     void recoveryReviewRequested();
     void searchRequested(const QString &query);
+    void searchChanged();
+    void searchNavigationRequested(int page, const QString &focusId, const QString &query);
 
 private:
     using ProjectMutation = std::function<void(wimforge::ProjectConfig &)>;
@@ -385,6 +394,8 @@ private:
     QString m_winForgeRuntimePath;
     QString m_winForgeRuntimeStatus = QStringLiteral("No WinForge runtime has been detected yet.");
     QString m_winForgeBridgeStatus = QStringLiteral("Recipe is ready for review.");
+    QString m_searchQuery;
+    QVariantList m_searchResults;
     bool m_winForgeIncludeRuntime = true;
 
     int m_languageMode = 2;

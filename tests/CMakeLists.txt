@@ -44,6 +44,11 @@ wimforge_add_core_test(opencode_setup_tests
 wimforge_add_core_test(qml_contract_tests
     SOURCES qml_contract_tests.cpp
 )
+
+wimforge_add_core_test(search_index_tests
+    SOURCES search_index_tests.cpp
+    CORE_SOURCES ${PROJECT_SOURCE_DIR}/src/core/SearchIndex.cpp
+)
 target_compile_definitions(qml_contract_tests PRIVATE
     WIMFORGE_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )

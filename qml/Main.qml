@@ -99,7 +99,12 @@ ApplicationWindow {
         function onExportScriptRequested() { exportScriptSheet.open() }
         function onUnattendedStudioRequested() { root.currentPage = 4 }
         function onRecoveryReviewRequested() { root.currentPage = 7 }
-        function onSearchRequested(query) { root.currentPage = 3; app.searchGpo(query, false) }
+        function onSearchRequested(query) { searchPalette.openForQuery(query) }
+        function onSearchNavigationRequested(page, focusId, query) {
+            root.currentPage = Math.max(0, Math.min(page, root.navigationItems.length - 1))
+            globalSearch.clear()
+            searchPalette.close()
+        }
     }
 
     Shortcut { sequence: "Ctrl+N"; onActivated: newProjectSheet.open() }
@@ -387,6 +392,12 @@ ApplicationWindow {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 22
                 motionEnabled: app.motionEnabled
+            }
+
+            SearchPalette {
+                id: searchPalette
+                app: root.controller
+                tr: root.tr2
             }
 
             ContextHistoryPanel {

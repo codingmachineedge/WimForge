@@ -660,6 +660,8 @@ bool AppController::winForgeBridgeIncludeRuntime() const { return m_winForgeIncl
 QString AppController::winForgeBridgeRuntimePath() const { return m_winForgeRuntimePath; }
 QString AppController::winForgeBridgeRuntimeStatus() const { return m_winForgeRuntimeStatus; }
 QString AppController::winForgeBridgeStatus() const { return m_winForgeBridgeStatus; }
+QString AppController::searchQuery() const { return m_searchQuery; }
+QVariantList AppController::searchResults() const { return m_searchResults; }
 
 void AppController::setLanguageMode(int value)
 {
@@ -1581,10 +1583,271 @@ void AppController::openUnattendGenerator()
 
 void AppController::search(const QString &query)
 {
-    if (query.trimmed().isEmpty()) return;
-    emit searchRequested(query.trimmed());
-    emit snackbarRequested(localized(QStringLiteral("Searching local features, GPO docs, packages and commands for: %1").arg(query.trimmed()),
-                                     QStringLiteral("搜尋本機功能、GPO 文件、套件同指令：%1").arg(query.trimmed())), QStringLiteral("info"));
+    m_searchQuery = query.trimmed();
+    m_searchResults.clear();
+    if (m_searchQuery.isEmpty()) {
+        emit searchChanged();
+        return;
+    }
+
+    SearchIndex index;
+    auto add = [&index](const QString &id, const QString &kind,
+                        const QString &titleEn, const QString &titleZh,
+                        const QString &subtitleEn, const QString &subtitleZh,
+                        const QStringList &keywords, int page,
+                        const QString &action = {}, const QJsonObject &payload = {}) {
+        index.add(SearchEntry{id, kind, titleEn, titleZh, subtitleEn, subtitleZh,
+                              keywords, page, action, payload});
+    };
+
+    struct StaticEntry {
+        const char *id;
+        const char *titleEn;
+        const char *titleZh;
+        const char *keywords;
+        int page;
+    };
+    static constexpr StaticEntry pages[]{
+        {"overview", "Overview", "總覽", "dashboard status safety project", 0},
+        {"source", "Source & editions", "來源同版本", "iso wim esd editions inspect drivers", 1},
+        {"customize", "Customize", "調校", "updates drivers features apps components settings payload", 2},
+        {"gpo", "Group Policy Studio", "群組原則工房", "gpo admx adml registry policy", 3},
+        {"unattended", "Unattended Studio", "無人值守工房", "answer file autounattend oobe setup", 4},
+        {"packages", "Package Studio", "套件工房", "software winget choco scoop npm pip profile", 5},
+        {"winforge", "WinForge Bridge", "WinForge 橋接", "recipe runtime post setup automation", 6},
+        {"plan", "Review & run", "檢查同開工", "servicing operations command dependencies execute", 7},
+        {"history", "History & recovery", "歷史同復原", "git undo redo restore branch notifications", 8},
+        {"settings", "Settings", "設定", "theme language density motion workers safety", 9},
+    };
+    for (const StaticEntry &page : pages) {
+        add(QStringLiteral("page:%1").arg(QString::fromLatin1(page.id)),
+            QStringLiteral("page"), QString::fromUtf8(page.titleEn),
+            QString::fromUtf8(page.titleZh),
+            QStringLiteral("Open this workspace"), QStringLiteral("開啟呢個工作區"),
+            QString::fromLatin1(page.keywords).split(QLatin1Char(' ')), page.page);
+    }
+
+    static constexpr StaticEntry settings[]{
+        {"language", "Language mode", "語言模式", "english cantonese bilingual zh hk", 9},
+        {"theme", "Color theme", "顏色主題", "light dark system appearance", 9},
+        {"density", "Interface density", "介面密度", "scale spacing compact comfortable", 9},
+        {"motion", "Motion and transitions", "動畫同轉場", "animation accessibility reduced motion", 9},
+        {"parallel", "Parallel servicing jobs", "平行維護工序", "workers concurrency job engine", 9},
+        {"threads", "CPU thread ceiling", "CPU 執行緒上限", "processor cpu worker limit", 9},
+        {"scratch", "Scratch-space reserve", "暫存空間預留", "disk free space reserve", 9},
+        {"journal", "Crash recovery journal", "崩潰復原日誌", "recovery safety journal", 9},
+        {"hash", "Verify source hashes", "驗證來源雜湊", "sha256 integrity source", 9},
+        {"checkpoint", "Destructive checkpoints", "破壞性工序檢查點", "backup recovery safety", 9},
+    };
+    for (const StaticEntry &setting : settings) {
+        add(QStringLiteral("setting:%1").arg(QString::fromLatin1(setting.id)),
+            QStringLiteral("setting"), QString::fromUtf8(setting.titleEn),
+            QString::fromUtf8(setting.titleZh),
+            QStringLiteral("Application preference"), QStringLiteral("應用程式偏好設定"),
+            QString::fromLatin1(setting.keywords).split(QLatin1Char(' ')), setting.page);
+    }
+
+    static constexpr StaticEntry features[]{
+        {"NetFx3", ".NET Framework 3.5", ".NET Framework 3.5", "dotnet legacy optional feature", 2},
+        {"Microsoft-Windows-Subsystem-Linux", "Windows Subsystem for Linux", "Windows Linux 子系統", "wsl linux optional feature", 2},
+        {"VirtualMachinePlatform", "Virtual Machine Platform", "虛擬機平台", "virtualization wsl vm optional feature", 2},
+        {"Microsoft-Hyper-V-All", "Hyper-V", "Hyper-V", "virtualization hypervisor vm feature", 2},
+        {"Containers", "Windows Containers", "Windows 容器", "docker container optional feature", 2},
+        {"TelnetClient", "Telnet client", "Telnet 用戶端", "network legacy optional feature", 2},
+        {"SMB1Protocol", "SMB 1.0 (legacy and risky)", "SMB 1.0（舊式兼高危）", "file sharing legacy risky feature", 2},
+        {"Printing-PrintToPDFServices-Features", "Microsoft Print to PDF", "Microsoft 列印到 PDF", "printer pdf optional feature", 2},
+    };
+    for (const StaticEntry &feature : features) {
+        const QString id = QString::fromLatin1(feature.id);
+        const bool enabled = m_project && m_project->featuresToEnable.contains(id);
+        add(QStringLiteral("feature:%1").arg(id), QStringLiteral("feature"),
+            QString::fromUtf8(feature.titleEn), QString::fromUtf8(feature.titleZh),
+            enabled ? QStringLiteral("Enabled in the current project")
+                    : QStringLiteral("Available Windows feature"),
+            enabled ? QStringLiteral("目前工程已啟用") : QStringLiteral("可用 Windows 功能"),
+            QString::fromLatin1(feature.keywords).split(QLatin1Char(' ')), feature.page,
+            {}, QJsonObject{{QStringLiteral("featureId"), id}});
+    }
+
+    struct CommandEntry {
+        const char *id;
+        const char *title;
+        const char *titleZh;
+        const char *keywords;
+        int page;
+    };
+    static constexpr CommandEntry commands[]{
+        {"new-project", "Create a new project", "建立新工程", "new create project", 0},
+        {"open-project", "Open an existing project", "開啟現有工程", "open load project", 0},
+        {"inspect-source", "Inspect source editions", "檢查來源版本", "scan iso wim esd source", 1},
+        {"import-host-drivers", "Import host drivers", "匯入本機驅動程式", "export pnputil drivers", 2},
+        {"refresh-plan", "Rebuild the servicing plan", "重建維護計劃", "refresh review regenerate operations", 7},
+        {"export-script", "Export reviewed PowerShell", "匯出已檢查 PowerShell", "script powershell plan", 7},
+        {"run-plan", "Run the reviewed plan", "執行已檢查計劃", "apply execute servicing", 7},
+        {"package-ai", "Load AI development package template", "載入 AI 開發套件範本", "software profile opencode node python", 5},
+        {"unattend-ai", "Load AI development unattended template", "載入 AI 開發無人值守範本", "answer file oobe setup", 4},
+        {"test-notification", "Send a test notification", "傳送測試通知", "notification center alert", 8},
+    };
+    for (const CommandEntry &command : commands) {
+        add(QStringLiteral("command:%1").arg(QString::fromLatin1(command.id)),
+            QStringLiteral("command"), QString::fromUtf8(command.title),
+            QString::fromUtf8(command.titleZh),
+            QStringLiteral("Run command"), QStringLiteral("執行指令"),
+            QString::fromLatin1(command.keywords).split(QLatin1Char(' ')), command.page,
+            QString::fromLatin1(command.id));
+    }
+
+    for (const PackageEntry &package : m_packageProfile.packages) {
+        add(QStringLiteral("package:%1").arg(package.id), QStringLiteral("package"),
+            package.displayName, package.displayName, package.description, package.description,
+            {package.id, package.packageIdentifier, PackageStudio::providerName(package.provider),
+             package.version, package.license}, 5, {},
+            QJsonObject{{QStringLiteral("packageId"), package.id}});
+    }
+
+    auto addProjectValue = [&add](const QString &id, const QString &title,
+                                  const QString &value, int page) {
+        if (!value.trimmed().isEmpty()) {
+            add(QStringLiteral("project:%1").arg(id), QStringLiteral("project"), title, title,
+                value, value, {value}, page);
+        }
+    };
+    if (m_project) {
+        addProjectValue(QStringLiteral("name"), QStringLiteral("Current project"),
+                        m_project->projectName, 0);
+        addProjectValue(QStringLiteral("source"), QStringLiteral("Source path"),
+                        m_project->sourcePath, 1);
+        addProjectValue(QStringLiteral("image"), QStringLiteral("Working image"),
+                        m_project->imagePath, 1);
+        addProjectValue(QStringLiteral("output"), QStringLiteral("Output path"),
+                        m_project->outputPath, 1);
+        auto addList = [&add](const QString &prefix, const QString &kind, const QStringList &values,
+                              int page) {
+            for (qsizetype item = 0; item < values.size(); ++item) {
+                add(QStringLiteral("project:%1:%2").arg(prefix).arg(item),
+                    QStringLiteral("project"), values.at(item), values.at(item), kind, kind,
+                    {prefix, kind, values.at(item)}, page);
+            }
+        };
+        addList(QStringLiteral("driver"), QStringLiteral("Project driver"), m_project->drivers, 2);
+        addList(QStringLiteral("update"), QStringLiteral("Project update"), m_project->updates, 2);
+        addList(QStringLiteral("package"), QStringLiteral("Project package"), m_project->packages, 2);
+        addList(QStringLiteral("feature"), QStringLiteral("Enabled project feature"),
+                m_project->featuresToEnable, 2);
+        addList(QStringLiteral("capability"), QStringLiteral("Added project capability"),
+                m_project->capabilitiesToAdd, 2);
+        addList(QStringLiteral("appx"), QStringLiteral("Project Appx change"),
+                m_project->appxPackagesToRemove + m_project->appxPackagesToProvision, 2);
+    }
+
+    if (m_searchQuery.size() >= 2) {
+        if (!m_gpoLoaded)
+            loadGpoCatalog();
+        if (m_gpoLoaded) {
+            QString gpoError;
+            const QList<GpoPolicy> policies = m_gpoCatalog.search(
+                m_searchQuery, GpoSearchMode::PlainText, &gpoError);
+            const int count = qMin(80, policies.size());
+            for (int item = 0; item < count; ++item) {
+                const GpoPolicy &policy = policies.at(item);
+                const QString name = policy.displayName.isEmpty() ? policy.id : policy.displayName;
+                add(QStringLiteral("gpo:%1").arg(policy.qualifiedId()),
+                    QStringLiteral("gpo"), name, name,
+                    policy.categoryHierarchy.join(QStringLiteral(" › ")),
+                    policy.categoryHierarchy.join(QStringLiteral(" › ")),
+                    {policy.id, policy.explainText, policy.registryKey,
+                     policy.registryValueName, gpoPolicyClassName(policy.policyClass)}, 3, {},
+                    QJsonObject{{QStringLiteral("policyId"), policy.qualifiedId()},
+                                {QStringLiteral("query"), name}});
+            }
+        }
+    }
+
+    auto kindLabel = [this](const QString &kind) {
+        if (kind == QStringLiteral("page")) return localized(QStringLiteral("Page"), QStringLiteral("頁面"));
+        if (kind == QStringLiteral("command")) return localized(QStringLiteral("Command"), QStringLiteral("指令"));
+        if (kind == QStringLiteral("setting")) return localized(QStringLiteral("Setting"), QStringLiteral("設定"));
+        if (kind == QStringLiteral("feature")) return localized(QStringLiteral("Feature"), QStringLiteral("功能"));
+        if (kind == QStringLiteral("package")) return localized(QStringLiteral("Package"), QStringLiteral("套件"));
+        if (kind == QStringLiteral("gpo")) return localized(QStringLiteral("Policy"), QStringLiteral("政策"));
+        return localized(QStringLiteral("Project"), QStringLiteral("工程"));
+    };
+    auto kindIcon = [](const QString &kind) {
+        if (kind == QStringLiteral("page")) return QStringLiteral("▣");
+        if (kind == QStringLiteral("command")) return QStringLiteral("▶");
+        if (kind == QStringLiteral("setting")) return QStringLiteral("⚙");
+        if (kind == QStringLiteral("feature")) return QStringLiteral("◆");
+        if (kind == QStringLiteral("package")) return QStringLiteral("▦");
+        if (kind == QStringLiteral("gpo")) return QStringLiteral("▤");
+        return QStringLiteral("◫");
+    };
+    for (const SearchMatch &match : index.search(m_searchQuery, 80)) {
+        m_searchResults.append(QVariantMap{
+            {QStringLiteral("id"), match.entry.id},
+            {QStringLiteral("kind"), match.entry.kind},
+            {QStringLiteral("kindLabel"), kindLabel(match.entry.kind)},
+            {QStringLiteral("icon"), kindIcon(match.entry.kind)},
+            {QStringLiteral("title"), localized(match.entry.titleEn, match.entry.titleZh)},
+            {QStringLiteral("subtitle"), localized(match.entry.subtitleEn, match.entry.subtitleZh)},
+            {QStringLiteral("page"), match.entry.page},
+            {QStringLiteral("action"), match.entry.action},
+            {QStringLiteral("payload"), match.entry.payload.toVariantMap()},
+            {QStringLiteral("score"), match.score},
+        });
+    }
+    emit searchChanged();
+    emit searchRequested(m_searchQuery);
+}
+
+void AppController::clearSearch()
+{
+    if (m_searchQuery.isEmpty() && m_searchResults.isEmpty())
+        return;
+    m_searchQuery.clear();
+    m_searchResults.clear();
+    emit searchChanged();
+}
+
+void AppController::activateSearchResult(const QVariantMap &result)
+{
+    const QString action = result.value(QStringLiteral("action")).toString();
+    const int page = result.value(QStringLiteral("page"), -1).toInt();
+    const QString kind = result.value(QStringLiteral("kind")).toString();
+    const QVariantMap payload = result.value(QStringLiteral("payload")).toMap();
+    const QString title = result.value(QStringLiteral("title")).toString();
+
+    if (action == QStringLiteral("new-project")) requestNewProject();
+    else if (action == QStringLiteral("open-project")) requestOpenProject();
+    else if (action == QStringLiteral("inspect-source")) inspectSource();
+    else if (action == QStringLiteral("import-host-drivers")) importHostDrivers();
+    else if (action == QStringLiteral("refresh-plan")) refreshPlan();
+    else if (action == QStringLiteral("export-script")) requestExportScript();
+    else if (action == QStringLiteral("run-plan")) requestRunPlan();
+    else if (action == QStringLiteral("package-ai")) loadAiDevelopmentPackageTemplate();
+    else if (action == QStringLiteral("unattend-ai")) loadUnattendedTemplate(QStringLiteral("ai-development"));
+    else if (action == QStringLiteral("test-notification")) sendTestNotification();
+
+    QString focusId;
+    QString navigationQuery;
+    if (kind == QStringLiteral("gpo")) {
+        focusId = payload.value(QStringLiteral("policyId")).toString();
+        navigationQuery = payload.value(QStringLiteral("query")).toString();
+        searchGpo(navigationQuery, false);
+    } else if (kind == QStringLiteral("feature")) {
+        focusId = payload.value(QStringLiteral("featureId")).toString();
+    } else if (kind == QStringLiteral("package")) {
+        focusId = payload.value(QStringLiteral("packageId")).toString();
+    } else {
+        focusId = result.value(QStringLiteral("id")).toString();
+    }
+    if (page >= 0)
+        emit searchNavigationRequested(page, focusId, navigationQuery);
+    if (!title.isEmpty()) {
+        emit snackbarRequested(localized(QStringLiteral("Opened %1").arg(title),
+                                         QStringLiteral("已開啟 %1").arg(title)),
+                                 QStringLiteral("info"));
+    }
+    clearSearch();
 }
 
 void AppController::copyText(const QString &text)
