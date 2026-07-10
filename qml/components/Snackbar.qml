@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 Item {
@@ -7,6 +8,24 @@ Item {
     property string message: ""
     property string tone: "info"
     property string actionText: ""
+    property bool motionEnabled: true
+    readonly property bool darkTheme: Material.theme === Material.Dark
+    readonly property string toneLabel: tone === "error" ? qsTr("Error")
+                                                : tone === "warning" ? qsTr("Warning")
+                                                : tone === "success" ? qsTr("Success")
+                                                : qsTr("Information")
+    readonly property color toneBackground: tone === "error" ? (darkTheme ? "#93000A" : "#FFDAD6")
+                                                  : tone === "warning" ? (darkTheme ? "#5D3A00" : "#FFE1B3")
+                                                  : tone === "success" ? (darkTheme ? "#285021" : "#D6E8CF")
+                                                  : (darkTheme ? "#4A4458" : "#E8DEF8")
+    readonly property color toneForeground: tone === "error" ? (darkTheme ? "#FFDAD6" : "#410002")
+                                                  : tone === "warning" ? (darkTheme ? "#FFE1B3" : "#3E2700")
+                                                  : tone === "success" ? (darkTheme ? "#D6E8CF" : "#16380D")
+                                                  : (darkTheme ? "#F5EEFF" : "#1D192B")
+    readonly property color toneBorder: tone === "error" ? (darkTheme ? "#FFB4AB" : "#BA1A1A")
+                                              : tone === "warning" ? (darkTheme ? "#FFB95C" : "#744B00")
+                                              : tone === "success" ? (darkTheme ? "#8BD7A6" : "#386A20")
+                                              : (darkTheme ? "#D0BCFF" : "#6750A4")
     signal actionTriggered()
 
     function show(text, kind, action) {
@@ -21,18 +40,13 @@ Item {
     implicitWidth: Math.min(620, parent ? parent.width - 48 : 620)
     implicitHeight: 58
     z: 1000
+    Accessible.name: toneLabel + ": " + message
 
     Rectangle {
         anchors.fill: parent
         radius: 15
-        color: root.tone === "error" ? "#601410"
-             : root.tone === "warning" ? "#4A2800"
-             : root.tone === "success" ? "#12351F"
-             : "#322F35"
-        border.color: root.tone === "error" ? "#FFB4AB"
-                    : root.tone === "warning" ? "#FFB95C"
-                    : root.tone === "success" ? "#8BD7A6"
-                    : "#938F99"
+        color: root.toneBackground
+        border.color: root.toneBorder
 
         RowLayout {
             anchors.fill: parent
@@ -40,14 +54,14 @@ Item {
             anchors.rightMargin: 10
             spacing: 12
             Label {
-                text: root.tone === "error" ? "!" : root.tone === "success" ? "✓" : "i"
-                color: "white"
-                font.pixelSize: 17
+                text: root.toneLabel
+                color: root.toneForeground
+                font.pixelSize: 13
                 font.weight: Font.Bold
             }
             Label {
                 text: root.message
-                color: "white"
+                color: root.toneForeground
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 maximumLineCount: 2
@@ -57,15 +71,17 @@ Item {
                 visible: root.actionText.length > 0
                 text: root.actionText
                 flat: true
-                Material.foreground: "#D0BCFF"
+                Material.foreground: root.toneForeground
+                Accessible.name: root.actionText
                 onClicked: { root.actionTriggered(); root.visible = false }
             }
             ToolButton {
                 text: "×"
-                Material.foreground: "white"
+                Material.foreground: root.toneForeground
+                Accessible.name: qsTr("Dismiss notification")
                 onClicked: root.visible = false
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Dismiss")
+                ToolTip.text: Accessible.name
             }
         }
     }
@@ -76,5 +92,5 @@ Item {
         onTriggered: root.visible = false
     }
 
-    Behavior on opacity { NumberAnimation { duration: 180 } }
+    Behavior on opacity { NumberAnimation { duration: root.motionEnabled ? 180 : 0 } }
 }

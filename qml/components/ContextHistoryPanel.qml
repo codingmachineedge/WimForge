@@ -18,6 +18,9 @@ Popup {
     property string elementId: ""
     property string branchName: "main"
     property int maximumVisibleActions: 20
+    property bool motionEnabled: true
+    readonly property color secondaryTextColor: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"
+    readonly property color errorColor: Material.theme === Material.Dark ? "#FFB4AB" : "#BA1A1A"
 
     signal undoRequested(string eventId)
     signal redoRequested(string eventId)
@@ -46,14 +49,14 @@ Popup {
 
     enter: Transition {
         ParallelAnimation {
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 120 }
-            NumberAnimation { property: "scale"; from: 0.96; to: 1; duration: 150; easing.type: Easing.OutCubic }
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: root.motionEnabled ? 120 : 0 }
+            NumberAnimation { property: "scale"; from: 0.96; to: 1; duration: root.motionEnabled ? 150 : 0; easing.type: Easing.OutCubic }
         }
     }
     exit: Transition {
         ParallelAnimation {
-            NumberAnimation { property: "opacity"; to: 0; duration: 90 }
-            NumberAnimation { property: "scale"; to: 0.98; duration: 90 }
+            NumberAnimation { property: "opacity"; to: 0; duration: root.motionEnabled ? 90 : 0 }
+            NumberAnimation { property: "scale"; to: 0.98; duration: root.motionEnabled ? 90 : 0 }
         }
     }
 
@@ -66,6 +69,7 @@ Popup {
     }
 
     contentItem: ColumnLayout {
+        Accessible.name: qsTr("Contextual history for %1").arg(root.contextTitle)
         spacing: 0
 
         RowLayout {
@@ -86,6 +90,7 @@ Popup {
                     text: "↶"
                     font.pixelSize: 21
                     color: root.Material.theme === Material.Dark ? "#EADDFF" : "#21005D"
+                    Accessible.ignored: true
                 }
             }
             ColumnLayout {
@@ -102,7 +107,7 @@ Popup {
                     Layout.fillWidth: true
                     text: root.contextTitle + "  ·  " + root.branchName
                     font.pixelSize: 11
-                    color: root.Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"
+                    color: root.secondaryTextColor
                     elide: Text.ElideMiddle
                 }
             }
@@ -143,6 +148,7 @@ Popup {
                                                    || modelData.type === "compensation"
                 readonly property bool effective: modelData.effective === undefined
                                                   ? true : modelData.effective
+                readonly property string stateLabel: effective ? qsTr("Applied") : qsTr("Undone")
                 readonly property string eventIcon: {
                     if (modelData.icon === "undo") return "↶"
                     if (modelData.icon === "redo") return "↷"
@@ -158,7 +164,7 @@ Popup {
                            ? (actionCard.Material.theme === Material.Dark ? "#2B292F" : "#F7F2FA")
                            : (actionCard.Material.theme === Material.Dark ? "#252329" : "#F3EEF5")
                     border.width: actionCard.modelData.destructive ? 1 : 0
-                    border.color: "#BA1A1A"
+                    border.color: root.errorColor
                 }
 
                 ColumnLayout {
@@ -171,8 +177,8 @@ Popup {
                         Label {
                             text: actionCard.eventIcon
                             font.pixelSize: 18
-                            color: actionCard.modelData.destructive ? "#BA1A1A" : actionCard.Material.accent
-                            Accessible.name: actionCard.modelData.icon || qsTr("Action")
+                            color: actionCard.modelData.destructive ? root.errorColor : actionCard.Material.accent
+                            Accessible.ignored: true
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -197,6 +203,25 @@ Popup {
                             font.pixelSize: 10
                             color: actionCard.Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"
                         }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Label {
+                            text: actionCard.stateLabel
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                            color: root.secondaryTextColor
+                        }
+                        Label {
+                            visible: actionCard.modelData.destructive
+                            text: qsTr("Destructive")
+                            font.pixelSize: 11
+                            font.weight: Font.Bold
+                            color: root.errorColor
+                        }
+                        Item { Layout.fillWidth: true }
                     }
 
                     RowLayout {
@@ -280,7 +305,7 @@ Popup {
 
             RowLayout {
                 anchors.fill: parent
-                Label { text: inlineEditor.mode === "branch" ? "⑂" : "★" }
+                Label { text: inlineEditor.mode === "branch" ? "⑂" : "★"; Accessible.ignored: true }
                 TextField {
                     id: inlineName
                     Layout.fillWidth: true
@@ -301,7 +326,13 @@ Popup {
                         inlineEditor.visible = false
                     }
                 }
-                ToolButton { text: "×"; onClicked: inlineEditor.visible = false }
+                ToolButton {
+                    text: "×"
+                    Accessible.name: qsTr("Cancel naming")
+                    onClicked: inlineEditor.visible = false
+                    ToolTip.visible: hovered
+                    ToolTip.text: Accessible.name
+                }
             }
         }
 

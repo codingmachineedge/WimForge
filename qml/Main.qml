@@ -1,5 +1,8 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 import QtQuick.Window
 import "components"
@@ -24,6 +27,14 @@ ApplicationWindow {
     property int currentPage: startupPage
     property bool notificationsOpen: false
     readonly property var controller: app
+    readonly property bool compactNavigation: width < 1280
+    readonly property bool darkTheme: Material.theme === Material.Dark
+    readonly property color secondaryTextColor: darkTheme ? "#CAC4D0" : "#625B71"
+    readonly property color errorColor: darkTheme ? "#FFB4AB" : "#BA1A1A"
+    readonly property color errorBadgeColor: darkTheme ? "#8C1D18" : "#BA1A1A"
+    readonly property color successColor: darkTheme ? "#8BD7A6" : "#386A20"
+    readonly property color warningColor: darkTheme ? "#FFB95C" : "#744B00"
+    readonly property color warningContainerColor: darkTheme ? "#4A2800" : "#FFF3E0"
     property var navigationItems: [
         { icon: "⌂", en: "Overview", zh: "總覽", context: "project" },
         { icon: "◫", en: "Source & editions", zh: "來源同版本", context: "source" },
@@ -54,6 +65,21 @@ ApplicationWindow {
         return en
     }
 
+    // AbstractButton interprets a single ampersand as a mnemonic marker.
+    function buttonText(value) {
+        return String(value).replace(/&/g, "&&")
+    }
+
+    function isTextEditor(item) {
+        var candidate = item
+        while (candidate) {
+            if (candidate instanceof TextInput || candidate instanceof TextEdit)
+                return true
+            candidate = candidate.parent
+        }
+        return false
+    }
+
     Connections {
         target: app
         function onSnackbarRequested(message, tone) { snackbar.show(message, tone, "") }
@@ -61,6 +87,8 @@ ApplicationWindow {
         function onOpenProjectRequested() { openProjectSheet.open() }
         function onRunConfirmationRequested(summary, destructiveCount) {
             runSummary.text = summary
+            sourceBackupAck.checked = false
+            adminAck.checked = false
             destructiveBadge.visible = destructiveCount > 0
             destructiveBadge.text = root.tr2("⚠ %1 destructive", "⚠ %1 個破壞性步驟").arg(destructiveCount)
                                          + (app.languageMode === 1 ? " 項有破壞性" : "")
@@ -78,11 +106,13 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+Z"
         context: Qt.ApplicationShortcut
+        enabled: !root.isTextEditor(root.activeFocusItem)
         onActivated: app.undoContext(root.navigationItems[root.currentPage].context, "")
     }
     Shortcut {
         sequence: "Ctrl+Shift+Z"
         context: Qt.ApplicationShortcut
+        enabled: !root.isTextEditor(root.activeFocusItem)
         onActivated: root.openContextHistory(root.width / 2 - 210, 90)
     }
     Shortcut { sequence: "Ctrl+Enter"; onActivated: app.requestRunPlan() }
@@ -92,8 +122,6 @@ ApplicationWindow {
         anchors.fill: parent
         acceptedButtons: Qt.RightButton
         hoverEnabled: false
-        propagateComposedEvents: true
-        z: 1000
         onClicked: function(mouse) {
             root.openContextHistory(mouse.x, mouse.y)
             mouse.accepted = true
@@ -107,8 +135,9 @@ ApplicationWindow {
         Pane {
             id: navigation
             Layout.fillHeight: true
-            Layout.preferredWidth: 252
-            padding: 12
+            Layout.preferredWidth: root.compactNavigation ? 76 : 320
+            Layout.minimumWidth: Layout.preferredWidth
+            padding: root.compactNavigation ? 8 : 12
             background: Rectangle {
                 color: Material.theme === Material.Dark ? "#1D1B20" : "#F3EDF7"
                 border.color: Material.theme === Material.Dark ? "#343139" : "#E7E0EC"
@@ -120,66 +149,112 @@ ApplicationWindow {
                 anchors.fill: parent
                 spacing: 8
 
-                RowLayout {
+                Item {
                     Layout.fillWidth: true
-                    Layout.leftMargin: 8
-                    Layout.rightMargin: 8
-                    Layout.topMargin: 5
-                    Image { source: "qrc:/qt/qml/WimForge/assets/app-icon.svg"; sourceSize.width: 42; sourceSize.height: 42; Layout.preferredWidth: 42; Layout.preferredHeight: 42 }
-                    ColumnLayout {
+                    Layout.preferredHeight: 52
+
+                    Image {
+                        id: appLogo
+                        anchors.left: root.compactNavigation ? undefined : parent.left
+                        anchors.leftMargin: root.compactNavigation ? 0 : 8
+                        anchors.horizontalCenter: root.compactNavigation ? parent.horizontalCenter : undefined
+                        anchors.verticalCenter: parent.verticalCenter
+                        source: "qrc:/qt/qml/WimForge/assets/app-icon.svg"
+                        sourceSize.width: 42
+                        sourceSize.height: 42
+                        width: 42
+                        height: 42
+                        Accessible.name: root.tr2("WimForge application", "WimForge 應用程式")
+                    }
+                    Column {
+                        visible: !root.compactNavigation
+                        anchors.left: appLogo.right
+                        anchors.leftMargin: 10
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
                         spacing: 0
-                        Label { text: "WimForge"; font.pixelSize: 21; font.weight: Font.Bold }
-                        Label { text: root.tr2("Windows Image Studio", "Windows 映像工房"); font.pixelSize: 10; color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71" }
+                        Label { width: parent.width; text: "WimForge"; font.pixelSize: 21; font.weight: Font.Bold; elide: Text.ElideRight }
+                        Label { width: parent.width; text: root.tr2("Windows Image Studio", "Windows 映像工房"); font.pixelSize: 10; color: root.secondaryTextColor; elide: Text.ElideRight }
                     }
                 }
 
                 Button {
                     Layout.fillWidth: true
-                    Layout.topMargin: 12
+                    Layout.topMargin: root.compactNavigation ? 4 : 12
                     icon.name: "document-new"
-                    text: root.tr2("New project", "開新工程")
+                    text: root.compactNavigation ? "+" : root.buttonText(root.tr2("New project", "開新工程"))
                     highlighted: true
+                    Accessible.name: root.tr2("New project", "開新工程")
                     onClicked: newProjectSheet.open()
+                    ToolTip.visible: root.compactNavigation && hovered
+                    ToolTip.text: Accessible.name
                 }
 
-                Repeater {
-                    model: root.navigationItems
-                    delegate: ItemDelegate {
-                        required property var modelData
-                        required property int index
-                        Layout.fillWidth: true
-                        text: modelData.icon + "   " + root.tr2(modelData.en, modelData.zh)
-                        highlighted: root.currentPage === index
-                        onClicked: root.currentPage = index
-                        background: Rectangle {
-                            radius: 22
-                            color: parent.highlighted
-                                   ? (Material.theme === Material.Dark ? "#4A4458" : "#E8DEF8")
-                                   : parent.hovered ? (Material.theme === Material.Dark ? "#2B292F" : "#EDE7F1") : "transparent"
+                ScrollView {
+                    id: navigationScroll
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    contentWidth: availableWidth
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+                    Column {
+                        width: navigationScroll.availableWidth
+                        spacing: 4
+
+                        Repeater {
+                            model: root.navigationItems
+                            delegate: ItemDelegate {
+                                id: navigationDelegate
+                                required property var modelData
+                                required property int index
+                                width: parent.width
+                                implicitHeight: 48
+                                text: root.compactNavigation
+                                      ? modelData.icon
+                                      : modelData.icon + "   " + root.buttonText(root.tr2(modelData.en, modelData.zh))
+                                highlighted: root.currentPage === index
+                                font.weight: highlighted ? Font.DemiBold : Font.Normal
+                                Accessible.name: (highlighted ? root.tr2("Current page: ", "目前頁面：") : "")
+                                                 + root.tr2(modelData.en, modelData.zh)
+                                onClicked: root.currentPage = index
+                                ToolTip.visible: root.compactNavigation && hovered
+                                ToolTip.text: root.tr2(modelData.en, modelData.zh)
+                                background: Rectangle {
+                                    radius: 22
+                                    color: navigationDelegate.highlighted
+                                           ? (Material.theme === Material.Dark ? "#4A4458" : "#E8DEF8")
+                                           : navigationDelegate.hovered ? (Material.theme === Material.Dark ? "#2B292F" : "#EDE7F1") : "transparent"
+                                }
+                            }
                         }
                     }
                 }
-
-                Item { Layout.fillHeight: true }
 
                 Pane {
                     Layout.fillWidth: true
                     Layout.preferredHeight: projectSummary.implicitHeight + topPadding + bottomPadding
                     visible: app.projectLoaded
-                    padding: 12
+                    padding: root.compactNavigation ? 8 : 12
+                    Accessible.name: root.tr2("Project status: ", "工程狀態：") + app.projectName + ". " + app.gitStatusText
                     background: Rectangle { radius: 16; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.theme === Material.Dark ? "#49454F" : "#E7E0EC" }
                     ColumnLayout {
                         id: projectSummary
                         width: parent.width
-                        Label { text: "▣  " + app.projectName; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Label { text: app.gitStatusText; font.pixelSize: 11; color: "#386A20" }
-                        ProgressBar { visible: app.busy; Layout.fillWidth: true; value: app.progress; indeterminate: app.progress <= 0 }
+                        Label { visible: root.compactNavigation; text: app.busy ? "◉" : "▣"; font.pixelSize: 20; Layout.alignment: Qt.AlignHCenter; Accessible.ignored: true }
+                        Label { visible: !root.compactNavigation; text: "▣  " + app.projectName; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Label { visible: !root.compactNavigation; text: app.gitStatusText; font.pixelSize: 11; color: root.successColor; Layout.fillWidth: true; elide: Text.ElideRight }
+                        ProgressBar { visible: app.busy; Layout.fillWidth: true; value: app.progress; indeterminate: app.progress <= 0; Accessible.name: root.tr2("Project job progress", "工程工作進度") }
                     }
+                    HoverHandler { id: projectSummaryHover }
+                    ToolTip.visible: root.compactNavigation && projectSummaryHover.hovered
+                    ToolTip.text: app.projectName + " · " + app.gitStatusText
                 }
 
                 Label {
                     Layout.fillWidth: true
-                    text: "v" + app.version + "  ·  MIT"
+                    text: root.compactNavigation ? "v" + app.version : "v" + app.version + "  ·  MIT"
                     horizontalAlignment: Text.AlignHCenter
                     font.pixelSize: 10
                     color: Material.theme === Material.Dark ? "#938F99" : "#79747E"
@@ -209,30 +284,35 @@ ApplicationWindow {
                             id: globalSearch
                             Layout.preferredWidth: Math.min(440, parent.width * 0.42)
                             placeholderText: root.tr2("Search features, commands and settings", "搜尋功能、指令同設定")
+                            Accessible.name: placeholderText
                             leftPadding: 42
-                            Label { anchors.left: parent.left; anchors.leftMargin: 15; anchors.verticalCenter: parent.verticalCenter; text: "⌕"; font.pixelSize: 20; color: Material.accent }
+                            Label { anchors.left: parent.left; anchors.leftMargin: 15; anchors.verticalCenter: parent.verticalCenter; text: "⌕"; font.pixelSize: 20; color: Material.accent; Accessible.ignored: true }
                             onAccepted: app.search(text)
                         }
                         Item { Layout.fillWidth: true }
                         ToolButton {
                             text: app.busy ? "◉" : "○"
+                            Accessible.name: app.busy ? root.tr2("Jobs are running; open job queue", "有工序行緊；開啟工序隊列") : root.tr2("Open job queue", "開啟工序隊列")
                             onClicked: root.currentPage = 7
                             ToolTip.visible: hovered
-                            ToolTip.text: app.busy ? root.tr2("Jobs are running", "有工序行緊") : root.tr2("Job queue", "工序隊列")
+                            ToolTip.text: Accessible.name
                         }
                         ToolButton {
                             id: bell
                             text: "🔔"
+                            Accessible.name: app.notificationUnreadCount > 0
+                                             ? root.tr2("Notification center, %1 unread", "通知中心，%1 個未讀").arg(app.notificationUnreadCount)
+                                             : root.tr2("Notification center, no unread notifications", "通知中心，冇未讀通知")
                             onClicked: root.notificationsOpen = !root.notificationsOpen
                             ToolTip.visible: hovered
-                            ToolTip.text: root.tr2("Notification center", "通知中心")
+                            ToolTip.text: Accessible.name
                             Rectangle {
                                 visible: app.notificationUnreadCount > 0
                                 anchors.right: parent.right; anchors.top: parent.top
                                 anchors.rightMargin: 2; anchors.topMargin: 1
                                 width: Math.max(18, unread.implicitWidth + 8); height: 18; radius: 9
-                                color: "#BA1A1A"
-                                Label { id: unread; anchors.centerIn: parent; text: app.notificationUnreadCount; color: "white"; font.pixelSize: 10; font.bold: true }
+                                color: root.errorBadgeColor
+                                Label { id: unread; anchors.centerIn: parent; text: app.notificationUnreadCount; color: "white"; font.pixelSize: 10; font.bold: true; Accessible.ignored: true }
                             }
                         }
                         MenuSeparator { implicitHeight: 28 }
@@ -250,7 +330,7 @@ ApplicationWindow {
                     Layout.preferredHeight: recoveryRow.implicitHeight + topPadding + bottomPadding
                     visible: app.pendingRecovery
                     padding: 10
-                    background: Rectangle { color: Material.theme === Material.Dark ? "#4A2800" : "#FFF3E0" }
+                    background: Rectangle { color: root.warningContainerColor }
                     RowLayout {
                         id: recoveryRow
                         width: parent.width
@@ -290,6 +370,7 @@ ApplicationWindow {
                 opened: root.notificationsOpen
                 entries: app.notifications
                 unreadCount: app.notificationUnreadCount
+                motionEnabled: app.motionEnabled
                 onCloseRequested: root.notificationsOpen = false
                 onMarkReadRequested: id => app.markNotificationRead(id)
                 onMarkUnreadRequested: id => app.markNotificationUnread(id)
@@ -304,12 +385,14 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 22
+                motionEnabled: app.motionEnabled
             }
 
             ContextHistoryPanel {
                 id: contextHistory
                 parent: Overlay.overlay
                 branchName: "main"
+                motionEnabled: app.motionEnabled
                 onUndoRequested: function(eventId) {
                     if (app.undoHistoryEvent(eventId)) events = app.contextualHistory(contextKey, elementId)
                 }
@@ -331,31 +414,45 @@ ApplicationWindow {
 
     Popup {
         id: newProjectSheet
+        readonly property string heading: root.tr2("Create a Git-backed project", "開個有 Git 保護嘅工程")
         anchors.centerIn: Overlay.overlay
-        width: Math.min(600, root.width - 80)
-        modal: false
+        width: Math.min(600, root.width - 32)
+        height: Math.min(newProjectContent.implicitHeight + topPadding + bottomPadding, root.height - 32)
+        modal: true
+        dim: true
         focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        closePolicy: Popup.CloseOnEscape
         padding: 24
+        onOpened: projectName.forceActiveFocus()
         background: Rectangle { radius: 24; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.accent; border.width: 1 }
-        ColumnLayout {
-            width: parent.width
-            spacing: 12
-            Label { text: root.tr2("Create a Git-backed project", "開個有 Git 保護嘅工程"); font.pixelSize: 22; font.weight: Font.Bold }
-            Label { Layout.fillWidth: true; text: root.tr2("The folder becomes its own local repository. Every edit is committed automatically.", "呢個資料夾會變成獨立本機 Git 倉，每次改動都自動 commit。唔怕手快快。") ; wrapMode: Text.Wrap }
-            TextField { id: projectName; Layout.fillWidth: true; placeholderText: root.tr2("Project name", "工程名"); text: "Windows 11 Custom" }
-            TextField { id: projectRoot; Layout.fillWidth: true; placeholderText: root.tr2("Project folder", "工程資料夾"); text: app.defaultProjectPath }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button { text: root.tr2("Cancel", "取消"); flat: true; onClicked: newProjectSheet.close() }
-                Button {
-                    text: root.tr2("Create project", "建立工程")
-                    highlighted: true
-                    enabled: projectName.text.trim().length > 0 && projectRoot.text.trim().length > 0
-                    onClicked: {
-                        if (app.createProject(projectRoot.text.trim(), projectName.text.trim())) {
-                            newProjectSheet.close(); root.currentPage = 1
+
+        contentItem: ScrollView {
+            id: newProjectScroll
+            Accessible.name: newProjectSheet.heading
+            clip: true
+            contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+            ColumnLayout {
+                id: newProjectContent
+                width: newProjectSheet.availableWidth
+                spacing: 12
+                Label { Layout.fillWidth: true; text: newProjectSheet.heading; font.pixelSize: 22; font.weight: Font.Bold; wrapMode: Text.Wrap }
+                Label { Layout.fillWidth: true; text: root.tr2("The folder becomes its own local repository. Every edit is committed automatically.", "呢個資料夾會變成獨立本機 Git 倉，每次改動都自動 commit。唔怕手快快。"); wrapMode: Text.Wrap }
+                TextField { id: projectName; Layout.fillWidth: true; Accessible.name: placeholderText; placeholderText: root.tr2("Project name", "工程名"); text: "Windows 11 Custom" }
+                TextField { id: projectRoot; Layout.fillWidth: true; Accessible.name: placeholderText; placeholderText: root.tr2("Project folder", "工程資料夾"); text: app.defaultProjectPath }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Item { Layout.fillWidth: true }
+                    Button { text: root.tr2("Cancel", "取消"); flat: true; onClicked: newProjectSheet.close() }
+                    Button {
+                        text: root.tr2("Create project", "建立工程")
+                        highlighted: true
+                        enabled: projectName.text.trim().length > 0 && projectRoot.text.trim().length > 0
+                        onClicked: {
+                            if (app.createProject(projectRoot.text.trim(), projectName.text.trim())) {
+                                newProjectSheet.close(); root.currentPage = 1
+                            }
                         }
                     }
                 }
@@ -365,31 +462,45 @@ ApplicationWindow {
 
     Popup {
         id: openProjectSheet
+        readonly property string heading: root.tr2("Open or import project", "開啟或者匯入工程")
         anchors.centerIn: Overlay.overlay
-        width: Math.min(600, root.width - 80)
-        modal: false; focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(600, root.width - 32)
+        height: Math.min(openProjectContent.implicitHeight + topPadding + bottomPadding, root.height - 32)
+        modal: true; dim: true; focus: true
+        closePolicy: Popup.CloseOnEscape
         padding: 24
+        onOpened: openPath.forceActiveFocus()
         background: Rectangle { radius: 24; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.accent; border.width: 1 }
-        ColumnLayout {
-            width: parent.width
-            Label { text: root.tr2("Open or import project", "開啟或者匯入工程"); font.pixelSize: 22; font.weight: Font.Bold }
-            Label { Layout.fillWidth: true; text: root.tr2("Paste a project folder, complete .wimforge save bundle, or legacy .json config path. No blocking file dialog required.", "貼工程資料夾、完整 .wimforge 儲存 bundle，或者舊式 .json 設定路徑；唔使畀檔案對話框阻住。") ; wrapMode: Text.Wrap }
-            TextField { id: openPath; Layout.fillWidth: true; placeholderText: root.tr2("Project folder or config file", "工程資料夾或者設定檔") }
-            TextField { id: importDestination; Layout.fillWidth: true; visible: openPath.text.toLowerCase().endsWith(".json") || openPath.text.toLowerCase().endsWith(".wimforge"); placeholderText: root.tr2("Destination folder for imported project", "匯入工程目的資料夾"); text: app.defaultProjectPath }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button { text: root.tr2("Cancel", "取消"); flat: true; onClicked: openProjectSheet.close() }
-                Button {
-                    text: root.tr2("Open", "開啟")
-                    highlighted: true
-                    enabled: openPath.text.trim().length > 0
-                    onClicked: {
-                        var ok = openPath.text.toLowerCase().endsWith(".json") || openPath.text.toLowerCase().endsWith(".wimforge")
-                               ? app.importProject(openPath.text.trim(), importDestination.text.trim())
-                               : app.openProject(openPath.text.trim())
-                        if (ok) { openProjectSheet.close(); root.currentPage = 0 }
+
+        contentItem: ScrollView {
+            id: openProjectScroll
+            Accessible.name: openProjectSheet.heading
+            clip: true
+            contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+            ColumnLayout {
+                id: openProjectContent
+                width: openProjectSheet.availableWidth
+                spacing: 12
+                Label { Layout.fillWidth: true; text: openProjectSheet.heading; font.pixelSize: 22; font.weight: Font.Bold; wrapMode: Text.Wrap }
+                Label { Layout.fillWidth: true; text: root.tr2("Paste a project folder, complete .wimforge save bundle, or legacy .json config path. No blocking file dialog required.", "貼工程資料夾、完整 .wimforge 儲存 bundle，或者舊式 .json 設定路徑；唔使畀檔案對話框阻住。"); wrapMode: Text.Wrap }
+                TextField { id: openPath; Layout.fillWidth: true; Accessible.name: placeholderText; placeholderText: root.tr2("Project folder or config file", "工程資料夾或者設定檔") }
+                TextField { id: importDestination; Layout.fillWidth: true; Accessible.name: placeholderText; visible: openPath.text.toLowerCase().endsWith(".json") || openPath.text.toLowerCase().endsWith(".wimforge"); placeholderText: root.tr2("Destination folder for imported project", "匯入工程目的資料夾"); text: app.defaultProjectPath }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Item { Layout.fillWidth: true }
+                    Button { text: root.tr2("Cancel", "取消"); flat: true; onClicked: openProjectSheet.close() }
+                    Button {
+                        text: root.tr2("Open", "開啟")
+                        highlighted: true
+                        enabled: openPath.text.trim().length > 0
+                        onClicked: {
+                            var ok = openPath.text.toLowerCase().endsWith(".json") || openPath.text.toLowerCase().endsWith(".wimforge")
+                                   ? app.importProject(openPath.text.trim(), importDestination.text.trim())
+                                   : app.openProject(openPath.text.trim())
+                            if (ok) { openProjectSheet.close(); root.currentPage = 0 }
+                        }
                     }
                 }
             }
@@ -398,28 +509,41 @@ ApplicationWindow {
 
     Popup {
         id: runSheet
+        readonly property string heading: root.tr2("Run the reviewed plan?", "執行已檢查計劃？")
         anchors.centerIn: Overlay.overlay
-        width: Math.min(660, root.width - 80)
-        modal: false; focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(660, root.width - 32)
+        height: Math.min(runContent.implicitHeight + topPadding + bottomPadding, root.height - 32)
+        modal: true; dim: true; focus: true
+        closePolicy: Popup.CloseOnEscape
         padding: 24
-        background: Rectangle { radius: 24; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: destructiveBadge.visible ? "#BA1A1A" : Material.accent; border.width: 2 }
-        ColumnLayout {
-            anchors.fill: parent
-            Label { text: root.tr2("Run the reviewed plan?", "執行已檢查計劃？"); font.pixelSize: 22; font.weight: Font.Bold }
-            Label { id: runSummary; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Label { id: destructiveBadge; visible: false; color: "#BA1A1A"; font.weight: Font.Bold }
-            CheckBox { id: sourceBackupAck; text: root.tr2("I verified the source and output paths", "我睇清楚來源同輸出路徑") }
-            CheckBox { id: adminAck; text: root.tr2("I understand servicing needs Administrator rights", "我明白映像維護要管理員權限") }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button { text: root.tr2("Keep reviewing", "再睇吓先"); flat: true; onClicked: runSheet.close() }
-                Button {
-                    text: root.tr2("Start jobs", "開始工序")
-                    highlighted: true
-                    enabled: sourceBackupAck.checked && adminAck.checked
-                    onClicked: { runSheet.close(); app.runPlan() }
+        background: Rectangle { radius: 24; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: destructiveBadge.visible ? root.errorColor : Material.accent; border.width: 2 }
+
+        contentItem: ScrollView {
+            id: runScroll
+            Accessible.name: runSheet.heading
+            clip: true
+            contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+            ColumnLayout {
+                id: runContent
+                width: runSheet.availableWidth
+                spacing: 10
+                Label { Layout.fillWidth: true; text: runSheet.heading; font.pixelSize: 22; font.weight: Font.Bold; wrapMode: Text.Wrap }
+                Label { id: runSummary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                Label { id: destructiveBadge; Layout.fillWidth: true; visible: false; color: root.errorColor; font.weight: Font.Bold; wrapMode: Text.Wrap }
+                CheckBox { id: sourceBackupAck; Layout.fillWidth: true; text: root.tr2("I verified the source and output paths", "我睇清楚來源同輸出路徑") }
+                CheckBox { id: adminAck; Layout.fillWidth: true; text: root.tr2("I understand servicing needs Administrator rights", "我明白映像維護要管理員權限") }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Item { Layout.fillWidth: true }
+                    Button { text: root.tr2("Keep reviewing", "再睇吓先"); flat: true; onClicked: runSheet.close() }
+                    Button {
+                        text: root.tr2("Start jobs", "開始工序")
+                        highlighted: true
+                        enabled: sourceBackupAck.checked && adminAck.checked
+                        onClicked: { runSheet.close(); app.runPlan() }
+                    }
                 }
             }
         }
@@ -431,20 +555,33 @@ ApplicationWindow {
         property string placeholder
         property var acceptAction: function(path) { return false }
         anchors.centerIn: Overlay.overlay
-        width: Math.min(600, root.width - 80)
-        modal: false; focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(600, root.width - 32)
+        height: Math.min(exportContent.implicitHeight + topPadding + bottomPadding, root.height - 32)
+        modal: true; dim: true; focus: true
+        closePolicy: Popup.CloseOnEscape
         padding: 24
+        onOpened: exportPathField.forceActiveFocus()
         background: Rectangle { radius: 24; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.accent; border.width: 1 }
-        ColumnLayout {
-            anchors.fill: parent
-            Label { text: exportSheet.heading; font.pixelSize: 22; font.weight: Font.Bold }
-            TextField { id: exportPathField; Layout.fillWidth: true; placeholderText: exportSheet.placeholder }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button { text: root.tr2("Cancel", "取消"); flat: true; onClicked: exportSheet.close() }
-                Button { text: root.tr2("Export", "匯出"); highlighted: true; enabled: exportPathField.text.trim().length > 0; onClicked: { if (exportSheet.acceptAction(exportPathField.text.trim())) exportSheet.close() } }
+
+        contentItem: ScrollView {
+            id: exportScroll
+            Accessible.name: exportSheet.heading
+            clip: true
+            contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+            ColumnLayout {
+                id: exportContent
+                width: exportSheet.availableWidth
+                spacing: 12
+                Label { Layout.fillWidth: true; text: exportSheet.heading; font.pixelSize: 22; font.weight: Font.Bold; wrapMode: Text.Wrap }
+                TextField { id: exportPathField; Layout.fillWidth: true; Accessible.name: exportSheet.placeholder; placeholderText: exportSheet.placeholder }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Item { Layout.fillWidth: true }
+                    Button { text: root.tr2("Cancel", "取消"); flat: true; onClicked: exportSheet.close() }
+                    Button { text: root.tr2("Export", "匯出"); highlighted: true; enabled: exportPathField.text.trim().length > 0; onClicked: { if (exportSheet.acceptAction(exportPathField.text.trim())) exportSheet.close() } }
+                }
             }
         }
     }
@@ -464,23 +601,38 @@ ApplicationWindow {
 
     Popup {
         id: recoverySheet
+        readonly property string heading: root.tr2("Recovery workspace", "復原工作區")
         anchors.centerIn: Overlay.overlay
-        width: Math.min(720, root.width - 80)
-        modal: false; focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(720, root.width - 32)
+        height: Math.min(recoveryContent.implicitHeight + topPadding + bottomPadding, root.height - 32)
+        modal: true; dim: true; focus: true
+        closePolicy: Popup.CloseOnEscape
         padding: 24
-        background: Rectangle { radius: 24; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: "#F9A825"; border.width: 2 }
-        ColumnLayout {
-            anchors.fill: parent
-            Label { text: "🛟  " + root.tr2("Recovery workspace", "復原工作區"); font.pixelSize: 22; font.weight: Font.Bold }
-            Label { Layout.fillWidth: true; text: app.recoverySummary; wrapMode: Text.Wrap }
-            RowLayout {
-                Layout.fillWidth: true
-                Button { text: "▶  " + root.tr2("Rebuild & review plan", "重排同檢查計劃"); onClicked: { recoverySheet.close(); app.resumeRecovery() } }
-                Button { text: "↶  " + root.tr2("Undo latest config", "Undo 最新設定"); onClicked: { recoverySheet.close(); app.rollbackRecovery() } }
-                Button { text: "⏏  " + root.tr2("Safe unmount", "安全卸載"); onClicked: { recoverySheet.close(); app.safeUnmountRecovery() } }
-                Item { Layout.fillWidth: true }
-                Button { text: root.tr2("Later", "遲啲先"); flat: true; onClicked: recoverySheet.close() }
+        background: Rectangle { radius: 24; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: root.warningColor; border.width: 2 }
+
+        contentItem: ScrollView {
+            id: recoveryScroll
+            Accessible.name: recoverySheet.heading
+            clip: true
+            contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+            ColumnLayout {
+                id: recoveryContent
+                width: recoverySheet.availableWidth
+                spacing: 12
+                Label { Layout.fillWidth: true; text: "🛟  " + recoverySheet.heading; font.pixelSize: 22; font.weight: Font.Bold; wrapMode: Text.Wrap }
+                Label { Layout.fillWidth: true; text: app.recoverySummary; wrapMode: Text.Wrap }
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: width >= 620 && app.languageMode !== 2 ? 4 : 1
+                    rowSpacing: 6
+                    columnSpacing: 6
+                    Button { Layout.fillWidth: true; text: "▶  " + root.buttonText(root.tr2("Rebuild & review plan", "重排同檢查計劃")); onClicked: { recoverySheet.close(); app.resumeRecovery() } }
+                    Button { Layout.fillWidth: true; text: "↶  " + root.tr2("Undo latest config", "Undo 最新設定"); onClicked: { recoverySheet.close(); app.rollbackRecovery() } }
+                    Button { Layout.fillWidth: true; text: "⏏  " + root.tr2("Safe unmount", "安全卸載"); onClicked: { recoverySheet.close(); app.safeUnmountRecovery() } }
+                    Button { Layout.fillWidth: true; text: root.tr2("Later", "遲啲先"); flat: true; onClicked: recoverySheet.close() }
+                }
             }
         }
     }
