@@ -1,0 +1,52 @@
+name: Synchronize GitHub Wiki
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/wiki.yml
+      - docs/wiki/**
+      - scripts/sync_wiki.py
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/wiki.yml
+      - docs/wiki/**
+      - scripts/sync_wiki.py
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wimforge-wiki
+  cancel-in-progress: false
+
+jobs:
+  wiki:
+    name: Validate and synchronize canonical Wiki pages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the canonical source
+        uses: actions/checkout@v4
+
+      - name: Validate Wiki source on pull requests
+        if: github.event_name == 'pull_request'
+        run: python scripts/sync_wiki.py --mode validate
+
+      - name: Publish Wiki source from main
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/sync_wiki.py --mode publish --repository "$GITHUB_REPOSITORY"
+
+      - name: Verify the published Wiki
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: python scripts/sync_wiki.py --mode check --repository "$GITHUB_REPOSITORY"
+
+      - name: Detect scheduled drift
+        if: github.event_name == 'schedule'
+        run: python scripts/sync_wiki.py --mode check --repository "$GITHUB_REPOSITORY"
+

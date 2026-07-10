@@ -13,6 +13,7 @@ theme:
   language: en
   logo: assets/app-icon.svg
   favicon: assets/app-icon.svg
+  custom_dir: docs/overrides
   font:
     text: Inter
     code: JetBrains Mono
@@ -123,4 +124,3 @@ nav:
       - Release design: release-design.md
       - Contributing: wiki/Contributing.md
   - GitHub Wiki: https://github.com/codingmachineedge/WimForge/wiki
-

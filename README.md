@@ -4,7 +4,7 @@ WimForge is a standalone, open-source Windows image customization studio built w
 
 It is an independent alternative to tools such as NTLite. WimForge is not affiliated with or endorsed by NTLite, and this early release does not claim one-for-one parity with a mature commercial product. Its distinguishing contract is that configuration changes remain inspectable, Git-backed, portable, and reversible.
 
-[Download the latest Windows x64 release](https://github.com/codingmachineedge/WimForge/releases/latest) · [Read the wiki](docs/wiki/Home.md) · [Report an issue](https://github.com/codingmachineedge/WimForge/issues)
+[Open the Material documentation](https://codingmachineedge.github.io/WimForge/) · [Read the live Wiki](https://github.com/codingmachineedge/WimForge/wiki) · [Browse Windows releases](https://github.com/codingmachineedge/WimForge/releases) · [Report an issue](https://github.com/codingmachineedge/WimForge/issues)
 
 ## A tour of the app
 
@@ -199,18 +199,27 @@ Read the expanded [NTLite Feature Comparison](docs/wiki/NTLite-Feature-Compariso
 
 ## Documentation map
 
+- [Material documentation site](https://codingmachineedge.github.io/WimForge/)
+- [Application Tour](docs/wiki/Application-Tour.md)
 - [Getting Started](docs/wiki/Getting-Started.md)
+- [Projects and Sources](docs/wiki/Projects-and-Sources.md)
+- [Customize](docs/wiki/Customize.md)
 - [Image Servicing](docs/wiki/Image-Servicing.md)
 - [Package Studio](docs/wiki/Package-Studio.md)
 - [Group Policy Studio](docs/wiki/Group-Policy-Studio.md)
 - [Unattended Studio](docs/wiki/Unattended-Studio.md)
+- [Review and Run](docs/wiki/Review-and-Run.md)
 - [History Time Machine](docs/wiki/History-Time-Machine.md)
 - [Notification Center](docs/wiki/Notification-Center.md)
 - [Project Bundles](docs/wiki/Project-Bundles.md)
 - [CLI](docs/wiki/CLI.md)
 - [WinForge Bridge](docs/wiki/WinForge-Bridge.md)
+- [Settings](docs/wiki/Settings.md)
 - [Safety and Recovery](docs/wiki/Safety-and-Recovery.md)
+- [Troubleshooting](docs/wiki/Troubleshooting.md)
+- [Architecture and Data Layout](docs/wiki/Architecture-and-Data-Layout.md)
 - [Building and Releases](docs/wiki/Building-and-Releases.md)
+- [Contributing](docs/wiki/Contributing.md)
 - [NTLite Feature Comparison](docs/wiki/NTLite-Feature-Comparison.md)
 
 ## Primary references
