@@ -6,13 +6,17 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
+#include <QImage>
 #include <QMutex>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QQuickWindow>
 #include <QStandardPaths>
 #include <QTextStream>
+#include <QTimer>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -131,6 +135,7 @@ int main(int argc, char *argv[])
     parser.addOption({QStringLiteral("demo"), QStringLiteral("Open a safe populated demo project for screenshots and evaluation.")});
     parser.addOption({QStringLiteral("language"), QStringLiteral("UI language: en, zh-HK, or bilingual."), QStringLiteral("mode")});
     parser.addOption({QStringLiteral("page"), QStringLiteral("Open a studio page: overview, source, customize, gpo, unattended, packages, winforge, plan, history, or settings."), QStringLiteral("id")});
+    parser.addOption({QStringLiteral("screenshot"), QStringLiteral("Save a PNG of the selected page after startup, then exit."), QStringLiteral("path")});
     parser.process(application);
 
     AppController controller;
@@ -157,5 +162,36 @@ int main(int argc, char *argv[])
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
                      &application, [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.loadFromModule(QStringLiteral("WimForge"), QStringLiteral("Main"));
+
+    if (parser.isSet(QStringLiteral("screenshot"))) {
+        const QString screenshotPath = QFileInfo(parser.value(QStringLiteral("screenshot")))
+                                           .absoluteFilePath();
+        const auto rootObjects = engine.rootObjects();
+        auto *window = rootObjects.isEmpty()
+            ? nullptr
+            : qobject_cast<QQuickWindow *>(rootObjects.constFirst());
+        if (!window) {
+            qCritical().noquote() << QStringLiteral("Unable to capture the documentation screenshot: the root window is unavailable.");
+            return 2;
+        }
+
+        QTimer::singleShot(1500, &application,
+                           [&application, window, screenshotPath] {
+            if (!QDir().mkpath(QFileInfo(screenshotPath).absolutePath())) {
+                qCritical().noquote() << QStringLiteral("Unable to create the screenshot output directory: %1")
+                                             .arg(QFileInfo(screenshotPath).absolutePath());
+                application.exit(3);
+                return;
+            }
+            const QImage image = window->grabWindow();
+            if (image.isNull() || !image.save(screenshotPath, "PNG")) {
+                qCritical().noquote() << QStringLiteral("Unable to save the documentation screenshot: %1")
+                                             .arg(screenshotPath);
+                application.exit(4);
+                return;
+            }
+            application.quit();
+        });
+    }
     return application.exec();
 }
