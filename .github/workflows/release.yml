@@ -91,8 +91,21 @@ jobs:
 
           function Get-ReleaseForTag {
             $json = (& gh api "repos/$repository/releases/tags/$tag" 2>$null) -join "`n"
-            if ($LASTEXITCODE -ne 0) { return $null }
-            return $json | ConvertFrom-Json
+            if ($LASTEXITCODE -eq 0) { return $json | ConvertFrom-Json }
+
+            # GitHub's release-by-tag endpoint cannot see a draft whose Git
+            # ref has not been published yet. The release collection does
+            # include drafts for an authenticated repository owner, so use it
+            # as the authoritative fallback during pre-publication checks.
+            $json = (& gh api "repos/$repository/releases?per_page=100" 2>$null) -join "`n"
+            if ($LASTEXITCODE -ne 0) { throw "Unable to enumerate releases for $repository" }
+            $matches = @(
+              @($json | ConvertFrom-Json) |
+                Where-Object { [string] $_.tag_name -eq $tag }
+            )
+            if ($matches.Count -eq 0) { return $null }
+            if ($matches.Count -ne 1) { throw "Found multiple releases for tag $tag" }
+            return $matches[0]
           }
 
           function Get-TagCommit {
