@@ -14,15 +14,21 @@ ScrollView {
         width: root.availableWidth
         spacing: 18
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
+            columns: root.availableWidth >= 620 ? 2 : 1
+            columnSpacing: 12
+            rowSpacing: 10
             Label {
+                Layout.fillWidth: true
                 text: root.tr("Good afternoon, image wrangler", "晏晝好，映像馴獸師")
                 font.pixelSize: 30
                 font.weight: Font.Bold
+                wrapMode: Text.Wrap
             }
-            Item { Layout.fillWidth: true }
             Button {
+                Layout.alignment: root.availableWidth >= 620 ? Qt.AlignRight | Qt.AlignVCenter : Qt.AlignLeft
+                Layout.fillWidth: root.availableWidth < 620
                 icon.name: "document-new"
                 text: root.tr("New project", "開新工程")
                 highlighted: true
@@ -53,7 +59,7 @@ ScrollView {
                 value: app.projectLoaded ? app.projectName : root.tr("None", "未開")
                 detail: app.projectLoaded ? app.projectRoot : root.tr("Ready when you are", "等你開工")
                 glyph: "▣"
-                accent: "#6750A4"
+                accent: Material.theme === Material.Dark ? "#D0BCFF" : "#6750A4"
             }
             MetricCard {
                 Layout.fillWidth: true
@@ -61,7 +67,7 @@ ScrollView {
                 value: String(app.operationCount)
                 detail: root.tr("in the reviewed plan", "已排入檢查過嘅計劃")
                 glyph: "⚙"
-                accent: "#006A6A"
+                accent: Material.theme === Material.Dark ? "#9CDADA" : "#006A6A"
             }
             MetricCard {
                 Layout.fillWidth: true
@@ -69,7 +75,7 @@ ScrollView {
                 value: String(app.projectHistoryCount)
                 detail: root.tr("recoverable Git commits", "可還原 Git commit")
                 glyph: "↶"
-                accent: "#8B5000"
+                accent: Material.theme === Material.Dark ? "#FFD18B" : "#8B5000"
             }
             MetricCard {
                 Layout.fillWidth: true
@@ -78,7 +84,7 @@ ScrollView {
                 detail: root.tr("of %1 parallel slots", "共 %1 個平行位")
                         .arg(app.maxParallelJobs)
                 glyph: "▶"
-                accent: "#386A20"
+                accent: Material.theme === Material.Dark ? "#A8D5A2" : "#386A20"
             }
         }
 
@@ -92,7 +98,7 @@ ScrollView {
             }
 
             ColumnLayout {
-                anchors.fill: parent
+                width: parent.width
                 spacing: 14
                 Label {
                     text: root.tr("Build flow", "整碟流程")
@@ -127,30 +133,36 @@ ScrollView {
                 Layout.fillWidth: true
                 title: root.tr("Safety rails", "安全欄杆")
                 ColumnLayout {
-                    anchors.fill: parent
-                    Label { text: "✓ " + root.tr("Source images are never overwritten by default", "預設永遠唔會覆蓋原裝映像") }
-                    Label { text: "✓ " + root.tr("Every config edit is committed automatically", "每次改設定都自動 commit") }
-                    Label { text: "✓ " + root.tr("Jobs checkpoint before destructive steps", "危險工序之前一定落檢查點") }
-                    Label { text: "✓ " + root.tr("Interrupted mounts are detected on restart", "重開會搵返中斷咗嘅掛載") }
+                    width: parent.width
+                    Label { Layout.fillWidth: true; text: "✓ " + root.tr("Source images are never overwritten by default", "預設永遠唔會覆蓋原裝映像"); wrapMode: Text.Wrap }
+                    Label { Layout.fillWidth: true; text: "✓ " + root.tr("Every config edit is committed automatically", "每次改設定都自動 commit"); wrapMode: Text.Wrap }
+                    Label { Layout.fillWidth: true; text: "✓ " + root.tr("Jobs checkpoint before destructive steps", "危險工序之前一定落檢查點"); wrapMode: Text.Wrap }
+                    Label { Layout.fillWidth: true; text: "✓ " + root.tr("Interrupted mounts are detected on restart", "重開會搵返中斷咗嘅掛載"); wrapMode: Text.Wrap }
                 }
             }
             GroupBox {
                 Layout.fillWidth: true
                 title: root.tr("Current job", "而家做緊")
                 ColumnLayout {
-                    anchors.fill: parent
+                    width: parent.width
                     Label {
                         Layout.fillWidth: true
                         text: app.statusText
-                        elide: Text.ElideRight
+                        wrapMode: Text.Wrap
                     }
                     ProgressBar { Layout.fillWidth: true; value: app.progress; indeterminate: app.busy && app.progress <= 0 }
                     RowLayout {
-                        BusyIndicator { running: app.busy; implicitWidth: 28; implicitHeight: 28 }
+                        BusyIndicator {
+                            running: app.busy
+                            implicitWidth: 28
+                            implicitHeight: 28
+                            Accessible.name: app.busy ? root.tr("Servicing job running", "維護工序執行中") : root.tr("No servicing job running", "冇維護工序執行中")
+                        }
                         Label {
                             Layout.fillWidth: true
                             text: app.busy ? root.tr("You can keep editing another project while this runs.", "佢做緊嘢嗰陣，你照樣可以改第二個工程。")
                                            : root.tr("No active servicing jobs", "而家冇工序行緊")
+                            wrapMode: Text.Wrap
                             color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"
                         }
                     }

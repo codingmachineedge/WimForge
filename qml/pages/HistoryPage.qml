@@ -10,16 +10,23 @@ Item {
     required property var tr
     property var compareA: null
     property var compareB: null
+    readonly property bool compact: width < 820
+    readonly property color errorText: Material.theme === Material.Dark ? "#FFB4AB" : "#BA1A1A"
+    readonly property color warningText: Material.theme === Material.Dark ? "#FFD18B" : "#8B5000"
+    readonly property color successText: Material.theme === Material.Dark ? "#A8D5A2" : "#386A20"
 
     ColumnLayout {
         anchors.fill: parent
         spacing: 12
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
+            columns: root.width >= 760 ? 3 : 1
+            columnSpacing: 8
+            rowSpacing: 8
             ColumnLayout {
                 Layout.fillWidth: true
-                Label { text: root.tr("History Time Machine", "歷史時光機"); font.pixelSize: 30; font.weight: Font.Bold }
+                Label { Layout.fillWidth: true; text: root.tr("History Time Machine", "歷史時光機"); font.pixelSize: 30; font.weight: Font.Bold; wrapMode: Text.Wrap }
                 Label {
                     Layout.fillWidth: true
                     text: root.tr("Event-sourced actions, selective undo, redo-of-undo, restore points, bookmarks, branches, diffs, raw Git commits and crash recovery—without rewriting the past.",
@@ -27,22 +34,27 @@ Item {
                     wrapMode: Text.Wrap; color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"
                 }
             }
-            Button { text: "↶  " + root.tr("Undo here", "喺呢度 Undo"); highlighted: true; enabled: app.projectLoaded; onClicked: app.undoContext("", "") }
-            Button { text: "↕  " + root.tr("Complete save", "完整儲存"); onClicked: app.requestExportProject() }
+            Button { Layout.fillWidth: root.width < 760; text: "↶  " + root.tr("Undo here", "喺呢度 Undo"); highlighted: true; enabled: app.projectLoaded; onClicked: app.undoContext("", "") }
+            Button { Layout.fillWidth: root.width < 760; text: "↕  " + root.tr("Complete save", "完整儲存"); onClicked: app.requestExportProject() }
         }
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
+            columns: root.width >= 900 ? 5 : root.width >= 600 ? 2 : 1
+            columnSpacing: 8
+            rowSpacing: 8
             TextField { id: historySearch; Layout.fillWidth: true; placeholderText: root.tr("Search title, context, branch or changed path…", "搜尋標題、context、分支或者改動路徑…") }
             ComboBox {
                 id: branchPicker
+                Layout.fillWidth: root.width < 900
                 model: app.historyBranches
                 currentIndex: Math.max(0, app.historyBranches.indexOf(app.historyBranch))
+                Accessible.name: root.tr("History branch", "歷史分支")
                 onActivated: app.switchHistoryBranch(currentText)
             }
-            Button { text: "⑂  " + root.tr("New branch", "新分支"); onClicked: branchPopup.open() }
-            Button { text: "★  " + root.tr("Bookmark", "書籤"); onClicked: bookmarkPopup.open() }
-            Button { text: "↻  " + root.tr("Refresh", "重新整理"); onClicked: app.refreshHistory() }
+            Button { Layout.fillWidth: root.width < 600; text: "⑂  " + root.tr("New branch", "新分支"); onClicked: branchPopup.open() }
+            Button { Layout.fillWidth: root.width < 600; text: "★  " + root.tr("Bookmark", "書籤"); onClicked: bookmarkPopup.open() }
+            Button { Layout.fillWidth: root.width < 600; text: "↻  " + root.tr("Refresh", "重新整理"); onClicked: app.refreshHistory() }
         }
 
         TabBar {
@@ -50,7 +62,7 @@ Item {
             Layout.fillWidth: true
             TabButton { text: "✦  " + root.tr("Action timeline", "動作時間線") }
             TabButton { text: "⌘  " + root.tr("Git commits", "Git commit") }
-            TabButton { text: "🛟  " + root.tr("Recovery & notifications", "復原同通知") }
+            TabButton { text: "🛟  " + root.tr("Recovery && notifications", "復原同通知") }
         }
 
         StackLayout {
@@ -59,13 +71,17 @@ Item {
             currentIndex: tabs.currentIndex
 
             Item {
-                RowLayout {
+                GridLayout {
                     anchors.fill: parent
-                    spacing: 10
+                    columns: root.compact ? 1 : 2
+                    columnSpacing: 10
+                    rowSpacing: 10
                     ListView {
                         id: actionList
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+                        Layout.minimumWidth: 0
+                        Layout.minimumHeight: 120
                         clip: true
                         spacing: 7
                         model: app.actionHistory
@@ -82,43 +98,76 @@ Item {
                                 radius: 17
                                 color: eventCard.modelData.effective ? (Material.theme === Material.Dark ? "#211F26" : "#FFFBFE") : (Material.theme === Material.Dark ? "#252329" : "#F3EEF5")
                                 border.width: eventCard.modelData.destructive ? 2 : 1
-                                border.color: eventCard.modelData.destructive ? "#BA1A1A" : (Material.theme === Material.Dark ? "#49454F" : "#E7E0EC")
+                                border.color: eventCard.modelData.destructive ? root.errorText : (Material.theme === Material.Dark ? "#49454F" : "#E7E0EC")
                             }
                             ColumnLayout {
                                 anchors.fill: parent
-                                RowLayout {
+                                GridLayout {
                                     Layout.fillWidth: true
+                                    columns: actionList.width >= 650 ? 3 : 1
+                                    columnSpacing: 8
+                                    rowSpacing: 4
                                     Label { text: eventCard.modelData.type === "compensation" ? (eventCard.modelData.icon === "redo" ? "↷" : "↶") : eventCard.modelData.type === "bookmark" ? "★" : eventCard.modelData.type === "branch" ? "⑂" : "✦"; font.pixelSize: 20; color: Material.accent }
                                     ColumnLayout {
                                         Layout.fillWidth: true
-                                        Label { Layout.fillWidth: true; text: eventCard.modelData.title; font.weight: Font.DemiBold; font.pixelSize: 16; elide: Text.ElideRight }
-                                        Label { Layout.fillWidth: true; text: eventCard.modelData.diffSummary || eventCard.modelData.description; color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"; elide: Text.ElideRight }
+                                        Label { Layout.fillWidth: true; text: eventCard.modelData.title; font.weight: Font.DemiBold; font.pixelSize: 16; wrapMode: Text.Wrap }
+                                        Label { Layout.fillWidth: true; text: eventCard.modelData.diffSummary || eventCard.modelData.description; color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"; wrapMode: Text.Wrap }
                                     }
-                                    Label { text: "#" + eventCard.modelData.sequence + "  ·  " + eventCard.modelData.contextKey + "  ·  " + eventCard.modelData.branch; font.family: "Cascadia Mono"; font.pixelSize: 10 }
+                                    Label { Layout.fillWidth: actionList.width < 650; text: "#" + eventCard.modelData.sequence + "  ·  " + eventCard.modelData.contextKey + "  ·  " + eventCard.modelData.branch; font.family: "Cascadia Mono"; font.pixelSize: 10; wrapMode: Text.WrapAnywhere }
                                 }
-                                RowLayout {
+                                GridLayout {
                                     Layout.fillWidth: true
-                                    Label { text: eventCard.modelData.effective ? root.tr("ACTIVE", "生效中") : root.tr("UNDONE", "已逆轉"); color: eventCard.modelData.effective ? "#386A20" : "#8B5000"; font.bold: true; font.pixelSize: 10 }
-                                    Label { Layout.fillWidth: true; text: eventCard.modelData.changedPaths ? eventCard.modelData.changedPaths.join("  ·  ") : ""; elide: Text.ElideMiddle; font.family: "Cascadia Mono"; font.pixelSize: 9 }
-                                    Button { visible: eventCard.modelData.canUndo; text: "↶  " + root.tr("Undo", "逆轉"); flat: true; onClicked: app.undoHistoryEvent(eventCard.modelData.id) }
-                                    Button { visible: eventCard.modelData.canRedo; text: "↷  " + root.tr("Redo", "重做"); flat: true; onClicked: app.redoHistoryEvent(eventCard.modelData.id) }
-                                    Button { visible: eventCard.modelData.type === "action"; text: "⏱  " + root.tr("Restore", "還原"); flat: true; onClicked: app.restoreHistoryEvent(eventCard.modelData.id) }
-                                    ToolButton { text: root.compareA && root.compareA.id === eventCard.modelData.id ? "A✓" : "A"; onClicked: root.compareA = eventCard.modelData; ToolTip.visible: hovered; ToolTip.text: root.tr("Compare from", "比較起點") }
-                                    ToolButton { text: root.compareB && root.compareB.id === eventCard.modelData.id ? "B✓" : "B"; onClicked: root.compareB = eventCard.modelData; ToolTip.visible: hovered; ToolTip.text: root.tr("Compare to", "比較終點") }
+                                    columns: actionList.width >= 650 ? 3 : 1
+                                    columnSpacing: 8
+                                    rowSpacing: 3
+                                    Label { text: eventCard.modelData.effective ? root.tr("ACTIVE", "生效中") : root.tr("UNDONE", "已逆轉"); color: eventCard.modelData.effective ? root.successText : root.warningText; font.bold: true; font.pixelSize: 10 }
+                                    Label { Layout.fillWidth: true; text: eventCard.modelData.changedPaths ? eventCard.modelData.changedPaths.join("  ·  ") : ""; wrapMode: Text.WrapAnywhere; font.family: "Cascadia Mono"; font.pixelSize: 9 }
+                                    Label { visible: eventCard.modelData.destructive; text: "⚠ " + root.tr("DESTRUCTIVE", "有破壞性"); color: root.errorText; font.bold: true; font.pixelSize: 10 }
+                                }
+                                ScrollView {
+                                    id: eventActionsScroll
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: eventActions.implicitHeight
+                                    ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+                                    RowLayout {
+                                        id: eventActions
+                                        width: Math.max(implicitWidth, eventActionsScroll.availableWidth)
+                                        spacing: 4
+                                        Button { visible: eventCard.modelData.canUndo; text: "↶  " + root.tr("Undo", "逆轉"); flat: true; onClicked: app.undoHistoryEvent(eventCard.modelData.id) }
+                                        Button { visible: eventCard.modelData.canRedo; text: "↷  " + root.tr("Redo", "重做"); flat: true; onClicked: app.redoHistoryEvent(eventCard.modelData.id) }
+                                        Button { visible: eventCard.modelData.type === "action"; text: "⏱  " + root.tr("Restore", "還原"); flat: true; onClicked: app.restoreHistoryEvent(eventCard.modelData.id) }
+                                        ToolButton {
+                                            text: root.compareA && root.compareA.id === eventCard.modelData.id ? "A✓" : "A"
+                                            Accessible.name: root.tr("Compare from event %1", "由事件 %1 比較").arg(eventCard.modelData.sequence)
+                                            onClicked: root.compareA = eventCard.modelData
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: Accessible.name
+                                        }
+                                        ToolButton {
+                                            text: root.compareB && root.compareB.id === eventCard.modelData.id ? "B✓" : "B"
+                                            Accessible.name: root.tr("Compare to event %1", "比較到事件 %1").arg(eventCard.modelData.sequence)
+                                            onClicked: root.compareB = eventCard.modelData
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: Accessible.name
+                                        }
+                                    }
                                 }
                             }
                         }
-                        Label { anchors.centerIn: parent; visible: actionList.count === 0; text: root.tr("Make a project change and its immutable event appears here.", "改一下工程，永久事件就會出現喺度。") }
+                        Label { anchors.centerIn: parent; width: Math.min(implicitWidth, parent.width - 24); visible: actionList.count === 0; text: root.tr("Make a project change and its immutable event appears here.", "改一下工程，永久事件就會出現喺度。"); wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
                     }
 
                     Pane {
-                        Layout.preferredWidth: 335
+                        Layout.fillWidth: root.compact
+                        Layout.preferredWidth: root.compact ? -1 : 335
                         Layout.fillHeight: true
+                        Layout.minimumWidth: 0
+                        Layout.minimumHeight: 120
                         padding: 15
                         background: Rectangle { radius: 18; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.theme === Material.Dark ? "#49454F" : "#E7E0EC" }
                         ColumnLayout {
                             anchors.fill: parent
-                            Label { text: "⇄  " + root.tr("Live comparison", "即時比較"); font.pixelSize: 18; font.weight: Font.Bold }
+                            Label { Layout.fillWidth: true; text: "⇄  " + root.tr("Live comparison", "即時比較"); font.pixelSize: 18; font.weight: Font.Bold; wrapMode: Text.Wrap }
                             Label { Layout.fillWidth: true; text: root.compareA ? "A  #" + root.compareA.sequence + "  " + root.compareA.title : root.tr("Choose A on the timeline", "喺時間線揀 A"); wrapMode: Text.Wrap }
                             Label { Layout.fillWidth: true; text: root.compareB ? "B  #" + root.compareB.sequence + "  " + root.compareB.title : root.tr("Choose B on the timeline", "喺時間線揀 B"); wrapMode: Text.Wrap }
                             Rectangle { Layout.fillWidth: true; height: 1; color: Material.theme === Material.Dark ? "#49454F" : "#E7E0EC" }
@@ -126,6 +175,7 @@ Item {
                                 Layout.fillWidth: true; Layout.fillHeight: true
                                 TextArea {
                                     readOnly: true
+                                    Accessible.name: root.tr("Event comparison", "事件比較")
                                     wrapMode: TextEdit.WrapAnywhere
                                     font.family: "Cascadia Mono"; font.pixelSize: 10
                                     text: root.compareA && root.compareB
@@ -143,11 +193,13 @@ Item {
                 background: Rectangle { radius: 18; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.theme === Material.Dark ? "#49454F" : "#E7E0EC" }
                 ColumnLayout {
                     anchors.fill: parent
-                    RowLayout {
+                    GridLayout {
                         Layout.fillWidth: true; Layout.margins: 14
-                        Label { text: root.tr("Raw project repository", "原始工程 Git 倉"); font.pixelSize: 18; font.weight: Font.Bold }
-                        Item { Layout.fillWidth: true }
-                        Label { text: app.projectHistoryCount + " commits  ·  " + app.projectRoot; elide: Text.ElideMiddle; Layout.maximumWidth: 620 }
+                        columns: root.width >= 700 ? 2 : 1
+                        columnSpacing: 8
+                        rowSpacing: 4
+                        Label { Layout.fillWidth: true; text: root.tr("Raw project repository", "原始工程 Git 倉"); font.pixelSize: 18; font.weight: Font.Bold; wrapMode: Text.Wrap }
+                        Label { Layout.fillWidth: true; text: app.projectHistoryCount + " commits  ·  " + app.projectRoot; wrapMode: Text.WrapAnywhere; horizontalAlignment: root.width >= 700 ? Text.AlignRight : Text.AlignLeft }
                     }
                     ListView {
                         id: gitList
@@ -157,43 +209,55 @@ Item {
                             required property var modelData
                             width: gitList.width
                             contentItem: RowLayout {
-                                Label { text: modelData.isRevert ? "↶" : "●"; color: modelData.isRevert ? "#8B5000" : Material.accent; font.pixelSize: 18 }
+                                Label { text: modelData.isRevert ? "↶" : "●"; color: modelData.isRevert ? root.warningText : Material.accent; font.pixelSize: 18 }
                                 ColumnLayout {
                                     Layout.fillWidth: true
-                                    Label { Layout.fillWidth: true; text: modelData.subject; font.weight: Font.DemiBold; elide: Text.ElideRight }
-                                    Label { text: modelData.shortHash + "  ·  " + modelData.timestamp; font.family: "Cascadia Mono"; font.pixelSize: 10; color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71" }
+                                    Label { Layout.fillWidth: true; text: modelData.subject; font.weight: Font.DemiBold; wrapMode: Text.Wrap }
+                                    Label { Layout.fillWidth: true; text: modelData.shortHash + "  ·  " + modelData.timestamp; font.family: "Cascadia Mono"; font.pixelSize: 10; color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"; wrapMode: Text.Wrap }
                                 }
-                                ToolButton { text: "⧉"; onClicked: app.copyText(modelData.hash) }
+                                ToolButton {
+                                    text: "⧉"
+                                    Accessible.name: root.tr("Copy commit %1", "複製 commit %1").arg(modelData.shortHash)
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: Accessible.name
+                                    onClicked: app.copyText(modelData.hash)
+                                }
                             }
                         }
                     }
                 }
             }
 
-            RowLayout {
-                spacing: 12
-                Pane {
-                    Layout.fillWidth: true; Layout.fillHeight: true; padding: 18
+            ScrollView {
+                id: recoveryScroll
+                clip: true
+                GridLayout {
+                    width: recoveryScroll.availableWidth
+                    columns: root.width >= 800 ? 2 : 1
+                    columnSpacing: 12
+                    rowSpacing: 12
+                    Pane {
+                    Layout.fillWidth: true; Layout.minimumHeight: 300; padding: 18
                     background: Rectangle { radius: 18; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.theme === Material.Dark ? "#49454F" : "#E7E0EC" }
                     ColumnLayout {
                         anchors.fill: parent
-                        Label { text: "🛟  " + root.tr("Crash recovery", "死機復原"); font.pixelSize: 20; font.weight: Font.Bold }
+                        Label { Layout.fillWidth: true; text: "🛟  " + root.tr("Crash recovery", "死機復原"); font.pixelSize: 20; font.weight: Font.Bold; wrapMode: Text.Wrap }
                         Label { Layout.fillWidth: true; text: root.tr("The journal is flushed on every transition. Interrupted mounts return as in-app recovery work, never a blocking system dialog.", "每次狀態轉換都即寫日誌；中斷掛載會變成 app 入面嘅復原工作，唔會彈阻塞式系統對話框。") ; wrapMode: Text.Wrap }
-                        Label { text: "✓  " + root.tr("Atomic config writes", "原子式設定寫入") }
-                        Label { text: "✓  " + root.tr("DAG operation checkpoints", "DAG 工序檢查點") }
-                        Label { text: "✓  " + root.tr("Interrupted-run detection and safe-unmount action", "中斷工序偵測同安全卸載動作") }
-                        Label { text: "✓  " + root.tr("Source and payload verification gates", "來源同 payload 驗證閘") }
+                        Label { Layout.fillWidth: true; text: "✓  " + root.tr("Atomic config writes", "原子式設定寫入"); wrapMode: Text.Wrap }
+                        Label { Layout.fillWidth: true; text: "✓  " + root.tr("DAG operation checkpoints", "DAG 工序檢查點"); wrapMode: Text.Wrap }
+                        Label { Layout.fillWidth: true; text: "✓  " + root.tr("Interrupted-run detection and safe-unmount action", "中斷工序偵測同安全卸載動作"); wrapMode: Text.Wrap }
+                        Label { Layout.fillWidth: true; text: "✓  " + root.tr("Source and payload verification gates", "來源同 payload 驗證閘"); wrapMode: Text.Wrap }
                         Item { Layout.fillHeight: true }
                         Label { text: root.tr("Recovery directory", "復原資料夾"); color: Material.accent }
                         Label { Layout.fillWidth: true; text: app.recoveryPath; wrapMode: Text.WrapAnywhere; font.family: "Cascadia Mono"; font.pixelSize: 10 }
                     }
                 }
-                Pane {
-                    Layout.fillWidth: true; Layout.fillHeight: true; padding: 18
+                    Pane {
+                    Layout.fillWidth: true; Layout.minimumHeight: 300; padding: 18
                     background: Rectangle { radius: 18; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.theme === Material.Dark ? "#49454F" : "#E7E0EC" }
                     ColumnLayout {
                         anchors.fill: parent
-                        Label { text: "🔔  " + root.tr("Notification ledger", "通知帳簿"); font.pixelSize: 20; font.weight: Font.Bold }
+                        Label { Layout.fillWidth: true; text: "🔔  " + root.tr("Notification ledger", "通知帳簿"); font.pixelSize: 20; font.weight: Font.Bold; wrapMode: Text.Wrap }
                         Label { Layout.fillWidth: true; text: root.tr("A separate Git repository commits new, read, unread, dismiss, restore and tombstoned-delete events. The complete save bundle carries it too.", "另一個 Git 倉會 commit 新增、已讀、未讀、閂埋、還原同墓碑刪除；完整儲存 bundle 亦會帶埋。") ; wrapMode: Text.Wrap }
                         Label { text: app.notificationRepoPath; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; font.family: "Cascadia Mono"; font.pixelSize: 10; color: Material.accent }
                         Button { text: "↶  " + root.tr("Undo latest notification event", "Undo 最新通知事件"); onClicked: app.undoLatestNotificationChange() }
@@ -202,6 +266,7 @@ Item {
                         Label { Layout.fillWidth: true; text: root.tr("Soft-delete means the item disappears from normal view while its record and Git ancestry stay recoverable.", "軟刪除即係平時睇唔到，但記錄同 Git 祖先仍然可復原。") ; wrapMode: Text.Wrap; color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71" }
                     }
                 }
+                }
             }
         }
     }
@@ -209,7 +274,7 @@ Item {
     Popup {
         id: branchPopup
         anchors.centerIn: Overlay.overlay
-        modal: false; focus: true; width: 420; padding: 18
+        modal: false; focus: true; width: Math.min(420, Math.max(260, root.width - 40)); padding: 18
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         background: Rectangle { radius: 22; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.accent }
         ColumnLayout {
@@ -223,7 +288,7 @@ Item {
     Popup {
         id: bookmarkPopup
         anchors.centerIn: Overlay.overlay
-        modal: false; focus: true; width: 420; padding: 18
+        modal: false; focus: true; width: Math.min(420, Math.max(260, root.width - 40)); padding: 18
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         background: Rectangle { radius: 22; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.accent }
         ColumnLayout {

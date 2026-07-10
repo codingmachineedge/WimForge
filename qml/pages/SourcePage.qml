@@ -12,7 +12,13 @@ ScrollView {
         width: root.availableWidth
         spacing: 18
 
-        Label { text: root.tr("Source & editions", "來源同版本"); font.pixelSize: 30; font.weight: Font.Bold }
+        Label {
+            Layout.fillWidth: true
+            text: root.tr("Source & editions", "來源同版本")
+            font.pixelSize: 30
+            font.weight: Font.Bold
+            wrapMode: Text.Wrap
+        }
         Label {
             Layout.fillWidth: true
             text: root.tr("Paste or drop a source path. WimForge inventories it first; mounting and writes only happen in a reviewed job.",
@@ -23,6 +29,7 @@ ScrollView {
 
         Pane {
             Layout.fillWidth: true
+            Layout.preferredHeight: sourcePaneContent.implicitHeight + topPadding + bottomPadding
             padding: 20
             background: Rectangle {
                 radius: 20
@@ -40,19 +47,41 @@ ScrollView {
                 }
             }
             ColumnLayout {
-                anchors.fill: parent
+                id: sourcePaneContent
+                width: parent.width
                 spacing: 12
-                RowLayout {
-                    Label { text: "◫"; font.pixelSize: 34; color: Material.accent }
-                    ColumnLayout {
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: root.availableWidth >= 680 ? 2 : 1
+                    columnSpacing: 12
+                    rowSpacing: 10
+                    RowLayout {
                         Layout.fillWidth: true
-                        Label { text: root.tr("Windows media or image", "Windows 安裝碟或者映像"); font.pixelSize: 18; font.weight: Font.DemiBold }
-                        Label {
-                            text: root.tr("ISO, extracted media folder, WIM, ESD or SWM", "ISO、已解壓安裝資料夾、WIM、ESD 或 SWM")
-                            color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"
+                        Label { text: "◫"; font.pixelSize: 34; color: Material.accent }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                Layout.fillWidth: true
+                                text: root.tr("Windows media or image", "Windows 安裝碟或者映像")
+                                font.pixelSize: 18
+                                font.weight: Font.DemiBold
+                                wrapMode: Text.Wrap
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: root.tr("ISO, extracted media folder, WIM, ESD or SWM", "ISO、已解壓安裝資料夾、WIM、ESD 或 SWM")
+                                wrapMode: Text.Wrap
+                                color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"
+                            }
                         }
                     }
-                    Button { icon.name: "view-refresh"; text: root.tr("Inspect", "點貨"); onClicked: app.inspectSource() }
+                    Button {
+                        Layout.fillWidth: root.availableWidth < 680
+                        Layout.alignment: root.availableWidth >= 680 ? Qt.AlignRight | Qt.AlignVCenter : Qt.AlignLeft
+                        icon.name: "view-refresh"
+                        text: root.tr("Inspect", "點貨")
+                        onClicked: app.inspectSource()
+                    }
                 }
                 TextField {
                     Layout.fillWidth: true
@@ -72,9 +101,11 @@ ScrollView {
 
             GroupBox {
                 Layout.fillWidth: true
+                Layout.preferredHeight: workingCopyContent.implicitHeight + topPadding + bottomPadding
                 title: root.tr("Working copy", "工作副本")
                 ColumnLayout {
-                    anchors.fill: parent
+                    id: workingCopyContent
+                    width: parent.width
                     TextField {
                         Layout.fillWidth: true
                         text: app.imagePath
@@ -88,8 +119,18 @@ ScrollView {
                         onEditingFinished: app.setProjectField("mountPath", text)
                     }
                     CheckBox {
+                        id: cloneSourceCheck
+                        Layout.fillWidth: true
                         text: root.tr("Clone source before editing (recommended)", "落手之前複製來源（推薦，咪慳呢啲時間）")
                         checked: app.cloneSource
+                        contentItem: Label {
+                            leftPadding: cloneSourceCheck.indicator.width + cloneSourceCheck.spacing
+                            text: cloneSourceCheck.text
+                            font: cloneSourceCheck.font
+                            color: cloneSourceCheck.palette.windowText
+                            wrapMode: Text.Wrap
+                            verticalAlignment: Text.AlignVCenter
+                        }
                         onToggled: app.setProjectBool("cloneSource", checked)
                     }
                 }
@@ -97,9 +138,11 @@ ScrollView {
 
             GroupBox {
                 Layout.fillWidth: true
+                Layout.preferredHeight: editionTargetContent.implicitHeight + topPadding + bottomPadding
                 title: root.tr("Edition target", "目標版本")
                 ColumnLayout {
-                    anchors.fill: parent
+                    id: editionTargetContent
+                    width: parent.width
                     ComboBox {
                         Layout.fillWidth: true
                         model: app.editionNames
@@ -124,10 +167,12 @@ ScrollView {
 
         GroupBox {
             Layout.fillWidth: true
+            Layout.preferredHeight: outputContent.implicitHeight + topPadding + bottomPadding
             title: root.tr("Output", "輸出")
             GridLayout {
-                anchors.fill: parent
-                columns: width > 700 ? 3 : 1
+                id: outputContent
+                width: parent.width
+                columns: width > 920 ? 3 : 1
                 TextField {
                     Layout.fillWidth: true
                     text: app.outputPath

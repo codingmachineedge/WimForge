@@ -6,16 +6,39 @@ Item {
     id: root
     property var app
     property var tr: function(en, zh) { return en }
+    readonly property bool compact: width < 760
+    readonly property color errorText: Material.theme === Material.Dark ? "#FFB4AB" : "#BA1A1A"
+    readonly property color warningText: Material.theme === Material.Dark ? "#FFD18B" : "#8B5000"
+    readonly property color successFill: Material.theme === Material.Dark ? "#4F7A49" : "#2E7D32"
+
+    function statusText(status) {
+        if (status === "running") return root.tr("Running", "執行中")
+        if (status === "done") return root.tr("Completed", "已完成")
+        if (status === "failed") return root.tr("Failed", "失敗")
+        if (status === "skipped") return root.tr("Skipped", "已略過")
+        return root.tr("Queued", "排隊中")
+    }
+
+    function statusGlyph(status, index) {
+        if (status === "running") return "▶"
+        if (status === "done") return "✓"
+        if (status === "failed") return "!"
+        if (status === "skipped") return "–"
+        return String(index + 1)
+    }
 
     ColumnLayout {
         anchors.fill: parent
         spacing: 14
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
+            columns: root.width >= 760 ? 3 : 1
+            columnSpacing: 8
+            rowSpacing: 8
             ColumnLayout {
                 Layout.fillWidth: true
-                Label { text: root.tr("Review & run", "檢查同開工"); font.pixelSize: 30; font.weight: Font.Bold }
+                Label { Layout.fillWidth: true; text: root.tr("Review & run", "檢查同開工"); font.pixelSize: 30; font.weight: Font.Bold; wrapMode: Text.Wrap }
                 Label {
                     Layout.fillWidth: true
                     text: root.tr("Exact commands, dependencies, checkpoints and risk flags—nothing hidden behind a magical button.",
@@ -24,16 +47,19 @@ Item {
                     color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"
                 }
             }
-            Button { icon.name: "view-refresh"; text: root.tr("Rebuild plan", "重排計劃"); onClicked: app.refreshPlan() }
-            Button { icon.name: "document-save"; text: root.tr("Export script", "匯出 script"); onClicked: app.requestExportScript() }
+            Button { Layout.fillWidth: root.width < 760; icon.name: "view-refresh"; text: root.tr("Rebuild plan", "重排計劃"); onClicked: app.refreshPlan() }
+            Button { Layout.fillWidth: root.width < 760; icon.name: "document-save"; text: root.tr("Export script", "匯出 script"); onClicked: app.requestExportScript() }
         }
 
         Pane {
             Layout.fillWidth: true
             padding: 14
             background: Rectangle { radius: 16; color: Material.theme === Material.Dark ? "#211F26" : "#F7F2FA" }
-            RowLayout {
+            GridLayout {
                 anchors.fill: parent
+                columns: root.width >= 700 ? 4 : 1
+                columnSpacing: 8
+                rowSpacing: 6
                 Label { text: "⚡"; font.pixelSize: 24; color: Material.accent }
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -45,10 +71,11 @@ Item {
                         color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"
                     }
                 }
-                Label { text: root.tr("Parallel", "平行") }
+                Label { Layout.fillWidth: root.width < 700; text: root.tr("Parallel", "平行"); wrapMode: Text.Wrap }
                 SpinBox {
                     from: 1; to: 16
                     value: app.maxParallelJobs
+                    Accessible.name: root.tr("Maximum parallel jobs", "最多平行工序")
                     onValueModified: app.maxParallelJobs = value
                 }
             }
@@ -71,7 +98,7 @@ Item {
                     radius: 16
                     color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"
                     border.width: 1
-                    border.color: modelData.destructive ? "#BA1A1A" : (Material.theme === Material.Dark ? "#49454F" : "#E7E0EC")
+                    border.color: modelData.destructive ? root.errorText : (Material.theme === Material.Dark ? "#49454F" : "#E7E0EC")
                 }
                 RowLayout {
                     anchors.fill: parent
@@ -79,24 +106,34 @@ Item {
                     Rectangle {
                         width: 38; height: 38; radius: 12
                         color: modelData.status === "running" ? Material.accent
-                             : modelData.status === "done" ? "#2E7D32"
-                             : modelData.status === "failed" ? "#BA1A1A"
+                             : modelData.status === "done" ? root.successFill
+                             : modelData.status === "failed" ? (Material.theme === Material.Dark ? "#8C1D18" : "#BA1A1A")
                              : (Material.theme === Material.Dark ? "#36343B" : "#E7E0EC")
+                        Accessible.name: root.statusText(modelData.status)
                         Label {
                             anchors.centerIn: parent
-                            text: modelData.status === "running" ? "▶" : modelData.status === "done" ? "✓" : String(index + 1)
+                            text: root.statusGlyph(modelData.status, index)
                             color: modelData.status === "queued" ? (Material.theme === Material.Dark ? "white" : "#1D1B20") : "white"
                             font.weight: Font.Bold
                         }
                     }
                     ColumnLayout {
                         Layout.fillWidth: true
-                        RowLayout {
+                        Label {
                             Layout.fillWidth: true
-                            Label { text: modelData.title; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                            Label { visible: modelData.admin; text: "🛡 " + root.tr("Admin", "管理員"); color: "#8B5000" }
-                            Label { visible: modelData.destructive; text: "⚠ " + root.tr("Destructive", "有破壞性"); color: "#BA1A1A" }
-                            Label { visible: modelData.reboot; text: "↻ " + root.tr("Reboot", "要重開") }
+                            text: modelData.title
+                            font.weight: Font.DemiBold
+                            wrapMode: Text.Wrap
+                        }
+                        GridLayout {
+                            Layout.fillWidth: true
+                            columns: planList.width >= 700 ? 4 : 1
+                            columnSpacing: 8
+                            rowSpacing: 2
+                            Label { text: "● " + root.statusText(modelData.status); color: modelData.status === "failed" ? root.errorText : Material.accent; font.weight: Font.DemiBold; font.pixelSize: 10 }
+                            Label { visible: modelData.admin; text: "🛡 " + root.tr("Admin", "管理員"); color: root.warningText; font.pixelSize: 10 }
+                            Label { visible: modelData.destructive; text: "⚠ " + root.tr("Destructive", "有破壞性"); color: root.errorText; font.pixelSize: 10 }
+                            Label { visible: modelData.reboot; text: "↻ " + root.tr("Reboot", "要重開"); font.pixelSize: 10 }
                         }
                         Label {
                             Layout.fillWidth: true
@@ -109,12 +146,15 @@ Item {
                             text: modelData.command
                             font.family: "Cascadia Mono"
                             font.pixelSize: 11
-                            elide: Text.ElideMiddle
+                            wrapMode: Text.WrapAnywhere
                             color: Material.theme === Material.Dark ? "#D0BCFF" : "#6750A4"
                         }
                     }
                     ToolButton {
                         text: "⋮"
+                        Accessible.name: root.tr("Operation actions for %1", "%1 工序動作").arg(modelData.title)
+                        ToolTip.visible: hovered
+                        ToolTip.text: Accessible.name
                         onClicked: commandMenu.open()
                         Menu {
                             id: commandMenu
@@ -136,21 +176,35 @@ Item {
             }
         }
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
+            columns: root.width >= 820 ? 3 : 1
+            columnSpacing: 8
+            rowSpacing: 8
             CheckBox {
+                id: checkpointCheck
+                Layout.fillWidth: true
                 text: root.tr("Create recovery checkpoint before destructive steps", "危險工序之前建立復原檢查點")
                 checked: app.checkpointBeforeDestructive
+                contentItem: Label {
+                    leftPadding: checkpointCheck.indicator.width + checkpointCheck.spacing
+                    text: checkpointCheck.text
+                    font: checkpointCheck.font
+                    color: checkpointCheck.palette.windowText
+                    wrapMode: Text.Wrap
+                    verticalAlignment: Text.AlignVCenter
+                }
                 onToggled: app.checkpointBeforeDestructive = checked
             }
-            Item { Layout.fillWidth: true }
             Button {
                 visible: app.busy
+                Layout.fillWidth: root.width < 820
                 icon.name: "process-stop"
                 text: root.tr("Cancel safely", "安全取消")
                 onClicked: app.cancelJobs()
             }
             Button {
+                Layout.fillWidth: root.width < 820
                 highlighted: true
                 enabled: app.projectLoaded && app.operationCount > 0 && !app.busy
                 icon.name: "media-playback-start"

@@ -10,6 +10,8 @@ Item {
     required property var tr
     property var selectedPolicy: null
     property var elementValues: ({})
+    readonly property bool compact: width < 820
+    readonly property color successText: Material.theme === Material.Dark ? "#A8D5A2" : "#386A20"
 
     Component.onCompleted: app.loadGpoCatalog()
 
@@ -42,11 +44,14 @@ Item {
         anchors.fill: parent
         spacing: 12
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
+            columns: root.width >= 760 ? 3 : 1
+            columnSpacing: 10
+            rowSpacing: 8
             ColumnLayout {
                 Layout.fillWidth: true
-                Label { text: root.tr("Group Policy Studio", "群組原則工房"); font.pixelSize: 30; font.weight: Font.Bold }
+                Label { Layout.fillWidth: true; text: root.tr("Group Policy Studio", "群組原則工房"); font.pixelSize: 30; font.weight: Font.Bold; wrapMode: Text.Wrap }
                 Label {
                     Layout.fillWidth: true
                     text: root.tr("Every installed ADMX/ADML policy, its complete explanation, and a schema-matched Material editor.",
@@ -55,8 +60,8 @@ Item {
                     color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"
                 }
             }
-            Label { text: app.gpoPolicyCount.toLocaleString() + "  " + root.tr("policies", "項政策"); font.pixelSize: 18; color: Material.accent }
-            Button { text: "⇩  " + root.tr("Export all docs", "匯出全部文件"); enabled: app.gpoLoaded; onClicked: docsExport.open() }
+            Label { Layout.fillWidth: root.width < 760; text: app.gpoPolicyCount.toLocaleString() + "  " + root.tr("policies", "項政策"); font.pixelSize: 18; color: Material.accent; wrapMode: Text.Wrap }
+            Button { Layout.fillWidth: root.width < 760; text: "⇩  " + root.tr("Export all docs", "匯出全部文件"); enabled: app.gpoLoaded; onClicked: docsExport.open() }
         }
 
         Pane {
@@ -65,8 +70,11 @@ Item {
             background: Rectangle { radius: 18; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.theme === Material.Dark ? "#49454F" : "#E7E0EC" }
             ColumnLayout {
                 anchors.fill: parent
-                RowLayout {
+                GridLayout {
                     Layout.fillWidth: true
+                    columns: root.width >= 760 ? 4 : 1
+                    columnSpacing: 8
+                    rowSpacing: 8
                     TextField {
                         id: policySearch
                         Layout.fillWidth: true
@@ -75,32 +83,47 @@ Item {
                         Label { anchors.left: parent.left; anchors.leftMargin: 13; anchors.verticalCenter: parent.verticalCenter; text: "⌕"; font.pixelSize: 19 }
                         onAccepted: app.searchGpo(text, regexMode.checked)
                     }
-                    Switch { id: regexMode; text: root.tr("Regex", "正規表示式") }
-                    Button { text: "🧩  " + root.tr("Regex builder", "Regex 精靈"); onClicked: regexWizard.open() }
-                    Button { text: root.tr("Search", "搜尋"); highlighted: true; onClicked: app.searchGpo(policySearch.text, regexMode.checked) }
+                    Switch { id: regexMode; Layout.fillWidth: root.width < 760; text: root.tr("Regex", "正規表示式") }
+                    Button { Layout.fillWidth: root.width < 760; text: "🧩  " + root.tr("Regex builder", "Regex 精靈"); onClicked: regexWizard.open() }
+                    Button { Layout.fillWidth: root.width < 760; text: root.tr("Search", "搜尋"); highlighted: true; onClicked: app.searchGpo(policySearch.text, regexMode.checked) }
                 }
-                RowLayout {
+                GridLayout {
                     Layout.fillWidth: true
+                    columns: root.width >= 660 ? 3 : 1
+                    columnSpacing: 8
+                    rowSpacing: 8
                     TextField { id: intent; Layout.fillWidth: true; placeholderText: root.tr("I don't know the policy name; I want Windows to…", "唔知政策叫咩名；我想 Windows…") }
                     Button {
+                        Layout.fillWidth: root.width < 660
                         text: "✦  " + root.tr("Ask OpenCode", "問 OpenCode")
                         enabled: intent.text.trim().length > 0 && !app.openCodeBusy
                         onClicked: app.askOpenCodeForGpo(intent.text)
                     }
-                    BusyIndicator { running: app.openCodeBusy; visible: running; implicitWidth: 28; implicitHeight: 28 }
+                    BusyIndicator {
+                        running: app.openCodeBusy
+                        visible: running
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        Accessible.name: root.tr("OpenCode policy search in progress", "OpenCode 政策搜尋進行中")
+                    }
                 }
-                Label { Layout.fillWidth: true; text: app.gpoStatus; elide: Text.ElideMiddle; color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71" }
+                Label { Layout.fillWidth: true; text: app.gpoStatus; wrapMode: Text.WrapAnywhere; color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71" }
             }
         }
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 12
+            columns: root.compact ? 1 : 2
+            columnSpacing: 12
+            rowSpacing: 12
 
             Pane {
-                Layout.preferredWidth: Math.max(340, parent.width * 0.39)
+                Layout.fillWidth: true
+                Layout.preferredWidth: root.compact ? -1 : 360
                 Layout.fillHeight: true
+                Layout.minimumWidth: 0
+                Layout.minimumHeight: 120
                 padding: 8
                 background: Rectangle { radius: 18; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.theme === Material.Dark ? "#49454F" : "#E7E0EC" }
                 ListView {
@@ -127,9 +150,12 @@ Item {
             Pane {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumWidth: 0
+                Layout.minimumHeight: 120
                 padding: 0
                 background: Rectangle { radius: 18; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.theme === Material.Dark ? "#49454F" : "#E7E0EC" }
                 ScrollView {
+                    id: policyDetailScroll
                     anchors.fill: parent
                     clip: true
                     ColumnLayout {
@@ -146,17 +172,22 @@ Item {
                             font.pixelSize: 18
                         }
                         Label { visible: !!root.selectedPolicy; Layout.fillWidth: true; text: root.selectedPolicy ? root.selectedPolicy.name : ""; font.pixelSize: 24; font.weight: Font.Bold; wrapMode: Text.Wrap }
-                        RowLayout {
+                        GridLayout {
                             visible: !!root.selectedPolicy
                             Layout.fillWidth: true
-                            Label { text: root.selectedPolicy ? root.selectedPolicy.policyClass : ""; color: Material.accent; font.weight: Font.DemiBold }
+                            columns: policyDetailScroll.availableWidth >= 560 ? 4 : 1
+                            columnSpacing: 8
+                            rowSpacing: 6
+                            Label { Layout.fillWidth: true; text: root.selectedPolicy ? root.selectedPolicy.policyClass : ""; color: Material.accent; font.weight: Font.DemiBold; wrapMode: Text.Wrap }
                             ComboBox {
                                 id: policyScope
                                 visible: root.selectedPolicy && root.selectedPolicy.policyClass === "Both"
+                                Layout.fillWidth: policyDetailScroll.availableWidth < 560
                                 model: [root.tr("Computer", "電腦"), root.tr("User", "使用者")]
+                                Accessible.name: root.tr("Policy scope", "政策範圍")
                             }
-                            Label { text: "·" }
-                            Label { Layout.fillWidth: true; text: root.selectedPolicy ? root.selectedPolicy.supportedOn : ""; elide: Text.ElideRight }
+                            Label { visible: policyDetailScroll.availableWidth >= 560; text: "·" }
+                            Label { Layout.fillWidth: true; text: root.selectedPolicy ? root.selectedPolicy.supportedOn : ""; wrapMode: Text.Wrap }
                         }
                         Label { visible: !!root.selectedPolicy; Layout.fillWidth: true; text: root.selectedPolicy ? root.selectedPolicy.category : ""; color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"; wrapMode: Text.Wrap }
                         Label { visible: !!root.selectedPolicy; Layout.fillWidth: true; text: root.selectedPolicy ? root.selectedPolicy.documentation : ""; wrapMode: Text.Wrap; textFormat: Text.PlainText }
@@ -187,14 +218,16 @@ Item {
                             }
                         }
 
-                        RowLayout {
+                        GridLayout {
                             visible: !!root.selectedPolicy
                             Layout.fillWidth: true
-                            Button { text: "✓  " + root.tr("Enable", "啟用"); highlighted: true; onClicked: app.applyGpoPolicy(root.selectedPolicy.id, root.policyState("Enabled"), root.elementValues) }
-                            Button { text: "×  " + root.tr("Disable", "停用"); onClicked: app.applyGpoPolicy(root.selectedPolicy.id, root.policyState("Disabled"), root.elementValues) }
-                            Button { text: "↺  " + root.tr("Not configured", "未設定"); flat: true; onClicked: app.applyGpoPolicy(root.selectedPolicy.id, root.policyState("NotConfigured"), {}) }
-                            Item { Layout.fillWidth: true }
-                            Label { text: root.tr("Every choice is committed", "每個選擇都會 commit"); font.pixelSize: 10; color: "#386A20" }
+                            columns: policyDetailScroll.availableWidth >= 650 ? 4 : 1
+                            columnSpacing: 8
+                            rowSpacing: 6
+                            Button { Layout.fillWidth: policyDetailScroll.availableWidth < 650; text: "✓  " + root.tr("Enable", "啟用"); highlighted: true; onClicked: app.applyGpoPolicy(root.selectedPolicy.id, root.policyState("Enabled"), root.elementValues) }
+                            Button { Layout.fillWidth: policyDetailScroll.availableWidth < 650; text: "×  " + root.tr("Disable", "停用"); onClicked: app.applyGpoPolicy(root.selectedPolicy.id, root.policyState("Disabled"), root.elementValues) }
+                            Button { Layout.fillWidth: policyDetailScroll.availableWidth < 650; text: "↺  " + root.tr("Not configured", "未設定"); flat: true; onClicked: app.applyGpoPolicy(root.selectedPolicy.id, root.policyState("NotConfigured"), {}) }
+                            Label { Layout.fillWidth: true; text: root.tr("Every choice is committed", "每個選擇都會 commit"); font.pixelSize: 10; color: root.successText; wrapMode: Text.Wrap }
                         }
                         Item { Layout.preferredHeight: 8 }
                     }
@@ -208,6 +241,7 @@ Item {
         Switch {
             required property var elementModel
             text: checked ? root.tr("On", "開") : root.tr("Off", "關")
+            Accessible.name: elementModel.label
             checked: elementModel.defaultChecked
             onToggled: root.elementValues[elementModel.id] = checked
         }
@@ -218,6 +252,7 @@ Item {
             required property var elementModel
             model: elementModel.options
             textRole: "label"
+            Accessible.name: elementModel.label
             Component.onCompleted: {
                 for (var i = 0; i < model.length; ++i) {
                     if (model[i].value === elementModel.defaultValue) {
@@ -238,6 +273,7 @@ Item {
             value: Number(elementModel.defaultValue || 0)
             stepSize: Math.max(1, Number(elementModel.spinStep))
             editable: true
+            Accessible.name: elementModel.label
             onValueModified: root.elementValues[elementModel.id] = value
         }
     }
@@ -248,6 +284,7 @@ Item {
             text: elementModel.defaultValue
             maximumLength: 20
             inputMethodHints: Qt.ImhFormattedNumbersOnly
+            Accessible.name: elementModel.label
             placeholderText: root.tr("Integer from %1 to %2", "整數範圍 %1 至 %2")
                                  .arg(elementModel.minimum).arg(elementModel.maximum)
             validator: RegularExpressionValidator { regularExpression: /^-?[0-9]+$/ }
@@ -261,6 +298,7 @@ Item {
             text: elementModel.defaultValue
             maximumLength: elementModel.maximumLength >= 0 ? elementModel.maximumLength : 32767
             placeholderText: root.tr("Value", "值")
+            Accessible.name: elementModel.label
             onTextEdited: root.elementValues[elementModel.id] = text
         }
     }
@@ -271,6 +309,7 @@ Item {
             text: elementModel.defaultValue
             placeholderText: elementModel.control === "ListEditor" ? root.tr("One entry per line", "每行一項") : root.tr("Text", "文字")
             wrapMode: TextEdit.Wrap
+            Accessible.name: elementModel.label
             onTextChanged: root.elementValues[elementModel.id] = text
         }
     }
@@ -307,7 +346,7 @@ Item {
                 Item { Layout.fillWidth: true }
                 Button { text: root.tr("Cancel", "取消"); flat: true; onClicked: regexWizard.close() }
                 Button {
-                    text: root.tr("Use & search", "使用同搜尋"); highlighted: true
+                    text: root.tr("Use && search", "使用同搜尋"); highlighted: true
                     onClicked: { policySearch.text = regexPreview.text; regexMode.checked = true; regexWizard.close(); app.searchGpo(policySearch.text, true) }
                 }
             }

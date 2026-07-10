@@ -8,19 +8,27 @@ Item {
     id: root
     required property var app
     required property var tr
+    readonly property bool compact: width < 760
+    readonly property color errorText: Material.theme === Material.Dark ? "#FFB4AB" : "#BA1A1A"
+    readonly property color successText: Material.theme === Material.Dark ? "#A8D5A2" : "#386A20"
 
     ColumnLayout {
         anchors.fill: parent
         spacing: 12
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
+            columns: root.width >= 700 ? 2 : 1
+            columnSpacing: 10
+            rowSpacing: 8
             ColumnLayout {
                 Layout.fillWidth: true
                 Label {
+                    Layout.fillWidth: true
                     text: root.tr("WinForge Bridge", "WinForge 橋接工房")
                     font.pixelSize: 30
                     font.weight: Font.Bold
+                    wrapMode: Text.Wrap
                 }
                 Label {
                     Layout.fillWidth: true
@@ -32,6 +40,7 @@ Item {
                 }
             }
             Pane {
+                Layout.alignment: root.width >= 700 ? Qt.AlignRight | Qt.AlignVCenter : Qt.AlignLeft
                 padding: 12
                 background: Rectangle {
                     radius: 18
@@ -67,8 +76,11 @@ Item {
                     text: "✦  " + root.tr("Describe the result", "講低你想要嘅結果")
                     font.weight: Font.DemiBold
                 }
-                RowLayout {
+                GridLayout {
                     Layout.fillWidth: true
+                    columns: root.width >= 740 ? 3 : 1
+                    columnSpacing: 8
+                    rowSpacing: 8
                     TextField {
                         id: intentField
                         Layout.fillWidth: true
@@ -79,12 +91,14 @@ Item {
                                             root.app.proposeWinForgeBridgeActions(text)
                     }
                     Button {
+                        Layout.fillWidth: root.width < 740
                         text: "✦  " + root.tr("Propose actions", "提議動作")
                         highlighted: true
                         enabled: intentField.text.trim().length > 0
                         onClicked: root.app.proposeWinForgeBridgeActions(intentField.text)
                     }
                     Button {
+                        Layout.fillWidth: root.width < 740
                         text: "+  " + root.tr("Add typed action", "加 typed 動作")
                         onClicked: actionComposer.open()
                     }
@@ -101,14 +115,18 @@ Item {
             }
         }
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 12
+            columns: root.compact ? 1 : 2
+            columnSpacing: 12
+            rowSpacing: 12
 
             Pane {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumWidth: 0
+                Layout.minimumHeight: 110
                 padding: 8
                 background: Rectangle {
                     radius: 18
@@ -117,18 +135,23 @@ Item {
                 }
                 ColumnLayout {
                     anchors.fill: parent
-                    RowLayout {
+                    GridLayout {
                         Layout.fillWidth: true
+                        columns: actionList.width >= 480 ? 2 : 1
+                        columnSpacing: 8
+                        rowSpacing: 4
                         Label {
                             Layout.fillWidth: true
                             text: root.tr("Recipe actions", "Recipe 動作")
                             font.pixelSize: 19
                             font.weight: Font.DemiBold
+                            wrapMode: Text.Wrap
                         }
                         Label {
                             text: root.tr("Each edit is undoable", "每次修改都可 undo")
                             font.pixelSize: 10
-                            color: "#386A20"
+                            color: root.successText
+                            wrapMode: Text.Wrap
                         }
                     }
                     ListView {
@@ -147,13 +170,14 @@ Item {
                                 radius: 15
                                 color: Material.theme === Material.Dark ? "#2B292F" : "#F7F2FA"
                                 border.color: actionCard.modelData.supported === false
-                                              ? "#BA1A1A"
+                                              ? root.errorText
                                               : actionCard.modelData.enabled ? Material.accent : "transparent"
                             }
                             RowLayout {
                                 anchors.fill: parent
                                 Switch {
                                     checked: actionCard.modelData.enabled
+                                    Accessible.name: root.tr("Enable %1", "啟用 %1").arg(actionCard.modelData.title || actionCard.modelData.id)
                                     onClicked: root.app.setWinForgeBridgeActionEnabled(
                                                    actionCard.modelData.id, checked)
                                 }
@@ -173,17 +197,24 @@ Item {
                                 }
                                 ColumnLayout {
                                     Layout.fillWidth: true
-                                    RowLayout {
+                                    GridLayout {
                                         Layout.fillWidth: true
+                                        columns: actionList.width >= 540 ? 2 : 1
+                                        columnSpacing: 8
+                                        rowSpacing: 2
                                         Label {
+                                            Layout.fillWidth: true
                                             text: actionCard.modelData.title || actionCard.modelData.id
                                             font.weight: Font.DemiBold
+                                            wrapMode: Text.Wrap
                                         }
                                         Label {
+                                            Layout.fillWidth: actionList.width < 540
                                             text: (actionCard.modelData.kind || "") + " · "
                                                   + (actionCard.modelData.phase || "")
                                             color: Material.accent
                                             font.pixelSize: 10
+                                            wrapMode: Text.Wrap
                                         }
                                     }
                                     Label {
@@ -195,10 +226,10 @@ Item {
                                     Label {
                                         visible: actionCard.modelData.supported === false
                                         Layout.fillWidth: true
-                                        text: actionCard.modelData.supportReason
+                                        text: "⚠ " + root.tr("Unsupported", "不支援") + ": " + (actionCard.modelData.supportReason
                                               || root.tr("Selected runtime has not declared this capability.",
-                                                         "揀咗嘅 runtime 未有聲明呢項 capability。")
-                                        color: "#BA1A1A"
+                                                         "揀咗嘅 runtime 未有聲明呢項 capability。"))
+                                        color: root.errorText
                                         font.pixelSize: 10
                                         wrapMode: Text.Wrap
                                     }
@@ -206,6 +237,8 @@ Item {
                                 ToolButton {
                                     text: "×"
                                     Accessible.name: root.tr("Remove action", "移除動作")
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: Accessible.name
                                     onClicked: root.app.removeWinForgeBridgeAction(actionCard.modelData.id)
                                 }
                             }
@@ -215,25 +248,44 @@ Item {
             }
 
             Pane {
-                Layout.preferredWidth: Math.max(350, parent.width * 0.36)
+                Layout.fillWidth: root.compact
+                Layout.preferredWidth: root.compact ? -1 : 360
                 Layout.fillHeight: true
+                Layout.minimumWidth: 0
+                Layout.minimumHeight: 110
                 padding: 14
                 background: Rectangle {
                     radius: 18
                     color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"
                     border.color: Material.theme === Material.Dark ? "#49454F" : "#E7E0EC"
                 }
-                ColumnLayout {
+                ScrollView {
+                    id: stagingScroll
                     anchors.fill: parent
+                    clip: true
+                    ColumnLayout {
+                    width: stagingScroll.availableWidth
                     Label {
+                        Layout.fillWidth: true
                         text: "▣  " + root.tr("Bundle and stage", "Bundle 同放入 ISO")
                         font.pixelSize: 19
                         font.weight: Font.DemiBold
+                        wrapMode: Text.Wrap
                     }
                     CheckBox {
+                        id: includeRuntimeCheck
+                        Layout.fillWidth: true
                         text: root.tr("Include full self-contained WinForge runtime",
                                       "包括完整自包含 WinForge runtime")
                         checked: root.app.winForgeBridgeIncludeRuntime
+                        contentItem: Label {
+                            leftPadding: includeRuntimeCheck.indicator.width + includeRuntimeCheck.spacing
+                            text: includeRuntimeCheck.text
+                            font: includeRuntimeCheck.font
+                            color: includeRuntimeCheck.palette.windowText
+                            wrapMode: Text.Wrap
+                            verticalAlignment: Text.AlignVCenter
+                        }
                         onToggled: root.app.setWinForgeBridgeIncludeRuntime(checked)
                     }
                     TextField {
@@ -244,9 +296,13 @@ Item {
                                                  "已 publish 嘅 WinForge runtime 資料夾")
                         onEditingFinished: root.app.setWinForgeBridgeRuntimePath(text)
                     }
-                    RowLayout {
+                    GridLayout {
                         Layout.fillWidth: true
+                        columns: stagingScroll.availableWidth >= 460 ? 2 : 1
+                        columnSpacing: 8
+                        rowSpacing: 6
                         Button {
+                            Layout.fillWidth: stagingScroll.availableWidth < 460
                             text: "⌕  " + root.tr("Detect contract", "偵測 contract")
                             onClicked: {
                                 root.app.setWinForgeBridgeRuntimePath(runtimePath.text)
@@ -272,8 +328,11 @@ Item {
                         Layout.fillWidth: true
                         placeholderText: "D:\\profiles\\workstation.winforge.json"
                     }
-                    RowLayout {
+                    GridLayout {
                         Layout.fillWidth: true
+                        columns: stagingScroll.availableWidth >= 360 ? 2 : 1
+                        columnSpacing: 8
+                        rowSpacing: 6
                         Button {
                             Layout.fillWidth: true
                             text: "↧  " + root.tr("Import", "匯入")
@@ -322,7 +381,7 @@ Item {
                             font.pixelSize: 11
                         }
                     }
-                    Item { Layout.fillHeight: true }
+                    Item { Layout.preferredHeight: 4 }
                     Label {
                         Layout.fillWidth: true
                         text: root.tr(
@@ -332,6 +391,8 @@ Item {
                         font.pixelSize: 10
                         color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71"
                     }
+                    Item { Layout.preferredHeight: 4 }
+                }
                 }
             }
         }
@@ -340,7 +401,7 @@ Item {
     Popup {
         id: actionComposer
         anchors.centerIn: Overlay.overlay
-        width: Math.min(640, root.width - 50)
+        width: Math.min(640, Math.max(280, root.width - 50))
         modal: false
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
@@ -353,17 +414,23 @@ Item {
         ColumnLayout {
             anchors.fill: parent
             Label {
+                Layout.fillWidth: true
                 text: "+  " + root.tr("Add an approved typed action", "加入批准嘅 typed 動作")
                 font.pixelSize: 22
                 font.weight: Font.Bold
+                wrapMode: Text.Wrap
             }
-            RowLayout {
+            GridLayout {
                 Layout.fillWidth: true
+                columns: actionComposer.availableWidth >= 500 ? 2 : 1
+                columnSpacing: 8
+                rowSpacing: 8
                 ComboBox {
                     id: actionKind
                     Layout.fillWidth: true
                     textRole: "text"
                     valueRole: "value"
+                    Accessible.name: root.tr("Action type", "動作類型")
                     model: [
                         { text: root.tr("WinForge page", "WinForge 頁面"), value: "page" },
                         { text: root.tr("WinForge module", "WinForge module"), value: "module" },
@@ -373,8 +440,10 @@ Item {
                 }
                 ComboBox {
                     id: actionPhase
+                    Layout.fillWidth: true
                     textRole: "text"
                     valueRole: "value"
+                    Accessible.name: root.tr("Action phase", "動作階段")
                     model: [
                         { text: root.tr("User phase", "用戶階段"), value: "user" },
                         { text: root.tr("Machine phase", "系統階段"), value: "machine" }

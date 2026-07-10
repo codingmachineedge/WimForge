@@ -26,6 +26,7 @@ Item {
             Layout.preferredHeight: 58
             ScrollBar.vertical.policy: ScrollBar.AlwaysOff
             RowLayout {
+                id: sectionRow
                 spacing: 8
                 Repeater {
                     model: [
@@ -96,7 +97,7 @@ Item {
                 subtitle: root.tr("Apply an existing unattend.xml or generate setup-pass settings for OOBE, locale, accounts, edition, OEM and privacy.",
                                   "套用現成 unattend.xml，或者產生 OOBE、語言、帳戶、版本、OEM 同私隱設定。")
                 placeholder: "D:\\profiles\\autounattend.xml"
-                items: app.unattendFiles
+                items: app.unattendedFiles
                 addAction: value => app.addListItem("unattendFiles", value)
                 removeAction: index => app.removeListItem("unattendFiles", index)
                 extraActionText: root.tr("Open generator", "開答案檔產生器")
@@ -128,19 +129,35 @@ Item {
         background: Rectangle { radius: 20; color: Material.theme === Material.Dark ? "#211F26" : "#FFFBFE"; border.color: Material.theme === Material.Dark ? "#49454F" : "#E7E0EC" }
         ColumnLayout {
             anchors.fill: parent
-            Label { text: configList.title; font.pixelSize: 20; font.weight: Font.Bold }
+            Label { Layout.fillWidth: true; text: configList.title; font.pixelSize: 20; font.weight: Font.Bold; wrapMode: Text.Wrap }
             Label { Layout.fillWidth: true; text: configList.subtitle; wrapMode: Text.Wrap; color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71" }
-            RowLayout {
+            GridLayout {
                 Layout.fillWidth: true
-                TextField { id: entry; Layout.fillWidth: true; placeholderText: configList.placeholder; onAccepted: addButton.clicked() }
+                columns: configList.availableWidth >= 760
+                         ? (configList.extraActionText.length > 0 ? 3 : 2)
+                         : 1
+                columnSpacing: 8
+                rowSpacing: 8
+                TextField {
+                    id: entry
+                    Layout.fillWidth: true
+                    placeholderText: configList.placeholder
+                    onAccepted: addButton.clicked()
+                }
                 Button {
                     id: addButton
+                    Layout.fillWidth: configList.availableWidth < 760
                     text: root.tr("＋ Add", "＋ 加入")
                     highlighted: true
                     enabled: entry.text.trim().length > 0
                     onClicked: { configList.addAction(entry.text.trim()); entry.clear() }
                 }
-                Button { visible: configList.extraActionText.length > 0; text: configList.extraActionText; onClicked: configList.extraAction() }
+                Button {
+                    visible: configList.extraActionText.length > 0
+                    Layout.fillWidth: configList.availableWidth < 760
+                    text: configList.extraActionText
+                    onClicked: configList.extraAction()
+                }
             }
             ListView {
                 id: itemList
@@ -153,8 +170,22 @@ Item {
                     required property string modelData
                     required property int index
                     width: itemList.width
-                    text: "▹  " + modelData
-                    ToolButton { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: "×"; onClicked: configList.removeAction(index) }
+                    Accessible.name: modelData
+                    contentItem: RowLayout {
+                        spacing: 8
+                        Label {
+                            Layout.fillWidth: true
+                            text: "▹  " + modelData
+                            wrapMode: Text.WrapAnywhere
+                        }
+                        ToolButton {
+                            text: "×"
+                            Accessible.name: root.tr("Remove %1", "移除 %1").arg(modelData)
+                            ToolTip.visible: hovered
+                            ToolTip.text: Accessible.name
+                            onClicked: configList.removeAction(index)
+                        }
+                    }
                 }
                 Label { anchors.centerIn: parent; visible: itemList.count === 0; text: root.tr("Nothing queued yet", "未有嘢排隊"); color: Material.theme === Material.Dark ? "#CAC4D0" : "#625B71" }
             }
@@ -166,7 +197,7 @@ Item {
         required property var tr
         GridLayout {
             width: parent.width
-            columns: width > 780 ? 2 : 1
+            columns: width > 960 ? 2 : 1
             rowSpacing: 8; columnSpacing: 12
             Repeater {
                 model: [
@@ -180,9 +211,18 @@ Item {
                     ["Printing-PrintToPDFServices-Features", "Microsoft Print to PDF", "Microsoft 列印到 PDF"]
                 ]
                 delegate: CheckDelegate {
+                    id: featureToggle
                     required property var modelData
                     Layout.fillWidth: true
                     text: "◆  " + root.tr(modelData[1], modelData[2])
+                    contentItem: Label {
+                        leftPadding: featureToggle.indicator.width + featureToggle.spacing
+                        text: featureToggle.text
+                        font: featureToggle.font
+                        color: featureToggle.palette.windowText
+                        wrapMode: Text.Wrap
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     checked: app.features.indexOf(modelData[0]) >= 0
                     onToggled: app.setFeature(modelData[0], checked)
                 }
@@ -208,9 +248,18 @@ Item {
                     ["disableRecall", "Disable Recall policy", "停用 Recall 政策"]
                 ]
                 delegate: SwitchDelegate {
+                    id: settingToggle
                     required property var modelData
                     Layout.fillWidth: true
                     text: "⚙  " + root.tr(modelData[1], modelData[2])
+                    contentItem: Label {
+                        leftPadding: settingToggle.indicator.width + settingToggle.spacing
+                        text: settingToggle.text
+                        font: settingToggle.font
+                        color: settingToggle.palette.windowText
+                        wrapMode: Text.Wrap
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     checked: app.settingEnabled(modelData[0])
                     onToggled: app.setSetting(modelData[0], checked)
                 }
