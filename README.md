@@ -127,7 +127,16 @@ The portable zip includes deployed Qt and MSVC runtime files. The installer is p
 
 ## Build from source
 
-Build prerequisites are Visual Studio 2022 Build Tools with Desktop development with C++, CMake 3.24+, Qt 6.8 for MSVC 2022 x64 (Core, Gui, Qml, Quick, Quick Controls 2), Git, and PowerShell. Ninja is needed by the release script.
+Build prerequisites are Visual Studio 2022 Build Tools with Desktop development with C++, an x64 Windows SDK including `rc.exe` and `mt.exe`, CMake 3.24+, Qt 6.8 for MSVC 2022 x64 (Core, Gui, Qml, Quick, Quick Controls 2, and Quick Dialogs 2), Git, and 64-bit Windows PowerShell 5.1+. Ninja and Inno Setup 6 are needed by the release script.
+
+On Windows 10/11 x64, the maintained bootstrap can inspect or repair that release toolchain, detect the current clean checkout or clone canonical WimForge when none is present, run the release tests, and verify both packaged artifacts:
+
+```powershell
+.\scripts\bootstrap-build.ps1 -Plan
+.\scripts\bootstrap-build.ps1
+```
+
+Start the real run from a normal, non-administrator PowerShell session. Per-user Ninja/aqt repair happens under that original identity; the script requests UAC only when a bounded machine package-repair child is needed and passes it the already validated, signed WinGet path. That child exits before Qt archives are installed into the user profile or any repository, build, test, or packaging work begins, including when UAC uses separate administrator credentials. Automatic installation requires Microsoft App Installer/WinGet, network access, vendor availability, and adequate disk space. It refuses dirty source because a commit-only `build-info.json` could not describe such an artifact, builds from a unique local clone pinned to the verified commit so ignored files and stale outputs cannot leak into the release, never resets or cleans source, retains a transcript, and prints SHA-256 for the final installer and portable zip. WinGet package IDs are exact but catalog versions can change over time, so the log and hashes provide traceability rather than identical toolchains across dates. See [Building and Releases](docs/wiki/Building-and-Releases.md) and review the script before elevation.
 
 Using the Visual Studio generator:
 

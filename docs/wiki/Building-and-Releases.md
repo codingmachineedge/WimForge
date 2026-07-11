@@ -7,7 +7,8 @@ WimForge builds on Windows x64 with C++20, Qt 6.8.3, CMake, and MSVC. The reposi
 - Windows x64
 - Visual Studio 2022 Build Tools with **Desktop development with C++**
 - CMake 3.24 or newer
-- Qt 6.8.3 for MSVC 2022 x64 with Core, Gui, Qml, Quick, and Quick Controls 2
+- an x64 Windows SDK
+- Qt 6.8.3 for MSVC 2022 x64 with Core, Gui, Qml, Quick, Quick Controls 2, and Quick Dialogs 2
 - Git
 - PowerShell
 - Ninja for the release script
@@ -65,6 +66,21 @@ Registered CTest executables cover:
 - CLI command, JSON-envelope, response-file, bundle, and history behavior.
 
 Tests inject or inspect external operations; they do not intentionally service a real Windows image or install packages on the developer machine.
+
+## Bootstrap a release build
+
+From a clean WimForge checkout, first inspect the no-change plan and then run the maintained bootstrap:
+
+```powershell
+.\scripts\bootstrap-build.ps1 -Plan
+.\scripts\bootstrap-build.ps1
+```
+
+When the script is downloaded outside a checkout, it searches the current/script ancestry first and otherwise plans a clone of `https://github.com/codingmachineedge/WimForge.git` to the explicit `-RepositoryPath` or the default user source directory. Start it from a normal, non-administrator 64-bit Windows PowerShell session. Per-user Ninja and aqt repair runs first under that original identity. The script requests UAC only when a bounded machine package-repair child is needed and passes that child an allowlisted set of exact WinGet package IDs plus the already validated, signed App Installer executable from protected Program Files. This remains valid when UAC uses separate administrator credentials: the child never installs user-scoped tools, executes a user-profile Qt tool, or invokes source-controlled build logic. After it exits, the parent keeps aqt's Qt archive-hash verification enabled while installing Qt under the normal token, then verifies the live CMake, Git, Ninja, MSVC, x64 Windows SDK tools/libraries, Qt MSVC/x64 components, and Inno Setup evidence. Normal website usage therefore downloads Qt, clones, configures, compiles, tests, and packages without an administrator token before delegating to the release entrypoint below.
+
+The bootstrap intentionally refuses a dirty checkout: the packaged `build-info.json` records a commit, so publishing bytes produced from uncommitted or untracked source would be unverifiable. It explicitly overrides Git settings that hide untracked files and rejects assume-unchanged or skip-worktree index flags. The release itself runs from a unique local clone pinned to that verified commit, which excludes ignored working-tree files and gives every run fresh build/output paths; tracked source and HEAD are checked again before artifacts are accepted. It never runs `git clean`, reset, checkout, stash, or force-update against the user's checkout. Build/output deletion is confined to a marker-owned `build-bootstrap` directory after reparse-point checks. Logs use unique names by default, an explicit existing log is appended rather than overwritten, and successful artifacts are checked for type/size and printed with SHA-256.
+
+Automation has external limits. Windows 10/11 x64, 64-bit PowerShell 5.1, UAC consent or administrator credentials, Microsoft App Installer/WinGet for the invoking user, internet access to GitHub/WinGet/Qt archives, vendor availability, and adequate disk space must be available. Enterprise proxy or installation policy, package-source outages, pending reboots, licensing decisions, and code signing cannot be bypassed responsibly; those conditions stop with a retained diagnostic log. Exact WinGet IDs still resolve catalog versions current at run time, so logs and artifact hashes provide traceability but cannot promise identical toolchain bytes across dates. The website convenience command follows mutable `main`, so replace `main` with a reviewed commit SHA when a reproducible bootstrap source is required.
 
 ## Local release build
 
