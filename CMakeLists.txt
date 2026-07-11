@@ -147,6 +147,7 @@ if(NOT WIMFORGE_CLI_ONLY)
             qml/components/WfPageHeader.qml
             qml/components/WfField.qml
             qml/components/WfIconButton.qml
+            qml/components/WfIcon.qml
             qml/components/ProjectStartPage.qml
             qml/components/MetricCard.qml
             qml/components/NotificationCenter.qml

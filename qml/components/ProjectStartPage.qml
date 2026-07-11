@@ -196,14 +196,13 @@ ScrollView {
                                     Layout.preferredWidth: 42
                                     Layout.preferredHeight: 42
                                     radius: DesignTokens.radiusControl
-                                    color: DesignTokens.navSurface(root.dark)
+                                    color: DesignTokens.primaryContainer(root.dark)
 
-                                    Image {
+                                    WfIcon {
                                         anchors.centerIn: parent
-                                        width: 22
-                                        height: 22
+                                        iconSize: 22
                                         source: startAction.modelData.icon
-                                        sourceSize: Qt.size(22, 22)
+                                        color: DesignTokens.onPrimaryContainer(root.dark)
                                         Accessible.ignored: true
                                     }
                                 }

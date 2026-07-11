@@ -404,14 +404,12 @@ ScrollView {
                     width: 28
                     height: 28
                     radius: DesignTokens.radiusControl
-                    color: root.dark ? root.toneContainer(metric.tone) : "#2A4F91"
-                    Image {
+                    color: root.toneContainer(metric.tone)
+                    WfIcon {
                         anchors.centerIn: parent
-                        width: 16
-                        height: 16
+                        iconSize: 16
                         source: metric.iconSource
-                        sourceSize.width: 16
-                        sourceSize.height: 16
+                        color: root.toneForeground(metric.tone)
                         opacity: 0.95
                     }
                 }

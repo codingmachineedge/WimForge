@@ -34,46 +34,47 @@ QtObject {
     readonly property int motionShort: 150
     readonly property int motionMedium: 200
 
-    function primary(dark) { return dark ? "#AFC6FF" : "#2F6FED" }
-    function onPrimary(dark) { return dark ? "#102554" : "#FFFFFF" }
-    function primaryContainer(dark) { return dark ? "#17376F" : "#E5ECFF" }
-    function onPrimaryContainer(dark) { return dark ? "#E4EBFF" : "#132B63" }
+    // Material 3 "copper" scheme from the WimForge Material 3 design canvas.
+    function primary(dark) { return dark ? "#FFB59E" : "#9A4527" }
+    function onPrimary(dark) { return dark ? "#571E0A" : "#FFFFFF" }
+    function primaryContainer(dark) { return dark ? "#753523" : "#FFDBD0" }
+    function onPrimaryContainer(dark) { return dark ? "#FFDBD0" : "#3B0900" }
 
-    function secondary(dark) { return dark ? "#79D6EC" : "#1A7184" }
-    function onSecondary(dark) { return dark ? "#083640" : "#FFFFFF" }
-    function secondaryContainer(dark) { return dark ? "#164E5B" : "#C3F0FA" }
-    function onSecondaryContainer(dark) { return dark ? "#D5F7FF" : "#123F49" }
+    function secondary(dark) { return dark ? "#E7BDAF" : "#77574C" }
+    function onSecondary(dark) { return dark ? "#442A20" : "#FFFFFF" }
+    function secondaryContainer(dark) { return dark ? "#5D4035" : "#F4DDD3" }
+    function onSecondaryContainer(dark) { return dark ? "#FFDBD0" : "#2C150C" }
 
-    function tertiary(dark) { return dark ? "#F5BD62" : "#8A5B00" }
-    function onTertiary(dark) { return dark ? "#432C00" : "#FFFFFF" }
-    function tertiaryContainer(dark) { return dark ? "#5D4000" : "#FFE3AE" }
-    function onTertiaryContainer(dark) { return dark ? "#FFEBC9" : "#4B3200" }
+    function tertiary(dark) { return dark ? "#DDC48C" : "#6C5D2F" }
+    function onTertiary(dark) { return dark ? "#3B2F05" : "#FFFFFF" }
+    function tertiaryContainer(dark) { return dark ? "#544619" : "#F6E1A6" }
+    function onTertiaryContainer(dark) { return dark ? "#FAE1A6" : "#221B00" }
 
-    function success(dark) { return dark ? "#8BD7A6" : "#27834A" }
-    function onSuccess(dark) { return dark ? "#0B3A20" : "#FFFFFF" }
-    function successContainer(dark) { return dark ? "#174F2B" : "#D6F3DE" }
-    function onSuccessContainer(dark) { return dark ? "#C5F3D2" : "#123D23" }
+    function success(dark) { return dark ? "#97D5A0" : "#2F6B43" }
+    function onSuccess(dark) { return dark ? "#05391B" : "#FFFFFF" }
+    function successContainer(dark) { return dark ? "#1E5230" : "#B4F1BF" }
+    function onSuccessContainer(dark) { return dark ? "#B4F1BF" : "#00210D" }
 
-    function error(dark) { return dark ? "#FFB4AB" : "#B3261E" }
+    function error(dark) { return dark ? "#FFB4AB" : "#BA1A1A" }
     function onError(dark) { return dark ? "#690005" : "#FFFFFF" }
-    function errorContainer(dark) { return dark ? "#8C1D18" : "#FFDAD6" }
+    function errorContainer(dark) { return dark ? "#93000A" : "#FFDAD6" }
     function onErrorContainer(dark) { return dark ? "#FFDAD6" : "#410002" }
 
-    function surface(dark) { return dark ? "#151519" : "#FCFCFF" }
-    function surfaceDim(dark) { return dark ? "#101014" : "#F1F2F7" }
-    function surfaceLowest(dark) { return dark ? "#0D0D11" : "#FFFFFF" }
-    function surfaceLow(dark) { return dark ? "#1B1B20" : "#F7F7FC" }
-    function surfaceContainer(dark) { return dark ? "#202127" : "#F1F2F7" }
-    function surfaceHigh(dark) { return dark ? "#292A31" : "#E9EAF1" }
-    function surfaceHighest(dark) { return dark ? "#31323B" : "#E2E3EA" }
-    function onSurface(dark) { return dark ? "#ECECF2" : "#27272B" }
-    function onSurfaceVariant(dark) { return dark ? "#C0C1CA" : "#61636B" }
-    function outline(dark) { return dark ? "#71737D" : "#A8AAB3" }
-    function outlineVariant(dark) { return dark ? "#444650" : "#D8DAE2" }
+    function surface(dark) { return dark ? "#17100C" : "#FFF8F6" }
+    function surfaceDim(dark) { return dark ? "#140D0A" : "#FFF0EA" }
+    function surfaceLowest(dark) { return dark ? "#211814" : "#FFFFFF" }
+    function surfaceLow(dark) { return dark ? "#231A16" : "#FAEEE8" }
+    function surfaceContainer(dark) { return dark ? "#291F1A" : "#F4E7E1" }
+    function surfaceHigh(dark) { return dark ? "#342925" : "#EFE1DA" }
+    function surfaceHighest(dark) { return dark ? "#3F332E" : "#E9DBD4" }
+    function onSurface(dark) { return dark ? "#F1DFD9" : "#231A16" }
+    function onSurfaceVariant(dark) { return dark ? "#D5C0B8" : "#53433E" }
+    function outline(dark) { return dark ? "#A08D85" : "#85736C" }
+    function outlineVariant(dark) { return dark ? "#4E413B" : "#D8C2BA" }
 
-    function navSurface(dark) { return dark ? "#0F1118" : "#171C2B" }
-    function navOn(dark) { return dark ? "#E5E7F0" : "#F3F5FF" }
-    function navHover(dark) { return dark ? "#20232E" : "#262C3E" }
+    function navSurface(dark) { return dark ? "#231A16" : "#FAEEE8" }
+    function navOn(dark) { return dark ? "#F1DFD9" : "#231A16" }
+    function navHover(dark) { return dark ? "#342925" : "#EFE1DA" }
 
     function surfaceForLevel(level, dark) {
         if (level === "low") return surfaceLow(dark)

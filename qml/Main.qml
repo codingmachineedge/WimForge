@@ -201,7 +201,7 @@ ApplicationWindow {
             padding: root.compactNavigation ? 8 : 10
             background: Rectangle {
                 color: DesignTokens.navSurface(root.darkTheme)
-                border.color: "#0D1019"
+                border.color: DesignTokens.outlineVariant(root.darkTheme)
                 border.width: 0
                 Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: parent.border.color }
             }
@@ -243,7 +243,7 @@ ApplicationWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 0
                         Label { width: parent.width; text: "WimForge"; color: DesignTokens.navOn(root.darkTheme); font.family: DesignTokens.fontDisplay; font.pixelSize: 14; font.weight: Font.DemiBold; elide: Text.ElideRight }
-                        Label { width: parent.width; text: root.tr2("IMAGE OPERATIONS", "映像作業台"); font.family: DesignTokens.fontBody; font.pixelSize: 10; font.letterSpacing: 0.8; color: "#AEB4C5"; elide: Text.ElideRight }
+                        Label { width: parent.width; text: root.tr2("IMAGE OPERATIONS", "映像作業台"); font.family: DesignTokens.fontBody; font.pixelSize: 10; font.letterSpacing: 0.8; color: DesignTokens.onSurfaceVariant(root.darkTheme); elide: Text.ElideRight }
                     }
                 }
 
@@ -293,10 +293,10 @@ ApplicationWindow {
                                 ToolTip.text: root.tr2(modelData.en, modelData.zh)
                                 background: Rectangle {
                                     radius: DesignTokens.radiusPill
-                                    color: navigationDelegate.selected ? "#2A4F91"
+                                    color: navigationDelegate.selected ? DesignTokens.secondaryContainer(root.darkTheme)
                                            : navigationDelegate.hovered ? DesignTokens.navHover(root.darkTheme) : "transparent"
                                     border.width: navigationDelegate.visualFocus ? 2 : 0
-                                    border.color: navigationDelegate.visualFocus ? "#F7F9FF" : "transparent"
+                                    border.color: navigationDelegate.visualFocus ? DesignTokens.primary(root.darkTheme) : "transparent"
                                 }
                                 contentItem: RowLayout {
                                     spacing: 12
@@ -304,14 +304,14 @@ ApplicationWindow {
                                         Layout.preferredWidth: 20
                                         Layout.preferredHeight: 20
                                         Layout.alignment: Qt.AlignVCenter
-                                        Image {
+                                        WfIcon {
                                             anchors.centerIn: parent
-                                            width: 18
-                                            height: 18
+                                            iconSize: 18
                                             source: navigationDelegate.modelData.icon
-                                            sourceSize.width: 18
-                                            sourceSize.height: 18
-                                            opacity: navigationDelegate.selected ? 1 : 0.72
+                                            color: navigationDelegate.selected
+                                                   ? DesignTokens.onSecondaryContainer(root.darkTheme)
+                                                   : DesignTokens.navOn(root.darkTheme)
+                                            opacity: navigationDelegate.selected ? 1 : 0.85
                                             Accessible.ignored: true
                                         }
                                     }
@@ -320,7 +320,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: root.tr2(navigationDelegate.modelData.en, navigationDelegate.modelData.zh)
                                         color: navigationDelegate.selected
-                                               ? "#F7F9FF"
+                                               ? DesignTokens.onSecondaryContainer(root.darkTheme)
                                                : DesignTokens.navOn(root.darkTheme)
                                         font.family: DesignTokens.fontBody
                                         font.pixelSize: 13
@@ -340,12 +340,12 @@ ApplicationWindow {
                     visible: app.projectLoaded && !root.compactNavigation
                     padding: 10
                     Accessible.name: root.tr2("Project status: ", "工程狀態：") + app.projectName + ". " + app.gitStatusText
-                    background: Rectangle { radius: DesignTokens.radiusCard; color: "#242A3B"; border.color: "#343C50" }
+                    background: Rectangle { radius: DesignTokens.radiusCard; color: DesignTokens.surfaceContainer(root.darkTheme); border.color: DesignTokens.outlineVariant(root.darkTheme) }
                     ColumnLayout {
                         id: projectSummary
                         width: parent.width
                         Label { text: app.projectName; color: DesignTokens.navOn(root.darkTheme); font.family: DesignTokens.fontBody; font.pixelSize: 12; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Label { text: app.gitStatusText; font.family: DesignTokens.fontBody; font.pixelSize: 11; color: "#8BD7A6"; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Label { text: app.gitStatusText; font.family: DesignTokens.fontBody; font.pixelSize: 11; color: DesignTokens.success(root.darkTheme); Layout.fillWidth: true; elide: Text.ElideRight }
                         ProgressBar { visible: app.busy; Layout.fillWidth: true; value: app.progress; indeterminate: app.progress <= 0; Accessible.name: root.tr2("Project job progress", "工程工作進度") }
                     }
                     HoverHandler { id: projectSummaryHover }
@@ -359,7 +359,7 @@ ApplicationWindow {
                     horizontalAlignment: Text.AlignHCenter
                     font.family: DesignTokens.fontBody
                     font.pixelSize: 10
-                    color: "#969CAA"
+                    color: DesignTokens.onSurfaceVariant(root.darkTheme)
                 }
             }
         }
