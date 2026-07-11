@@ -4,7 +4,7 @@ WimForge is a standalone, open-source Windows image customization studio built w
 
 It is an independent alternative to tools such as NTLite. WimForge is not affiliated with or endorsed by NTLite, and this early release does not claim one-for-one parity with a mature commercial product. Its distinguishing contract is that configuration changes remain inspectable, Git-backed, portable, and reversible.
 
-[Download the latest Windows x64 release](https://github.com/codingmachineedge/WimForge/releases/latest) · [Read the wiki](docs/wiki/Home.md) · [Report an issue](https://github.com/codingmachineedge/WimForge/issues)
+[Open the WimForge website](https://codingmachineedge.github.io/WimForge/) · [Read the Material documentation](https://codingmachineedge.github.io/WimForge/docs/) · [Search the full Wiki](https://codingmachineedge.github.io/WimForge/docs/wiki/) · [Browse Windows releases](https://github.com/codingmachineedge/WimForge/releases) · [Report an issue](https://github.com/codingmachineedge/WimForge/issues)
 
 ## A tour of the app
 
@@ -12,7 +12,11 @@ It is an independent alternative to tools such as NTLite. WimForge is not affili
 
 ![Package Studio](docs/screenshots/package-studio.png)
 
+![Virtual Machine Lab](docs/screenshots/virtual-machine-lab.png)
+
 ![History Time Machine](docs/screenshots/history.png)
+
+![Embedded terminal](docs/screenshots/embedded-terminal.png)
 
 The desktop interface is available in English, Hong Kong Cantonese, or a bilingual mode. Controls use icons and text, and consequential feedback stays inside the app as snackbars, a notification drawer, inline validation, recovery sheets, and non-modal Material popups. Servicing jobs keep running while those surfaces are open.
 
@@ -31,6 +35,10 @@ The desktop interface is available in English, Hong Kong Cantonese, or a bilingu
 - Automatic OpenCode setup — shortly after startup, WimForge live-verifies an existing `opencode --version`. If OpenCode is missing, setup runs asynchronously: Node.js LTS is installed through WinGet when npm is absent, followed by `npm install -g opencode-ai@latest`. WimForge reports success only after the executable is found and that live verification exits successfully with nonempty output; progress and failure stay non-modal.
 - Group Policy Studio — reads all ADMX definitions and installed ADML languages from the selected PolicyDefinitions store, retains schema constraints and registry actions, creates schema-driven Material editors, supports text/validated-regex search, exports bilingual documentation, and can ask OpenCode to propose a search.
 - Unattended Studio — portable JSON profiles, Windows answer-file XML import/export, the seven setup passes, Full Automation and AI Development templates, Random/Fixed/Prompt/Serial computer-name modes, Microsoft-published GVLK selection with licensing warnings, and OpenCode-assisted fills that are validated before commit.
+- Docker provisioning — a non-root Linux service and one-shot renderer that maps UUID/serial/MAC inventory to a validated fixed pre-OOBE computer name, an operator profile, and typed locale/time-zone/OOBE overrides; an included fail-closed WinPE client supplies the result to `setup.exe /unattend` before installation.
+- Virtual Machine Lab — discovers VMware Workstation/Player and VirtualBox, manages project-scoped and external machines, powers and snapshots them, attaches installation media, and records profile-aware validation milestones behind immutable previews and typed destructive confirmations.
+- Embedded terminal — hosts trusted PowerShell or Command Prompt shells through the documented Windows ConPTY API, keeps bounded output and task status inside WimForge, resizes with the UI, and contains the shell process tree without opening a separate console window.
+- Elevated desktop — the GUI manifest requests administrator rights at launch because image servicing and VM workflows require them; embedded-terminal commands inherit that elevation and remain explicitly operator-controlled.
 - WinForge Bridge — records approved typed actions, can include a complete self-contained WinForge runtime, and stages a verified, resumable OEM bundle into installation media. Runtime capabilities are contract-checked; WimForge never guesses unsupported WinForge command-line switches.
 - Complete CLI — project/config editing, plan/dry-run/apply, Git and contextual history, notification events, `.wimforge` bundles, unattended profiles, Package Studio, installed GPO catalogs, WinForge recipe validation/staging, deterministic JSON output, response files, and stable exit codes.
 
@@ -43,13 +51,13 @@ The desktop interface is available in English, Hong Kong Cantonese, or a bilingu
 5. Run only after validation succeeds. Keep the original source unchanged and test the output in a disposable virtual machine.
 6. Export a complete `.wimforge` save when the project and all local histories need to travel together.
 
-WimForge uses Windows' servicing tools rather than replacing them. DISM performs image servicing, and `oscdimg` is required when the selected plan creates bootable ISO media. Review the generated plan before elevation.
+WimForge uses Windows' servicing tools rather than replacing them. DISM performs image servicing, and `oscdimg` is required when the selected plan creates bootable ISO media. The desktop requests elevation when it launches; review the generated plan before execution.
 
 ## Safety and recovery model
 
 Offline projects clone by default. The selected ISO, media tree, WIM, ESD, or SWM set is read for verification and preparation while image writes target project-owned working paths. Input and staged-file hashes form gates in the operation graph. Final image, split-image, workspace, and ISO publication uses partial and backup paths so an interrupted copy is not presented as a completed output.
 
-Commands are stored as an executable plus an argument array. Package and WinForge profiles reject shell wrappers, embedded command strings, traversal, unsafe script hosts, and missing trust data where it is required. Elevated servicing is explicit; the per-user installer itself requests no administrator rights.
+Commands are stored as an executable plus an argument array. Package and WinForge profiles reject shell wrappers, embedded command strings, traversal, unsafe script hosts, and missing trust data where it is required. The per-user installer itself requests no administrator rights, while the installed desktop explicitly requests elevation at launch.
 
 The recovery journal detects interrupted work and preserves operation/dependency state for review. WimForge deliberately rebuilds the plan instead of blindly skipping an external step whose completion cannot be proven. Its elevated safe-unmount action runs DISM `/Unmount-Image /Discard` against the mount path captured by the interrupted journal—not a subsequently edited project path. A start or DISM failure leaves that journal untouched; success atomically closes it as recovered/discarded. Configuration undo remains separate and does not claim to reverse external side effects. Keep pristine source media, test backups, and a disposable VM.
 
@@ -83,6 +91,8 @@ Group Policy Studio reads a real installed or copied ADMX/ADML store instead of 
 Unattended Studio separates editable WimForge JSON from exported Windows answer-file XML. Its validation catches WimForge schema errors, but only Windows System Image Manager can validate a file against the exact target image/catalog. Prompt and serial computer names are implemented as explicit first-logon behavior; invalid NTLite-style literals such as `[Prompt]` are never written as Microsoft `ComputerName` values.
 
 See [Group Policy Studio](docs/wiki/Group-Policy-Studio.md) and [Unattended Studio](docs/wiki/Unattended-Studio.md).
+
+For central per-device assignment, [Docker Provisioning](docs/docker-provisioning.md) documents the container, inventory/API, token/TLS boundary, one-shot rendering, and WinPE/PXE handoff. A remote service alone is not an answer-file discovery path: the included bootstrap downloads the rendered file before launching Windows Setup. The built-in baseline does not choose a disk, edition, or account, so a genuinely no-touch deployment still needs an exact-image operator profile plus Windows SIM and clean-VM validation.
 
 ## WinForge family integration
 
@@ -123,11 +133,11 @@ To run a release:
 - WinGet plus network access if automatic Node/OpenCode or online package installation is wanted
 - Windows ADK Deployment Tools (`oscdimg`) when creating ISO output
 
-The portable zip includes deployed Qt and MSVC runtime files. The installer is per-user and does not permanently elevate WimForge.
+The portable zip includes deployed Qt and MSVC runtime files. Installation remains per-user; launching either installed or portable `WimForge.exe` invokes the normal Windows UAC consent flow because the application manifest requires administrator rights.
 
 ## Build from source
 
-Build prerequisites are Visual Studio 2022 Build Tools with Desktop development with C++, an x64 Windows SDK including `rc.exe` and `mt.exe`, CMake 3.24+, Qt 6.8 for MSVC 2022 x64 (Core, Gui, Qml, Quick, Quick Controls 2, and Quick Dialogs 2), Git, and 64-bit Windows PowerShell 5.1+. Ninja and Inno Setup 6 are needed by the release script.
+Build prerequisites are Visual Studio 2022 Build Tools with Desktop development with C++, an x64 Windows SDK including `rc.exe` and `mt.exe`, CMake 3.24+, Qt 6.8 for MSVC 2022 x64 (Core, Gui, Qml, Quick, Quick Controls 2, and Quick Dialogs 2), Python 3.10+ for the provisioning tests, Git, and 64-bit Windows PowerShell 5.1+. Ninja and Inno Setup 6 are needed by the release script.
 
 On Windows 10/11 x64, the maintained bootstrap can inspect or repair that release toolchain, detect the current clean checkout or clone canonical WimForge when none is present, run the release tests, and verify both packaged artifacts:
 
@@ -208,18 +218,31 @@ Read the expanded [NTLite Feature Comparison](docs/wiki/NTLite-Feature-Compariso
 
 ## Documentation map
 
+- [Material documentation site](https://codingmachineedge.github.io/WimForge/)
+- [Search the full Wiki](https://codingmachineedge.github.io/WimForge/wiki-search/)
+- [Application Tour](docs/wiki/Application-Tour.md)
 - [Getting Started](docs/wiki/Getting-Started.md)
+- [Projects and Sources](docs/wiki/Projects-and-Sources.md)
+- [Customize](docs/wiki/Customize.md)
 - [Image Servicing](docs/wiki/Image-Servicing.md)
 - [Package Studio](docs/wiki/Package-Studio.md)
 - [Group Policy Studio](docs/wiki/Group-Policy-Studio.md)
 - [Unattended Studio](docs/wiki/Unattended-Studio.md)
+- [Docker Provisioning](docs/docker-provisioning.md)
+- [Virtual Machine Lab](docs/wiki/Virtual-Machine-Lab.md)
+- [Embedded Terminal](docs/wiki/Embedded-Terminal.md)
+- [Review and Run](docs/wiki/Review-and-Run.md)
 - [History Time Machine](docs/wiki/History-Time-Machine.md)
 - [Notification Center](docs/wiki/Notification-Center.md)
 - [Project Bundles](docs/wiki/Project-Bundles.md)
 - [CLI](docs/wiki/CLI.md)
 - [WinForge Bridge](docs/wiki/WinForge-Bridge.md)
+- [Settings](docs/wiki/Settings.md)
 - [Safety and Recovery](docs/wiki/Safety-and-Recovery.md)
+- [Troubleshooting](docs/wiki/Troubleshooting.md)
+- [Architecture and Data Layout](docs/wiki/Architecture-and-Data-Layout.md)
 - [Building and Releases](docs/wiki/Building-and-Releases.md)
+- [Contributing](docs/wiki/Contributing.md)
 - [NTLite Feature Comparison](docs/wiki/NTLite-Feature-Comparison.md)
 
 ## Primary references

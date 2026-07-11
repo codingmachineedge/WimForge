@@ -1,0 +1,42 @@
+name: wimforge
+
+services:
+  provisioning:
+    image: ghcr.io/codingmachineedge/wimforge-provisioning:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WIMFORGE_PORT:-8080}:8080"
+    environment:
+      WIMFORGE_CONFIG_FILE: /config/${WIMFORGE_CONFIG_NAME:-config.example.json}
+      WIMFORGE_PROFILE_DIR: /profiles
+      WIMFORGE_LISTEN: 0.0.0.0
+      WIMFORGE_PORT: 8080
+      # This opt-in is safe only while the published host address below remains
+      # loopback. tests/compose_contract.py enforces that coupling in CI.
+      WIMFORGE_ALLOW_UNAUTHENTICATED: loopback-only
+      WIMFORGE_MAX_HTTP_WORKERS: ${WIMFORGE_MAX_HTTP_WORKERS:-16}
+      WIMFORGE_MAX_CONCURRENT_RENDERS: ${WIMFORGE_MAX_CONCURRENT_RENDERS:-4}
+      WIMFORGE_RENDER_TIMEOUT_SECONDS: ${WIMFORGE_RENDER_TIMEOUT_SECONDS:-20}
+    user: "65532:65532"
+    volumes:
+      - ${WIMFORGE_CONFIG_DIR:-./deploy/provisioning}:/config:ro
+      - ${WIMFORGE_PROFILE_PATH:-./deploy/provisioning/profiles}:/profiles:ro
+    read_only: true
+    mem_limit: 512m
+    pids_limit: 128
+    cpus: 2.0
+    stop_grace_period: 15s
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"

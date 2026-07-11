@@ -121,6 +121,10 @@ wimforge_add_core_test(job_engine_tests
         ${PROJECT_SOURCE_DIR}/src/core/ServicingPlan.cpp
 )
 
+set_tests_properties(package_studio_tests servicing_plan_tests PROPERTIES
+    LABELS "windows-powershell"
+)
+
 wimforge_add_core_test(winforge_bridge_tests
     SOURCES winforge_bridge_tests.cpp
     CORE_SOURCES ${PROJECT_SOURCE_DIR}/src/core/WinForgeBridge.cpp
@@ -181,3 +185,34 @@ wimforge_add_core_test(cli_runner_tests
         ${PROJECT_SOURCE_DIR}/src/core/VmValidationStore.cpp
         ${PROJECT_SOURCE_DIR}/src/core/WinForgeBridge.cpp
 )
+
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(
+    NAME provisioning_server_tests
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/provisioning_server_tests.py
+)
+set_tests_properties(provisioning_server_tests PROPERTIES
+    ENVIRONMENT "WIMFORGE_TEST_CLI=$<TARGET_FILE:WimForgeCli>"
+    ENVIRONMENT_MODIFICATION
+        "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    TIMEOUT 120
+)
+
+if(WIN32)
+    find_program(WIMFORGE_POWERSHELL_EXECUTABLE
+        NAMES powershell.exe powershell
+        REQUIRED)
+    add_test(
+        NAME winpe_provisioning_contract_tests
+        COMMAND ${WIMFORGE_POWERSHELL_EXECUTABLE}
+            -NoLogo
+            -NoProfile
+            -ExecutionPolicy Bypass
+            -File ${CMAKE_CURRENT_SOURCE_DIR}/winpe_provisioning_contract_tests.ps1
+            -ScriptPath ${PROJECT_SOURCE_DIR}/deploy/winpe/Invoke-WimForgeProvisioning.ps1
+    )
+    set_tests_properties(winpe_provisioning_contract_tests PROPERTIES
+        LABELS "windows-powershell"
+        TIMEOUT 30
+    )
+endif()

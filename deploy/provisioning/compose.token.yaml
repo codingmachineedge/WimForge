@@ -1,0 +1,11 @@
+services:
+  provisioning:
+    environment:
+      WIMFORGE_ALLOW_UNAUTHENTICATED: ""
+      WIMFORGE_API_TOKEN_FILE: /run/secrets/wimforge_api_token
+    secrets:
+      - wimforge_api_token
+
+secrets:
+  wimforge_api_token:
+    file: ${WIMFORGE_API_TOKEN_PATH:?Set WIMFORGE_API_TOKEN_PATH to a protected token file}

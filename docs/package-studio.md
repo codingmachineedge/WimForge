@@ -2,7 +2,7 @@
 
 Package Studio describes software that WimForge can add to a Windows image and produces a safe, repeatable first-logon installer. A profile is portable JSON; ISO staging is a separate manifest, so a profile never needs to contain credentials or machine-specific state.
 
-The built-in **Full AI Development** profile is available at [`templates/ai-development.json`](../templates/ai-development.json). It combines native build tools, common runtimes, desktop developer tools, and AI coding clients.
+The built-in **Full AI Development** profile is available at [`templates/ai-development.json`](https://github.com/codingmachineedge/WimForge/blob/main/templates/ai-development.json). It combines native build tools, common runtimes, desktop developer tools, and AI coding clients.
 
 ## Supported package sources
 

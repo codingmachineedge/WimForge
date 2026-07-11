@@ -67,6 +67,23 @@ Registered CTest executables cover:
 
 Tests inject or inspect external operations; they do not intentionally service a real Windows image or install packages on the developer machine.
 
+## Documentation screenshot build
+
+The shipped desktop requests administrator rights by default. For automated
+documentation only, configure the restricted capture harness:
+
+```powershell
+cmake -S . -B build-capture -G "Visual Studio 17 2022" -A x64 `
+  -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64 `
+  -DWIMFORGE_DOCUMENTATION_CAPTURE=ON -DBUILD_TESTING=OFF
+cmake --build build-capture --config Debug --target WimForge --parallel
+./scripts/capture-documentation-screenshots.ps1
+```
+
+That build embeds `asInvoker` and exits unless it receives both `--demo` and
+`--screenshot`. It is not a servicing build. The default, bootstrap, package,
+and release configurations keep the audited `requireAdministrator` manifest.
+
 ## Bootstrap a release build
 
 From a clean WimForge checkout, first inspect the no-change plan and then run the maintained bootstrap:

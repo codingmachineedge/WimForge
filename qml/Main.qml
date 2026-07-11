@@ -82,7 +82,6 @@ ApplicationWindow {
         }
         return false
     }
-
     Connections {
         target: app
         function onSnackbarRequested(message, tone) { snackbar.show(message, tone, "") }
@@ -100,7 +99,7 @@ ApplicationWindow {
         function onExportProjectRequested() { exportProjectSheet.open() }
         function onExportScriptRequested() { exportScriptSheet.open() }
         function onUnattendedStudioRequested() { root.currentPage = 4 }
-        function onRecoveryReviewRequested() { root.currentPage = 8 }
+        function onRecoveryReviewRequested() { root.currentPage = 9 }
         function onSearchRequested(query) { searchPalette.openForQuery(query) }
         function onSearchNavigationRequested(page, focusId, query) {
             root.currentPage = Math.max(0, Math.min(page, root.navigationItems.length - 1))
@@ -362,7 +361,11 @@ ApplicationWindow {
                     DashboardPage { app: root.controller; tr: root.tr2; openPage: index => root.currentPage = index }
                     SourcePage { app: root.controller; tr: root.tr2 }
                     CustomizePage { app: root.controller; tr: root.tr2 }
-                    GpoStudioPage { app: root.controller; tr: root.tr2 }
+                    GpoStudioPage {
+                        app: root.controller
+                        tr: root.tr2
+                        active: root.currentPage === 3
+                    }
                     UnattendedStudioPage { app: root.controller; tr: root.tr2 }
                     PackageStudioPage { app: root.controller; tr: root.tr2 }
                     WinForgeBridgePage { app: root.controller; tr: root.tr2 }

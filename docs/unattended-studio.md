@@ -86,6 +86,8 @@ Virtual machines and some firmware return empty, generic, duplicated, or unexpec
 
 Changing from Prompt or Serial to Fixed or Random removes WimForge's generated first-logon rename command. This prevents an old command from overriding the newly selected mode.
 
+The [Docker provisioning service](docker-provisioning.md) resolves central hardware inventory to this same Fixed mode before Windows Setup starts. The name is applied during `specialize`, before OOBE. Domain-join settings may run in `offlineServicing` or `specialize`, so validate ordering against the exact join workflow rather than assuming the name precedes every join action. The hosted path requires an explicit WinPE/PXE download and `setup.exe /unattend` handoff; a container URL is not itself an answer-file discovery location.
+
 ## The seven configuration passes / 七個設定階段
 
 Windows Setup processes settings in phases. A component setting is legal only in the passes listed for that setting in Microsoft's unattended reference; merely choosing a pass in WimForge does not make an unsupported combination valid. Microsoft's overview is [Windows Setup Configuration Passes](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/windows-setup-configuration-passes?view=windows-11).

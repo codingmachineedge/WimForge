@@ -44,6 +44,11 @@ build/
 Build/
 build-*/
 dist/
+deploy/provisioning/config.local.json
+deploy/provisioning/*.token
+.env
+.env.*
+site/
 
 # CMake generated files
 CMakeFiles/
@@ -68,3 +73,5 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+__pycache__/
+*.py[cod]

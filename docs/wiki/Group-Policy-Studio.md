@@ -46,6 +46,18 @@ The regex wizard helps assemble a pattern and still passes it through the same v
 
 The selected control is based on ADMX type, not a localized label. Defaults, required flags, numeric/length bounds, enum values, registry side effects, and ADML presentation order remain in the model.
 
+## Editor workflow
+
+The catalog and editor stay visible together. When results load—or when a search replaces them—WimForge preserves the selected policy by stable ID when possible and otherwise selects the first result with configurable schema fields. The editor then shows:
+
+1. the policy category, target scope, supported Windows versions, and official explanation;
+2. a **Desired policy state** draft with **Not configured**, **Enabled**, and **Disabled** choices;
+3. schema-generated value controls, active only while **Enabled** is selected;
+4. the exact `HKLM` or `HKCU` registry target; and
+5. one **Commit** action that is enabled only when a project is open.
+
+Changing tabs or values edits a draft; it does not touch the host. The sticky commit bar states that the action updates the image-build project, and the resulting mutation is recorded in project history.
+
 ## Applying a policy
 
 The catalog is read-only. When the user applies a selected state, the controller translates that policy into project registry tweaks:

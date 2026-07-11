@@ -1,0 +1,146 @@
+site_name: WimForge
+site_description: Open-source, Git-backed Windows image customization studio.
+site_url: https://codingmachineedge.github.io/WimForge/
+repo_url: https://github.com/codingmachineedge/WimForge
+repo_name: codingmachineedge/WimForge
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: site
+strict: true
+exclude_docs: |
+  wiki/_Footer.md
+  wiki/_Sidebar.md
+
+theme:
+  name: material
+  language: en
+  logo: assets/app-icon.svg
+  favicon: assets/app-icon.svg
+  custom_dir: docs/overrides
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Use dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/weather-sunny
+        name: Use light mode
+  features:
+    - announce.dismiss
+    - content.code.copy
+    - content.tabs.link
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+
+plugins:
+  - search
+
+hooks:
+  - scripts/mkdocs_hooks.py
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/wiki-search.js
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/codingmachineedge/WimForge
+      name: WimForge on GitHub
+  generator: false
+
+copyright: Copyright &copy; 2026 WimForge contributors · MIT License
+
+nav:
+  - Home: index.md
+  - Get started:
+      - Documentation hub: wiki/Home.md
+      - Search the wiki: wiki-search.md
+      - Overview: wiki/Getting-Started.md
+      - Application tour: wiki/Application-Tour.md
+      - Projects and sources: wiki/Projects-and-Sources.md
+      - Screenshot gallery: gallery.md
+      - Screenshot standards: wiki/Screenshots.md
+      - Troubleshooting: wiki/Troubleshooting.md
+  - User guide:
+      - Image servicing: wiki/Image-Servicing.md
+      - Customize: wiki/Customize.md
+      - Package Studio: wiki/Package-Studio.md
+      - Group Policy Studio: wiki/Group-Policy-Studio.md
+      - Unattended Studio: wiki/Unattended-Studio.md
+      - Docker provisioning: wiki/Docker-Provisioning.md
+      - Review and run: wiki/Review-and-Run.md
+      - History Time Machine: wiki/History-Time-Machine.md
+      - Notification Center: wiki/Notification-Center.md
+      - Project bundles: wiki/Project-Bundles.md
+      - WinForge Bridge: wiki/WinForge-Bridge.md
+      - Virtual Machine Lab: wiki/Virtual-Machine-Lab.md
+      - Settings: wiki/Settings.md
+      - Embedded Terminal: wiki/Embedded-Terminal.md
+  - Reference:
+      - Command-line interface: wiki/CLI.md
+      - Detailed CLI reference: cli.md
+      - Servicing plan: servicing-plan.md
+      - Contextual history: context-history.md
+      - Package Studio internals: package-studio.md
+      - Group Policy internals: gpo-studio.md
+      - Unattended internals: unattended-studio.md
+      - Docker provisioning internals: docker-provisioning.md
+      - Project bundle format: project-bundles.md
+      - WinForge bridge format: winforge-bridge.md
+      - Embedded terminal architecture: embedded-terminal.md
+  - Safety:
+      - Safety and recovery: wiki/Safety-and-Recovery.md
+      - NTLite feature comparison: wiki/NTLite-Feature-Comparison.md
+      - Product audit: audits/2026-07-10-full-product-audit.md
+  - Developers:
+      - Architecture and data layout: wiki/Architecture-and-Data-Layout.md
+      - Building and releases: wiki/Building-and-Releases.md
+      - Release design: release-design.md
+      - Contributing: wiki/Contributing.md
+  - Wiki: wiki.md

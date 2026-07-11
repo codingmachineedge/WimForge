@@ -266,6 +266,9 @@ NotificationStore::NotificationStore(QString storeDirectory)
 
 QString NotificationStore::defaultStoreDirectory()
 {
+    const QString configured = qEnvironmentVariable("WIMFORGE_NOTIFICATION_STORE").trimmed();
+    if (!configured.isEmpty())
+        return QDir(configured).absolutePath();
     QString root = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     if (root.trimmed().isEmpty())
         root = QDir::home().filePath(QStringLiteral(".wimforge"));
