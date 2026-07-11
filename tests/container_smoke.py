@@ -38,6 +38,23 @@ def run(arguments: list[str], *, capture: bool = True) -> str:
     return (result.stdout or "").strip()
 
 
+def run_bytes(arguments: list[str]) -> bytes:
+    result = subprocess.run(
+        arguments,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).decode(
+            "utf-8", errors="replace"
+        ).strip()
+        raise RuntimeError(
+            f"command failed ({result.returncode}): {' '.join(arguments)}\n{detail}"
+        )
+    return result.stdout
+
+
 def post(url: str, token: str) -> tuple[bytes, object]:
     request = urllib.request.Request(
         url,
@@ -230,7 +247,36 @@ def main() -> int:
                 "/output/Autounattend.xml",
             ]
         )
-        computer_name(output.read_bytes())
+        # The one-shot CLI deliberately creates a private file owned by the
+        # container's unprivileged account. A Linux runner user therefore must
+        # not read it directly from the host. Re-open the read-only bind as the
+        # same non-root image user so the smoke test validates the exact bytes
+        # without weakening the generated file's permissions.
+        rendered = run_bytes(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--read-only",
+                "--network",
+                "none",
+                "--cap-drop",
+                "ALL",
+                "--security-opt",
+                "no-new-privileges",
+                "--mount",
+                f"type=bind,source={output_directory.resolve()},destination=/output,readonly",
+                "--entrypoint",
+                "/usr/bin/python3",
+                arguments.image,
+                "-c",
+                (
+                    "from pathlib import Path; import sys; "
+                    "sys.stdout.buffer.write(Path('/output/Autounattend.xml').read_bytes())"
+                ),
+            ]
+        )
+        computer_name(rendered)
 
     print("container_smoke: health, auth, render, digest, isolation, and one-shot checks passed")
     return 0
