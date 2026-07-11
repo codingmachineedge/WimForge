@@ -2105,6 +2105,18 @@ void AppController::searchUpdateCatalog(const QString &query)
     m_catalogReply = reply;
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         if (reply->error() == QNetworkReply::OperationCanceledError) {
+            // A user cancel nulls m_catalogReply before abort(); a transfer
+            // timeout aborts with the same error but leaves it pointing here, so
+            // only the timeout must clear busy and drop the soon-to-be-freed reply.
+            if (m_catalogReply == reply) {
+                m_catalogReply = nullptr;
+                m_updateCatalogBusy = false;
+                m_updateCatalogDownloadProgress = 0.0;
+                m_updateCatalogStatus = localized(
+                    QStringLiteral("The Microsoft Update Catalog did not respond in time."),
+                    QStringLiteral("Microsoft Update Catalog 冇及時回應。"));
+                emit updateCatalogChanged();
+            }
             reply->deleteLater();
             return;
         }
@@ -2193,6 +2205,15 @@ void AppController::downloadUpdateCatalogItem(const QString &updateId, const QSt
     connect(dialog, &QNetworkReply::finished, this,
             [this, dialog, safeCategory, destinationDir, perFileByteCap]() {
         if (dialog->error() == QNetworkReply::OperationCanceledError) {
+            if (m_catalogReply == dialog) {  // transfer timeout, not a user cancel
+                m_catalogReply = nullptr;
+                m_updateCatalogBusy = false;
+                m_updateCatalogDownloadProgress = 0.0;
+                m_updateCatalogStatus = localized(
+                    QStringLiteral("The Microsoft Update Catalog did not respond in time."),
+                    QStringLiteral("Microsoft Update Catalog 冇及時回應。"));
+                emit updateCatalogChanged();
+            }
             dialog->deleteLater();
             return;
         }
@@ -2241,6 +2262,7 @@ void AppController::beginCatalogFileDownloads(const QStringList &urls, const QSt
         QString destinationDir;
         qint64 cap = 0;
         int imported = 0;
+        QStringList usedPaths;
     };
     auto state = std::make_shared<DownloadState>();
     state->urls = urls;
@@ -2248,8 +2270,17 @@ void AppController::beginCatalogFileDownloads(const QStringList &urls, const QSt
     state->destinationDir = destinationDir;
     state->cap = perFileByteCap;
 
+    // The sequential driver recurses through this function object. It captures a
+    // weak_ptr to itself (never a strong one) so there is no reference cycle;
+    // each in-flight reply's finished handler holds the only strong ref (`self`),
+    // which keeps the chain alive across the async gap and is released once the
+    // final file completes and its reply is deleted.
     auto step = std::make_shared<std::function<void()>>();
-    *step = [this, state, step]() {
+    std::weak_ptr<std::function<void()>> weakStep = step;
+    *step = [this, state, weakStep]() {
+        const auto self = weakStep.lock();
+        if (!self)
+            return;
         if (state->index >= state->urls.size()) {
             m_updateCatalogBusy = false;
             m_updateCatalogDownloadProgress = state->imported > 0 ? 1.0 : 0.0;
@@ -2273,14 +2304,29 @@ void AppController::beginCatalogFileDownloads(const QStringList &urls, const QSt
         QString fileName = QFileInfo(fileUrl.path()).fileName();
         if (fileName.isEmpty())
             fileName = QStringLiteral("update-%1.msu").arg(state->index);
-        const QString destinationPath = QDir(state->destinationDir).filePath(fileName);
-        QFile::remove(destinationPath);
-        auto *file = new QFile(destinationPath);
+        QString destinationPath = QDir(state->destinationDir).filePath(fileName);
+        // Two files in one update that share a basename must not overwrite each
+        // other; give the collision a distinct name before touching disk.
+        if (state->usedPaths.contains(destinationPath, Qt::CaseInsensitive)) {
+            const QFileInfo collision(fileName);
+            const QString suffix = collision.suffix().isEmpty()
+                ? QString() : QStringLiteral(".") + collision.suffix();
+            fileName = QStringLiteral("%1-%2%3")
+                           .arg(collision.completeBaseName()).arg(state->index).arg(suffix);
+            destinationPath = QDir(state->destinationDir).filePath(fileName);
+        }
+        state->usedPaths.append(destinationPath);
+        // Stream into a sidecar and only replace the real payload once the
+        // transfer fully succeeds, so a failure, abort, or duplicate can never
+        // delete a file the project already references.
+        const QString partPath = destinationPath + QStringLiteral(".part");
+        QFile::remove(partPath);
+        auto *file = new QFile(partPath);
         if (!file->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             delete file;
             // Skip a file we cannot write and continue with the rest.
             state->index += 1;
-            (*step)();
+            (*self)();
             return;
         }
         m_updateCatalogStatus = localized(
@@ -2330,9 +2376,12 @@ void AppController::beginCatalogFileDownloads(const QStringList &urls, const QSt
             emit updateCatalogChanged();
         });
         connect(download, &QNetworkReply::finished, this,
-                [this, download, file, destinationPath, state, step, safetyAborted]() {
-            const bool userCanceled =
-                download->error() == QNetworkReply::OperationCanceledError && !*safetyAborted;
+                [this, download, file, destinationPath, partPath, state, self, safetyAborted]() {
+            // Only a real user cancel nulls m_catalogReply before abort(); a
+            // transfer timeout shares OperationCanceledError but leaves it set,
+            // so a timeout must NOT stop the rest of the sequence.
+            const bool userCanceled = download->error() == QNetworkReply::OperationCanceledError
+                && !*safetyAborted && m_catalogReply != download;
             if (m_catalogReply == download)
                 m_catalogReply = nullptr;
             if (!*safetyAborted)
@@ -2342,11 +2391,32 @@ void AppController::beginCatalogFileDownloads(const QStringList &urls, const QSt
             const bool trustedFinalHost = UpdateCatalog::isTrustedDownloadUrl(download->url());
             const bool ok = download->error() == QNetworkReply::NoError
                 && trustedFinalHost && !*safetyAborted;
-            if (ok && addPayloadFiles(state->category, {QUrl::fromLocalFile(destinationPath)})) {
-                state->imported += 1;
+            bool replaced = false;
+            if (ok) {
+                QFile::remove(destinationPath);  // clear any prior copy of this payload
+                replaced = QFile::rename(partPath, destinationPath);
+            }
+            if (replaced) {
+                // The path may already be queued (a re-download); that is success,
+                // not a reason to delete the file the project still points at.
+                bool referenced = false;
+                if (m_project) {
+                    const QString absolute = QFileInfo(destinationPath).absoluteFilePath();
+                    const QStringList &queue = state->category == QStringLiteral("drivers")
+                        ? m_project->drivers : m_project->updates;
+                    referenced = queue.contains(absolute, Qt::CaseInsensitive);
+                }
+                if (referenced
+                    || addPayloadFiles(state->category, {QUrl::fromLocalFile(destinationPath)})) {
+                    state->imported += 1;
+                } else {
+                    // No project to queue it into; do not leave an orphan payload.
+                    QFile::remove(destinationPath);
+                }
             } else {
-                // Never leave a partial, untrusted, or unqueued file behind.
-                QFile::remove(destinationPath);
+                // Partial, untrusted, or errored: discard only the sidecar and
+                // never touch a payload the project already references.
+                QFile::remove(partPath);
             }
             download->deleteLater();  // also destroys the parented QFile
 
@@ -2359,7 +2429,7 @@ void AppController::beginCatalogFileDownloads(const QStringList &urls, const QSt
                 return;
             }
             state->index += 1;
-            (*step)();
+            (*self)();
         });
     };
     (*step)();
