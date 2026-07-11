@@ -44,9 +44,11 @@ ApplicationWindow {
         { icon: "✦", en: "Unattended Studio", zh: "無人值守工房", context: "unattended" },
         { icon: "▦", en: "Package Studio", zh: "套件工房", context: "packages" },
         { icon: "⌁", en: "WinForge Bridge", zh: "WinForge 橋接", context: "winforge" },
+        { icon: "▣", en: "Virtual Machine Lab", zh: "虛擬機實驗室", context: "vm-lab" },
         { icon: "▶", en: "Review & run", zh: "檢查同開工", context: "plan" },
         { icon: "↶", en: "History & recovery", zh: "歷史同復原", context: "history" },
-        { icon: "☷", en: "Settings", zh: "設定", context: "settings" }
+        { icon: "☷", en: "Settings", zh: "設定", context: "settings" },
+        { icon: ">_", en: "Embedded terminal", zh: "內嵌終端機", context: "terminal" }
     ]
 
     function openContextHistory(x, y) {
@@ -98,7 +100,7 @@ ApplicationWindow {
         function onExportProjectRequested() { exportProjectSheet.open() }
         function onExportScriptRequested() { exportScriptSheet.open() }
         function onUnattendedStudioRequested() { root.currentPage = 4 }
-        function onRecoveryReviewRequested() { root.currentPage = 7 }
+        function onRecoveryReviewRequested() { root.currentPage = 8 }
         function onSearchRequested(query) { searchPalette.openForQuery(query) }
         function onSearchNavigationRequested(page, focusId, query) {
             root.currentPage = Math.max(0, Math.min(page, root.navigationItems.length - 1))
@@ -299,7 +301,7 @@ ApplicationWindow {
                         ToolButton {
                             text: app.busy ? "◉" : "○"
                             Accessible.name: app.busy ? root.tr2("Jobs are running; open job queue", "有工序行緊；開啟工序隊列") : root.tr2("Open job queue", "開啟工序隊列")
-                            onClicked: root.currentPage = 7
+                            onClicked: root.currentPage = 8
                             ToolTip.visible: hovered
                             ToolTip.text: Accessible.name
                         }
@@ -364,9 +366,15 @@ ApplicationWindow {
                     UnattendedStudioPage { app: root.controller; tr: root.tr2 }
                     PackageStudioPage { app: root.controller; tr: root.tr2 }
                     WinForgeBridgePage { app: root.controller; tr: root.tr2 }
+                    VmLabPage { app: root.controller; tr: root.tr2 }
                     PlanPage { app: root.controller; tr: root.tr2 }
                     HistoryPage { app: root.controller; tr: root.tr2 }
                     SettingsPage { app: root.controller; tr: root.tr2 }
+                    TerminalPage {
+                        app: root.controller
+                        terminal: terminalSession
+                        tr: root.tr2
+                    }
                 }
             }
 

@@ -11,6 +11,8 @@
 #include "core/ServicingPlan.h"
 #include "core/SearchIndex.h"
 #include "core/UnattendBuilder.h"
+#include "core/VmLabManager.h"
+#include "core/VmValidationStore.h"
 #include "core/WinForgeBridge.h"
 
 #include <QFileSystemWatcher>
@@ -20,10 +22,12 @@
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QUrl>
 
 #include <functional>
 #include <memory>
 #include <optional>
+#include <thread>
 
 class QProcess;
 
@@ -114,6 +118,16 @@ class AppController final : public QObject
     Q_PROPERTY(QString winForgeBridgeRuntimePath READ winForgeBridgeRuntimePath NOTIFY studioChanged)
     Q_PROPERTY(QString winForgeBridgeRuntimeStatus READ winForgeBridgeRuntimeStatus NOTIFY studioChanged)
     Q_PROPERTY(QString winForgeBridgeStatus READ winForgeBridgeStatus NOTIFY studioChanged)
+    Q_PROPERTY(QVariantList vmProviders READ vmProviders NOTIFY vmLabChanged)
+    Q_PROPERTY(QVariantList vmInventory READ vmInventory NOTIFY vmLabChanged)
+    Q_PROPERTY(QString vmSelectedId READ vmSelectedId NOTIFY vmLabChanged)
+    Q_PROPERTY(QVariant vmSelected READ vmSelected NOTIFY vmLabChanged)
+    Q_PROPERTY(QVariantList vmSnapshots READ vmSnapshots NOTIFY vmLabChanged)
+    Q_PROPERTY(QVariantList vmValidationRuns READ vmValidationRuns NOTIFY vmLabChanged)
+    Q_PROPERTY(bool vmBusy READ vmBusy NOTIFY vmLabChanged)
+    Q_PROPERTY(QVariantMap vmStatus READ vmStatus NOTIFY vmLabChanged)
+    Q_PROPERTY(QVariantMap vmPendingPreview READ vmPendingPreview NOTIFY vmLabChanged)
+    Q_PROPERTY(QString currentOutput READ currentOutput NOTIFY stateChanged)
     Q_PROPERTY(QString searchQuery READ searchQuery NOTIFY searchChanged)
     Q_PROPERTY(QVariantList searchResults READ searchResults NOTIFY searchChanged)
 
@@ -212,6 +226,16 @@ public:
     [[nodiscard]] QString winForgeBridgeRuntimePath() const;
     [[nodiscard]] QString winForgeBridgeRuntimeStatus() const;
     [[nodiscard]] QString winForgeBridgeStatus() const;
+    [[nodiscard]] QVariantList vmProviders() const;
+    [[nodiscard]] QVariantList vmInventory() const;
+    [[nodiscard]] QString vmSelectedId() const;
+    [[nodiscard]] QVariant vmSelected() const;
+    [[nodiscard]] QVariantList vmSnapshots() const;
+    [[nodiscard]] QVariantList vmValidationRuns() const;
+    [[nodiscard]] bool vmBusy() const;
+    [[nodiscard]] QVariantMap vmStatus() const;
+    [[nodiscard]] QVariantMap vmPendingPreview() const;
+    [[nodiscard]] QString currentOutput() const;
     [[nodiscard]] QString searchQuery() const;
     [[nodiscard]] QVariantList searchResults() const;
 
@@ -312,6 +336,24 @@ public:
     Q_INVOKABLE bool exportWinForgeBridgeRecipe(const QString &destinationFile);
     Q_INVOKABLE bool stageWinForgeBridgeIntoIso(const QString &isoStagingPath);
 
+    Q_INVOKABLE void refreshVmLab();
+    Q_INVOKABLE bool selectVm(const QString &providerId, const QString &id);
+    Q_INVOKABLE bool createVm(const QVariantMap &spec);
+    Q_INVOKABLE bool runVmAction(const QString &action, const QVariantMap &options = {});
+    Q_INVOKABLE bool updateVmConfiguration(const QVariantMap &spec);
+    Q_INVOKABLE bool vmDeviceAction(const QString &action, const QVariantMap &spec);
+    Q_INVOKABLE bool vmSnapshotAction(const QString &action, const QVariantMap &spec);
+    Q_INVOKABLE bool startVmValidation(const QVariantMap &spec);
+    Q_INVOKABLE bool recordVmValidationMilestone(const QString &runId,
+                                                 const QVariantMap &spec);
+    Q_INVOKABLE bool finishVmValidation(const QString &runId,
+                                        const QVariantMap &result);
+    Q_INVOKABLE bool executePendingVmPreview(const QString &previewId,
+                                             const QString &typedConfirmation = {});
+    Q_INVOKABLE void discardPendingVmPreview();
+    Q_INVOKABLE bool cancelVmAction();
+    Q_INVOKABLE QString pathFromUrl(const QUrl &url) const;
+
     bool loadDemoProject(QString *error = nullptr);
 
 signals:
@@ -330,6 +372,8 @@ signals:
     void searchRequested(const QString &query);
     void searchChanged();
     void searchNavigationRequested(int page, const QString &focusId, const QString &query);
+    void vmLabChanged();
+    void vmPreviewReady();
 
 private:
     using ProjectMutation = std::function<void(wimforge::ProjectConfig &)>;
@@ -354,6 +398,13 @@ private:
     bool applyHistoryState(const wimforge::ActionEvent &event, const QString &message);
     void runOpenCode(const QString &prompt, const std::function<void(const QString &)> &completed);
     void processNextOpenCodeRequest();
+    void recreateVmLab();
+    void refreshVmValidationRuns();
+    void updateVmStatus(const QString &message, const QString &tone = QStringLiteral("info"),
+                        const QString &detail = {});
+    void appendVmLog(const QString &message);
+    void tryPendingVmBoot();
+    bool stageVmPreview(const std::optional<wimforge::vmlab::OperationPreview> &preview);
 
     struct OpenCodeRequest
     {
@@ -374,6 +425,9 @@ private:
     wimforge::WinForgeRecipe m_winForgeRecipe;
     wimforge::WinForgeRuntimeContract m_winForgeRuntimeContract;
     std::unique_ptr<wimforge::OpenCodeSetup> m_openCodeSetup;
+    std::unique_ptr<wimforge::vmlab::VmLabManager> m_vmManager;
+    std::unique_ptr<wimforge::vmvalidation::VmValidationStore> m_vmValidationStore;
+    std::jthread m_vmValidationWorker;
     QFileSystemWatcher m_watcher;
     QSettings m_settings;
     QStringList m_editionNames{QStringLiteral("Index 1 — Windows edition")};
@@ -396,7 +450,16 @@ private:
     QString m_winForgeBridgeStatus = QStringLiteral("Recipe is ready for review.");
     QString m_searchQuery;
     QVariantList m_searchResults;
+    QVariantList m_vmValidationItems;
+    QVariantMap m_vmPendingPreview;
+    QString m_vmStatusMessage;
+    QString m_vmStatusTone = QStringLiteral("info");
+    QString m_vmStatusDetail;
+    QString m_vmLog;
+    QString m_pendingVmBootProvider;
+    QString m_pendingVmBootId;
     bool m_winForgeIncludeRuntime = true;
+    bool m_vmValidationBusy = false;
 
     int m_languageMode = 2;
     int m_themeMode = 0;

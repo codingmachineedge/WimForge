@@ -1,4 +1,5 @@
 #include "GitHistory.h"
+#include "ProcessLaunch.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -51,6 +52,7 @@ CommandResult runGit(const QString &workingDirectory,
                      int timeoutMilliseconds = 30'000)
 {
     QProcess process;
+    configureProcessWithoutConsole(process);
     process.setWorkingDirectory(workingDirectory);
 
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();

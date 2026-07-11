@@ -483,5 +483,268 @@ int main(int argc, char **argv)
                                             .value(QStringLiteral("manifest")).toString()),
                QStringLiteral("WinForge CLI stages the runtime, manifest, recipe, and bootstrap"));
 
+    result = runner.run({QStringLiteral("--json"), QStringLiteral("vm"),
+                         QStringLiteral("help")});
+    test.check(result.ok()
+                   && jsonResult(result).toObject().value(QStringLiteral("text")).toString()
+                          .contains(QStringLiteral("preview by default"))
+                   && jsonResult(result).toObject().value(QStringLiteral("text")).toString()
+                          .contains(QStringLiteral("--confirm \"EXACT TOKEN\""))
+                   && jsonResult(result).toObject().value(QStringLiteral("text")).toString()
+                          .contains(QStringLiteral("vm validation start")),
+               QStringLiteral("VM Lab help documents review-first execution and typed confirmation"));
+
+    const QString vmProject = QDir(temporary.path()).filePath(QStringLiteral("vm-project"));
+    QDir().mkpath(QDir(vmProject).filePath(QStringLiteral(".git/info")));
+    result = runner.run({QStringLiteral("--json"), QStringLiteral("--project"), vmProject,
+                         QStringLiteral("vm"), QStringLiteral("paths")});
+    const QJsonObject vmPaths = jsonResult(result).toObject();
+    const QString vmCatalogPath = vmPaths.value(QStringLiteral("paths")).toObject()
+                                      .value(QStringLiteral("catalog")).toString();
+    test.check(result.ok()
+                   && vmPaths.value(QStringLiteral("schema")).toString()
+                          == QStringLiteral("wimforge.vm-lab-cli")
+                   && !vmCatalogPath.startsWith(QDir(vmProject).absolutePath())
+                    && QDir::fromNativeSeparators(vmCatalogPath)
+                           .contains(QStringLiteral("/vm-lab/projects/"))
+                    && QFileInfo::exists(QDir(vmProject).filePath(
+                           QStringLiteral(".wimforge/project-id")))
+                   && QFileInfo::exists(vmPaths.value(QStringLiteral("paths")).toObject()
+                                            .value(QStringLiteral("managedRoot")).toString()),
+               QStringLiteral("VM Lab paths isolate large state outside the Git-backed project"));
+
+    const QString validationIso = QDir(vmProject).filePath(QStringLiteral("fixtures/source.iso"));
+    const QString validationImage = QDir(vmProject).filePath(QStringLiteral("fixtures/install.wim"));
+    const QString validationConfig = QDir(vmProject).filePath(QStringLiteral("fixtures/test.vbox"));
+    const QString validationEvidence = QDir(vmProject).filePath(QStringLiteral("evidence/desktop.png"));
+    const QString externalValidationEvidence = QDir(temporary.path())
+                                                   .filePath(QStringLiteral("outside-evidence.png"));
+    test.check(writeFile(validationIso, QByteArrayLiteral("validation iso"))
+                   && writeFile(validationImage, QByteArrayLiteral("validation image"))
+                   && writeFile(validationConfig, QByteArrayLiteral("validation config"))
+                   && writeFile(validationEvidence, QByteArrayLiteral("validation screenshot"))
+                   && writeFile(externalValidationEvidence,
+                                QByteArrayLiteral("outside validation screenshot")),
+               QStringLiteral("VM validation CLI fixtures are created"));
+
+    result = runner.run({
+        QStringLiteral("--json"), QStringLiteral("--project"), vmProject,
+        QStringLiteral("vm"), QStringLiteral("validation"), QStringLiteral("start"),
+        QStringLiteral("--iso"), validationIso,
+        QStringLiteral("--image"), validationImage,
+        QStringLiteral("--provider"), QStringLiteral("vbox"),
+        QStringLiteral("--provider-version"), QStringLiteral("7.2-test"),
+        QStringLiteral("--vm"), QStringLiteral("validation-vm"),
+        QStringLiteral("--vm-name"), QStringLiteral("Validation VM"),
+        QStringLiteral("--vm-config"), validationConfig,
+        QStringLiteral("--config-json"), jsonArgument(QJsonObject{
+            {QStringLiteral("cpuCount"), 2},
+            {QStringLiteral("memoryMiB"), 4096},
+            {QStringLiteral("profile"), QStringLiteral("customization")},
+        }),
+    });
+    QJsonObject validationMutation = jsonResult(result).toObject();
+    QJsonObject validationRun = validationMutation.value(QStringLiteral("run")).toObject();
+    const QString validationRunId = validationRun.value(QStringLiteral("id")).toString();
+    QString validationStoreRevision = validationMutation
+                                          .value(QStringLiteral("storeRevision")).toString();
+    const QString validationInitialStoreRevision = validationStoreRevision;
+    test.check(result.ok() && !validationRunId.isEmpty()
+                   && validationRun.value(QStringLiteral("revision")).toInt() == 1
+                   && validationRun.value(QStringLiteral("status")).toString()
+                          == QStringLiteral("running")
+                   && validationRun.value(QStringLiteral("vm")).toObject()
+                          .value(QStringLiteral("providerId")).toString()
+                          == QStringLiteral("virtualbox")
+                   && validationRun.value(QStringLiteral("iso")).toObject()
+                          .value(QStringLiteral("sha256")).toString().size() == 64
+                   && validationRun.value(QStringLiteral("image")).toObject()
+                          .value(QStringLiteral("sha256")).toString().size() == 64
+                   && validationRun.value(QStringLiteral("vm")).toObject()
+                          .value(QStringLiteral("config")).toObject()
+                          .value(QStringLiteral("sha256")).toString().size() == 64
+                   && !validationStoreRevision.isEmpty(),
+               QStringLiteral("VM validation start records immutable, hashed inputs: %1 %2")
+                   .arg(result.standardOutput, result.standardError));
+
+    result = runner.run({
+        QStringLiteral("--json"), QStringLiteral("--project"), vmProject,
+        QStringLiteral("vm"), QStringLiteral("validation"), QStringLiteral("update"),
+        validationRunId, QStringLiteral("--revision"), QStringLiteral("1"),
+        QStringLiteral("--store-revision"), validationStoreRevision,
+        QStringLiteral("--milestone-phase"), QStringLiteral("boot"),
+        QStringLiteral("--milestone-name"), QStringLiteral("customizations"),
+        QStringLiteral("--milestone-status"), QStringLiteral("reached"),
+        QStringLiteral("--milestone-data"), jsonArgument(QJsonObject{
+            {QStringLiteral("screen"), QStringLiteral("setup")},
+        }),
+    });
+    validationMutation = jsonResult(result).toObject();
+    validationStoreRevision = validationMutation
+                                  .value(QStringLiteral("storeRevision")).toString();
+    test.check(result.ok()
+                   && validationMutation.value(QStringLiteral("run")).toObject()
+                          .value(QStringLiteral("revision")).toInt() == 2
+                   && validationMutation.value(QStringLiteral("run")).toObject()
+                          .value(QStringLiteral("milestones")).toArray().size() == 1,
+               QStringLiteral("VM validation update appends an exact profile milestone with CAS: %1 %2")
+                   .arg(result.standardOutput, result.standardError));
+
+    result = runner.run({
+        QStringLiteral("--json"), QStringLiteral("--project"), vmProject,
+        QStringLiteral("vm"), QStringLiteral("validation"), QStringLiteral("update"),
+        validationRunId, QStringLiteral("--revision"), QStringLiteral("2"),
+        QStringLiteral("--store-revision"), validationInitialStoreRevision,
+        QStringLiteral("--log-message"), QStringLiteral("stale store writer")});
+    test.check(result.code == CliExitCode::Conflict,
+               QStringLiteral("VM validation rejects a stale store revision"));
+
+    result = runner.run({
+        QStringLiteral("--json"), QStringLiteral("--project"), vmProject,
+        QStringLiteral("vm"), QStringLiteral("validation"), QStringLiteral("update"),
+        validationRunId, QStringLiteral("--revision"), QStringLiteral("1"),
+        QStringLiteral("--log-message"), QStringLiteral("stale writer")});
+    test.check(result.code == CliExitCode::Conflict,
+               QStringLiteral("VM validation rejects a stale run revision"));
+
+    result = runner.run({
+        QStringLiteral("--json"), QStringLiteral("--project"), vmProject,
+        QStringLiteral("vm"), QStringLiteral("validation"), QStringLiteral("finish"),
+        validationRunId, QStringLiteral("--revision"), QStringLiteral("2"),
+        QStringLiteral("--status"), QStringLiteral("passed")});
+    test.check(result.code == CliExitCode::Validation,
+               QStringLiteral("VM validation pass gate rejects missing profile milestones and evidence"));
+
+    result = runner.run({
+        QStringLiteral("--json"), QStringLiteral("--project"), vmProject,
+        QStringLiteral("vm"), QStringLiteral("validation"), QStringLiteral("update"),
+        validationRunId, QStringLiteral("--revision"), QStringLiteral("2"),
+        QStringLiteral("--store-revision"), validationStoreRevision,
+        QStringLiteral("--milestone-phase"), QStringLiteral("boot"),
+        QStringLiteral("--milestone-name"), QStringLiteral("first-boot"),
+        QStringLiteral("--log-message"), QStringLiteral("OOBE and desktop completed"),
+        QStringLiteral("--log-channel"), QStringLiteral("smoke")});
+    validationMutation = jsonResult(result).toObject();
+    validationStoreRevision = validationMutation
+                                  .value(QStringLiteral("storeRevision")).toString();
+    test.check(result.ok()
+                   && validationMutation.value(QStringLiteral("run")).toObject()
+                          .value(QStringLiteral("revision")).toInt() == 3
+                   && validationMutation.value(QStringLiteral("run")).toObject()
+                          .value(QStringLiteral("logs")).toArray().size() == 1,
+               QStringLiteral("VM validation atomically records profile and log updates: %1 %2")
+                   .arg(result.standardOutput, result.standardError));
+
+    result = runner.run({
+        QStringLiteral("--json"), QStringLiteral("--project"), vmProject,
+        QStringLiteral("vm"), QStringLiteral("validation"), QStringLiteral("update"),
+        validationRunId, QStringLiteral("--revision"), QStringLiteral("3"),
+        QStringLiteral("--evidence-path"), externalValidationEvidence,
+        QStringLiteral("--evidence-label"), QStringLiteral("Unscoped outside evidence"),
+        QStringLiteral("--evidence-kind"), QStringLiteral("screenshot")});
+    test.check(result.code == CliExitCode::Validation,
+               QStringLiteral("VM validation rejects outside evidence without explicit metadata"));
+
+    result = runner.run({
+        QStringLiteral("--json"), QStringLiteral("--project"), vmProject,
+        QStringLiteral("vm"), QStringLiteral("validation"), QStringLiteral("update"),
+        validationRunId, QStringLiteral("--revision"), QStringLiteral("3"),
+        QStringLiteral("--store-revision"), validationStoreRevision,
+        QStringLiteral("--milestone-phase"), QStringLiteral("boot"),
+        QStringLiteral("--milestone-name"), QStringLiteral("smoke-test"),
+        QStringLiteral("--evidence-path"), validationEvidence,
+        QStringLiteral("--evidence-label"), QStringLiteral("Installed desktop"),
+        QStringLiteral("--evidence-kind"), QStringLiteral("screenshot")});
+    validationMutation = jsonResult(result).toObject();
+    test.check(result.ok()
+                   && validationMutation.value(QStringLiteral("run")).toObject()
+                          .value(QStringLiteral("revision")).toInt() == 4
+                   && validationMutation.value(QStringLiteral("run")).toObject()
+                          .value(QStringLiteral("evidence")).toArray().first().toObject()
+                          .value(QStringLiteral("file")).toObject()
+                          .value(QStringLiteral("sha256")).toString().size() == 64,
+               QStringLiteral("VM validation hashes and records project evidence: %1 %2")
+                   .arg(result.standardOutput, result.standardError));
+
+    result = runner.run({
+        QStringLiteral("--json"), QStringLiteral("--project"), vmProject,
+        QStringLiteral("vm"), QStringLiteral("validation"), QStringLiteral("finish"),
+        validationRunId, QStringLiteral("--revision"), QStringLiteral("4"),
+        QStringLiteral("--status"), QStringLiteral("passed"),
+        QStringLiteral("--note"), QStringLiteral("Automated smoke test passed")});
+    validationMutation = jsonResult(result).toObject();
+    test.check(result.ok()
+                   && validationMutation.value(QStringLiteral("run")).toObject()
+                          .value(QStringLiteral("revision")).toInt() == 5
+                   && validationMutation.value(QStringLiteral("run")).toObject()
+                          .value(QStringLiteral("status")).toString()
+                          == QStringLiteral("passed"),
+               QStringLiteral("VM validation finish accepts a fully evidenced pass: %1 %2")
+                   .arg(result.standardOutput, result.standardError));
+
+    result = runner.run({
+        QStringLiteral("--json"), QStringLiteral("--project"), vmProject,
+        QStringLiteral("vm"), QStringLiteral("validation"), QStringLiteral("show"),
+        validationRunId});
+    test.check(result.ok()
+                   && jsonResult(result).toObject().value(QStringLiteral("run")).toObject()
+                          .value(QStringLiteral("status")).toString() == QStringLiteral("passed")
+                   && !jsonResult(result).toObject()
+                           .value(QStringLiteral("storeRevision")).toString().isEmpty(),
+               QStringLiteral("VM validation show returns the run and store revision"));
+
+    result = runner.run({
+        QStringLiteral("--json"), QStringLiteral("--project"), vmProject,
+        QStringLiteral("vm"), QStringLiteral("validation"), QStringLiteral("history"),
+        QStringLiteral("--provider"), QStringLiteral("vbox"),
+        QStringLiteral("--status"), QStringLiteral("passed"),
+        QStringLiteral("--text"), QStringLiteral("Validation VM"),
+        QStringLiteral("--limit"), QStringLiteral("1")});
+    test.check(result.ok()
+                   && jsonResult(result).toObject().value(QStringLiteral("count")).toInt() == 1
+                   && jsonResult(result).toObject().value(QStringLiteral("runs")).toArray()
+                          .first().toObject().value(QStringLiteral("id")).toString()
+                          == validationRunId,
+               QStringLiteral("VM validation history applies structured filters"));
+
+    result = runner.run({
+        QStringLiteral("--json"), QStringLiteral("--project"), vmProject,
+        QStringLiteral("vm"), QStringLiteral("validation"), QStringLiteral("update"),
+        validationRunId, QStringLiteral("--revision"), QStringLiteral("5"),
+        QStringLiteral("--log-message"), QStringLiteral("too late")});
+    test.check(result.code == CliExitCode::Validation,
+               QStringLiteral("VM validation completed runs remain immutable"));
+
+    result = runner.run({QStringLiteral("--json"), QStringLiteral("vm"),
+                         QStringLiteral("create"), QStringLiteral("--provider"),
+                         QStringLiteral("vbox"), QStringLiteral("--name"),
+                         QStringLiteral("Oversized"), QStringLiteral("--disk-mib"),
+                         QStringLiteral("2097153")});
+    test.check(result.code == CliExitCode::Usage,
+               QStringLiteral("VM create parser caps virtual disks at two TiB"));
+
+    result = runner.run({QStringLiteral("--json"), QStringLiteral("vm"),
+                         QStringLiteral("import"), QStringLiteral("--provider"),
+                         QStringLiteral("virtualbox"), QStringLiteral("--config"),
+                         QStringLiteral("fixture.vbox"), QStringLiteral("--ownership"),
+                         QStringLiteral("managed")});
+    test.check(result.code == CliExitCode::Usage,
+               QStringLiteral("VM import rejects caller-declared managed ownership"));
+
+    result = runner.run({QStringLiteral("--json"), QStringLiteral("vm"),
+                         QStringLiteral("snapshot"), QStringLiteral("restore"),
+                         QStringLiteral("--provider"), QStringLiteral("virtualbox"),
+                         QStringLiteral("--vm"), QStringLiteral("vm-1")});
+    test.check(result.code == CliExitCode::Usage,
+               QStringLiteral("VM snapshot restore requires an explicit snapshot selector"));
+
+    result = runner.run({QStringLiteral("--json"), QStringLiteral("vm"),
+                         QStringLiteral("lifecycle"), QStringLiteral("start"),
+                         QStringLiteral("--provider"), QStringLiteral("virtualbox"),
+                         QStringLiteral("--vm"), QStringLiteral("vm-1"),
+                         QStringLiteral("--yes")});
+    test.check(result.code == CliExitCode::Usage,
+               QStringLiteral("VM execution acknowledgement is invalid without --execute"));
+
     return test.result();
 }

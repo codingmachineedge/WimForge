@@ -1,4 +1,5 @@
 #include "OpenCodeSetup.h"
+#include "ProcessLaunch.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -101,6 +102,7 @@ public:
     {
         const quint64 id = ++m_nextId;
         auto *process = new QProcess;
+        configureProcessWithoutConsole(*process);
         process->setProgram(command.program);
         process->setArguments(command.arguments);
         process->setProcessChannelMode(QProcess::MergedChannels);

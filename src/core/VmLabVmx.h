@@ -21,6 +21,7 @@ public:
                                                      QString *error = nullptr);
 
     [[nodiscard]] QString value(const QString &key) const;
+    [[nodiscard]] QStringList keys() const;
     [[nodiscard]] bool contains(const QString &key) const;
     [[nodiscard]] QStringList storagePaths(const QString &baseDirectory) const;
     bool setValue(const QString &key, const QString &value, QString *error = nullptr);

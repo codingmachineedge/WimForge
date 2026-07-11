@@ -1,4 +1,5 @@
 #include "VmLab.h"
+#include "ProcessLaunch.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -15,6 +16,8 @@
 #include <QSaveFile>
 
 #include <algorithm>
+#include <limits>
+#include <vector>
 #include <utility>
 
 #ifdef Q_OS_WIN
@@ -22,10 +25,30 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <winternl.h>
 #endif
 
 namespace wimforge::vmlab {
 namespace {
+
+constexpr qsizetype MaxProviderStreamBytes = 4 * 1024 * 1024;
+
+void appendBounded(QByteArray &target, const QByteArray &chunk, bool *truncated)
+{
+    const qsizetype remaining = std::max<qsizetype>(
+        0, MaxProviderStreamBytes - target.size());
+    target.append(chunk.constData(), std::min(remaining, chunk.size()));
+    if (chunk.size() > remaining && truncated)
+        *truncated = true;
+}
+
+void drainProcess(QProcess &process, ProcessResult &result)
+{
+    appendBounded(result.standardOutput, process.readAllStandardOutput(),
+                  &result.standardOutputTruncated);
+    appendBounded(result.standardError, process.readAllStandardError(),
+                  &result.standardErrorTruncated);
+}
 
 void setError(QString *target, const QString &message)
 {
@@ -77,8 +100,27 @@ public:
     }
     ScopedWinHandle(const ScopedWinHandle &) = delete;
     ScopedWinHandle &operator=(const ScopedWinHandle &) = delete;
+    ScopedWinHandle(ScopedWinHandle &&other) noexcept : m_value(other.m_value)
+    {
+        other.m_value = INVALID_HANDLE_VALUE;
+    }
+    ScopedWinHandle &operator=(ScopedWinHandle &&other) noexcept
+    {
+        if (this != &other) {
+            reset();
+            m_value = other.m_value;
+            other.m_value = INVALID_HANDLE_VALUE;
+        }
+        return *this;
+    }
     [[nodiscard]] HANDLE get() const { return m_value; }
     [[nodiscard]] bool valid() const { return m_value != INVALID_HANDLE_VALUE; }
+    void reset(HANDLE value = INVALID_HANDLE_VALUE)
+    {
+        if (m_value != INVALID_HANDLE_VALUE)
+            CloseHandle(m_value);
+        m_value = value;
+    }
 
 private:
     HANDLE m_value;
@@ -182,15 +224,21 @@ bool markHandleForDeletion(HANDLE handle, QString *error)
 }
 
 bool deleteTreeNoFollowWindows(const QString &path, const QString &expectedIdentity,
-                               QString *error)
+                               QString *error,
+                               HANDLE retainedHandle = INVALID_HANDLE_VALUE)
 {
-    ScopedWinHandle handle = openNoFollowForDelete(path, error);
-    if (!handle.valid())
-        return false;
+    ScopedWinHandle opened;
+    HANDLE handle = retainedHandle;
+    if (handle == INVALID_HANDLE_VALUE) {
+        opened = openNoFollowForDelete(path, error);
+        if (!opened.valid())
+            return false;
+        handle = opened.get();
+    }
     FILE_ATTRIBUTE_TAG_INFO attributes{};
-    if (!queryHandleAttributes(handle.get(), &attributes, error))
+    if (!queryHandleAttributes(handle, &attributes, error))
         return false;
-    const QString identity = identityForHandle(handle.get(), error);
+    const QString identity = identityForHandle(handle, error);
     if (identity.isEmpty())
         return false;
     if (!expectedIdentity.isEmpty() && identity != expectedIdentity) {
@@ -217,6 +265,13 @@ bool deleteTreeNoFollowWindows(const QString &path, const QString &expectedIdent
                 const QString name = QString::fromWCharArray(entry.cFileName);
                 if (name == QStringLiteral(".") || name == QStringLiteral(".."))
                     continue;
+                if (name.endsWith(QStringLiteral(".lck"), Qt::CaseInsensitive)) {
+                    setError(error, QStringLiteral(
+                        "Managed deletion refuses an active provider lock: %1")
+                                        .arg(QDir(path).filePath(name)));
+                    ok = false;
+                    break;
+                }
                 if (!deleteTreeNoFollowWindows(QDir(path).filePath(name), {}, error)) {
                     ok = false;
                     break;
@@ -234,7 +289,7 @@ bool deleteTreeNoFollowWindows(const QString &path, const QString &expectedIdent
             }
         }
     }
-    if (!markHandleForDeletion(handle.get(), error))
+    if (!markHandleForDeletion(handle, error))
         return false;
     setError(error, {});
     return true;
@@ -273,6 +328,332 @@ QString pathIdentity(const QString &path, QString *error)
         .arg(info.lastModified().toMSecsSinceEpoch())
         .arg(info.size());
 }
+
+#endif
+
+#ifdef Q_OS_WIN
+
+class ManagedPathLease
+{
+public:
+    bool reserveCreate(const QString &rootPath, const QString &targetPath,
+                       const QString &expectedRootIdentity, QString *error)
+    {
+        if (!acquireRoot(rootPath, expectedRootIdentity, error))
+            return false;
+        const QFileInfo target(targetPath);
+        if (!target.isAbsolute() || target.exists()
+            || !samePath(target.absolutePath(), m_rootPath)
+            || !isSafeMachineFileStem(target.fileName())) {
+            setError(error, QStringLiteral(
+                "Managed VM creation must reserve a new direct child of the leased root."));
+            return false;
+        }
+        Entry created;
+        created.path = target.absoluteFilePath();
+        created.handle = createDirectChild(
+            m_ancestors.front().handle.get(), target.fileName(), error);
+        if (!created.handle.valid())
+            return false;
+        if (!readEntryIdentity(created, error))
+            return false;
+        const QString canonical = QFileInfo(created.path).canonicalFilePath();
+        if (canonical.isEmpty() || !samePath(canonical, created.path)
+            || !containedPath(m_rootPath, canonical)) {
+            setError(error, QStringLiteral(
+                "Reserved managed VM directory did not resolve beneath the leased root."));
+            return false;
+        }
+        m_target = std::move(created);
+        return validate(error);
+    }
+
+    bool acquireDeletion(const QString &rootPath, const QString &targetPath,
+                         const QString &expectedRootIdentity,
+                         const QString &expectedTargetIdentity, QString *error)
+    {
+        if (!acquireRoot(rootPath, expectedRootIdentity, error))
+            return false;
+        const QString canonicalTarget = QFileInfo(targetPath).canonicalFilePath();
+        if (canonicalTarget.isEmpty() || !containedPath(m_rootPath, canonicalTarget)) {
+            setError(error, QStringLiteral(
+                "Managed deletion target is outside the leased root."));
+            return false;
+        }
+        const QString relative = QDir(m_rootPath).relativeFilePath(canonicalTarget);
+        const QStringList segments = QDir::fromNativeSeparators(relative).split(
+            QLatin1Char('/'), Qt::SkipEmptyParts);
+        if (segments.isEmpty()) {
+            setError(error, QStringLiteral("Managed deletion cannot lease the root itself."));
+            return false;
+        }
+        QString cursor = m_rootPath;
+        for (qsizetype index = 0; index < segments.size(); ++index) {
+            cursor = QDir(cursor).filePath(segments.at(index));
+            Entry entry;
+            entry.path = cursor;
+            const bool target = index == segments.size() - 1;
+            entry.handle = openDirectory(entry.path, target, error);
+            if (!entry.handle.valid() || !readEntryIdentity(entry, error))
+                return false;
+            if (target) {
+                if (expectedTargetIdentity.isEmpty()
+                    || entry.identity != expectedTargetIdentity) {
+                    setError(error, QStringLiteral(
+                        "Managed VM directory identity changed after preview."));
+                    return false;
+                }
+                m_target = std::move(entry);
+            } else {
+                m_ancestors.push_back(std::move(entry));
+            }
+        }
+        return validate(error);
+    }
+
+    bool validate(QString *error) const
+    {
+        for (const Entry &entry : m_ancestors) {
+            if (!validateEntry(entry, error))
+                return false;
+        }
+        if (m_target && !validateEntry(*m_target, error))
+            return false;
+        setError(error, {});
+        return true;
+    }
+
+    [[nodiscard]] HANDLE targetHandle() const
+    {
+        return m_target ? m_target->handle.get() : INVALID_HANDLE_VALUE;
+    }
+
+    void closeTarget()
+    {
+        if (m_target)
+            m_target->handle.reset();
+    }
+
+private:
+    struct Entry
+    {
+        QString path;
+        QString identity;
+        ScopedWinHandle handle;
+    };
+
+    static ScopedWinHandle openDirectory(const QString &path, bool deleteAccess,
+                                         QString *error)
+    {
+        const QString native = winApiPath(path);
+        DWORD access = FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE;
+        if (deleteAccess)
+            access |= DELETE;
+        const HANDLE handle = CreateFileW(
+            reinterpret_cast<LPCWSTR>(native.utf16()), access,
+            FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        if (handle == INVALID_HANDLE_VALUE) {
+            setError(error, winErrorMessage(
+                                QStringLiteral("Could not acquire managed directory lease %1")
+                                    .arg(path)));
+        }
+        return ScopedWinHandle(handle);
+    }
+
+    static ScopedWinHandle createDirectChild(HANDLE rootHandle,
+                                             const QString &childName,
+                                             QString *error)
+    {
+        using NtCreateFileFunction = NTSTATUS(NTAPI *)(
+            PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, PIO_STATUS_BLOCK,
+            PLARGE_INTEGER, ULONG, ULONG, ULONG, ULONG, PVOID, ULONG);
+        using NtStatusToDosErrorFunction = ULONG(WINAPI *)(NTSTATUS);
+        const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+        const auto ntCreateFile = ntdll
+            ? reinterpret_cast<NtCreateFileFunction>(
+                  GetProcAddress(ntdll, "NtCreateFile"))
+            : nullptr;
+        const auto ntStatusToDosError = ntdll
+            ? reinterpret_cast<NtStatusToDosErrorFunction>(
+                  GetProcAddress(ntdll, "RtlNtStatusToDosError"))
+            : nullptr;
+        if (!ntCreateFile || childName.isEmpty()
+            || childName.size() > (std::numeric_limits<USHORT>::max() / 2) - 1) {
+            setError(error, QStringLiteral(
+                "Windows cannot safely acquire an atomic managed-directory reservation handle."));
+            return ScopedWinHandle{};
+        }
+
+        UNICODE_STRING name{};
+        name.Buffer = const_cast<PWSTR>(
+            reinterpret_cast<const wchar_t *>(childName.utf16()));
+        name.Length = static_cast<USHORT>(childName.size() * sizeof(wchar_t));
+        name.MaximumLength = name.Length;
+        OBJECT_ATTRIBUTES attributes{};
+        InitializeObjectAttributes(
+            &attributes, &name, OBJ_CASE_INSENSITIVE, rootHandle, nullptr);
+        IO_STATUS_BLOCK statusBlock{};
+        HANDLE created = INVALID_HANDLE_VALUE;
+        const NTSTATUS status = ntCreateFile(
+            &created,
+            FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            &attributes, &statusBlock, nullptr, FILE_ATTRIBUTE_DIRECTORY,
+            FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_CREATE,
+            FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT
+                | FILE_OPEN_REPARSE_POINT,
+            nullptr, 0);
+        if (status < 0 || created == INVALID_HANDLE_VALUE) {
+            const DWORD code = ntStatusToDosError
+                ? static_cast<DWORD>(ntStatusToDosError(status))
+                : ERROR_CANNOT_MAKE;
+            setError(error, winErrorMessage(
+                                QStringLiteral(
+                                    "Could not atomically reserve managed VM directory"),
+                                code));
+            return ScopedWinHandle{};
+        }
+        return ScopedWinHandle(created);
+    }
+
+    static bool readEntryIdentity(Entry &entry, QString *error)
+    {
+        FILE_ATTRIBUTE_TAG_INFO attributes{};
+        if (!queryHandleAttributes(entry.handle.get(), &attributes, error))
+            return false;
+        if (!(attributes.FileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            setError(error, QStringLiteral("Managed path lease is not a directory: %1")
+                                .arg(entry.path));
+            return false;
+        }
+        entry.identity = identityForHandle(entry.handle.get(), error);
+        return !entry.identity.isEmpty();
+    }
+
+    static bool validateEntry(const Entry &entry, QString *error)
+    {
+        FILE_ATTRIBUTE_TAG_INFO attributes{};
+        if (!entry.handle.valid()
+            || !queryHandleAttributes(entry.handle.get(), &attributes, error)
+            || !(attributes.FileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            if (error && error->isEmpty())
+                *error = QStringLiteral("Managed directory lease became invalid: %1")
+                             .arg(entry.path);
+            return false;
+        }
+        const QString boundIdentity = identityForHandle(entry.handle.get(), error);
+        if (boundIdentity.isEmpty() || boundIdentity != entry.identity)
+            return false;
+        QString pathError;
+        const QString currentIdentity = pathIdentity(entry.path, &pathError);
+        if (!pathError.isEmpty() || currentIdentity != entry.identity) {
+            setError(error, pathError.isEmpty()
+                                ? QStringLiteral("Managed path was substituted during execution: %1")
+                                      .arg(entry.path)
+                                : pathError);
+            return false;
+        }
+        return true;
+    }
+
+    bool acquireRoot(const QString &rootPath, const QString &expectedIdentity,
+                     QString *error)
+    {
+        const QString canonical = QFileInfo(rootPath).canonicalFilePath();
+        if (canonical.isEmpty()) {
+            setError(error, QStringLiteral("Managed root could not be resolved for leasing."));
+            return false;
+        }
+        Entry root;
+        root.path = canonical;
+        root.handle = openDirectory(root.path, false, error);
+        if (!root.handle.valid() || !readEntryIdentity(root, error))
+            return false;
+        if (expectedIdentity.isEmpty() || root.identity != expectedIdentity) {
+            setError(error, QStringLiteral("Managed root identity changed after preview."));
+            return false;
+        }
+        m_rootPath = canonical;
+        m_ancestors.push_back(std::move(root));
+        return true;
+    }
+
+    QString m_rootPath;
+    std::vector<Entry> m_ancestors;
+    std::optional<Entry> m_target;
+};
+
+#else
+
+class ManagedPathLease
+{
+public:
+    bool reserveCreate(const QString &rootPath, const QString &targetPath,
+                       const QString &expectedRootIdentity, QString *error)
+    {
+        if (!acquireRoot(rootPath, expectedRootIdentity, error))
+            return false;
+        const QFileInfo target(targetPath);
+        if (target.exists() || !samePath(target.absolutePath(), m_rootPath)
+            || !QDir(m_rootPath).mkdir(target.fileName())) {
+            setError(error, QStringLiteral("Could not reserve managed VM directory."));
+            return false;
+        }
+        m_targetPath = target.absoluteFilePath();
+        m_targetIdentity = pathIdentity(m_targetPath, error);
+        return !m_targetIdentity.isEmpty();
+    }
+
+    bool acquireDeletion(const QString &rootPath, const QString &targetPath,
+                         const QString &expectedRootIdentity,
+                         const QString &expectedTargetIdentity, QString *error)
+    {
+        if (!acquireRoot(rootPath, expectedRootIdentity, error))
+            return false;
+        m_targetPath = QFileInfo(targetPath).canonicalFilePath();
+        m_targetIdentity = pathIdentity(m_targetPath, error);
+        if (m_targetIdentity != expectedTargetIdentity) {
+            setError(error, QStringLiteral("Managed VM directory identity changed after preview."));
+            return false;
+        }
+        return true;
+    }
+
+    bool validate(QString *error) const
+    {
+        QString identityError;
+        if (pathIdentity(m_rootPath, &identityError) != m_rootIdentity
+            || (!m_targetPath.isEmpty()
+                && pathIdentity(m_targetPath, &identityError) != m_targetIdentity)) {
+            setError(error, identityError.isEmpty()
+                                ? QStringLiteral("Managed path changed during execution.")
+                                : identityError);
+            return false;
+        }
+        setError(error, {});
+        return true;
+    }
+
+    void closeTarget() {}
+
+private:
+    bool acquireRoot(const QString &rootPath, const QString &expectedIdentity,
+                     QString *error)
+    {
+        m_rootPath = QFileInfo(rootPath).canonicalFilePath();
+        m_rootIdentity = pathIdentity(m_rootPath, error);
+        if (m_rootIdentity.isEmpty() || m_rootIdentity != expectedIdentity) {
+            setError(error, QStringLiteral("Managed root identity changed after preview."));
+            return false;
+        }
+        return true;
+    }
+
+    QString m_rootPath;
+    QString m_rootIdentity;
+    QString m_targetPath;
+    QString m_targetIdentity;
+};
 
 #endif
 
@@ -338,7 +719,103 @@ QJsonObject machineJson(const Machine &machine)
         {QStringLiteral("name"), machine.ref.name},
         {QStringLiteral("configPath"), machine.configPath},
         {QStringLiteral("ownership"), ownershipName(machine.ownership)},
+        {QStringLiteral("ownershipToken"), machine.ownershipToken},
     };
+}
+
+bool managedMarkerMatches(const Machine &machine, const QString &directory,
+                          QString *error)
+{
+    if (machine.ownershipToken.trimmed().isEmpty()) {
+        setError(error, QStringLiteral(
+            "Managed deletion requires a durable WimForge ownership token."));
+        return false;
+    }
+    const QString markerPath = QDir(directory).filePath(managedOwnershipMarkerFileName());
+    const QFileInfo markerInfo(markerPath);
+    if (!markerInfo.isAbsolute() || !markerInfo.exists() || !markerInfo.isFile()
+        || markerInfo.isSymLink()
+#ifdef Q_OS_WIN
+        || markerInfo.isJunction()
+#endif
+    ) {
+        setError(error, QStringLiteral(
+            "Managed deletion requires the original WimForge ownership marker."));
+        return false;
+    }
+    QFile marker(markerPath);
+    if (!marker.open(QIODevice::ReadOnly)) {
+        setError(error, QStringLiteral("Could not read the WimForge ownership marker: %1")
+                            .arg(marker.errorString()));
+        return false;
+    }
+    if (marker.size() < 0 || marker.size() > 4096) {
+        setError(error, QStringLiteral("The WimForge ownership marker exceeds 4 KiB."));
+        return false;
+    }
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(marker.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        setError(error, QStringLiteral("The WimForge ownership marker is invalid."));
+        return false;
+    }
+    const QJsonObject object = document.object();
+    if (object.value(QStringLiteral("schema")).toString()
+            != QStringLiteral("wimforge.managed-vm")
+        || object.value(QStringLiteral("version")).toInt(-1) != 1
+        || object.value(QStringLiteral("providerId")).toString() != machine.ref.providerId
+        || object.value(QStringLiteral("id")).toString() != machine.ref.id
+        || object.value(QStringLiteral("token")).toString() != machine.ownershipToken) {
+        setError(error, QStringLiteral(
+            "The WimForge ownership marker does not match this catalog VM."));
+        return false;
+    }
+    setError(error, {});
+    return true;
+}
+
+bool prepareExclusiveDirectory(const QString &path, QString *error)
+{
+    const QFileInfo target(path);
+    const QFileInfo parent(target.absolutePath());
+    if (!target.isAbsolute() || target.exists() || target.fileName().trimmed().isEmpty()
+        || !parent.exists() || !parent.isDir() || parent.isSymLink()
+#ifdef Q_OS_WIN
+        || parent.isJunction()
+#endif
+    ) {
+        setError(error, QStringLiteral(
+            "Managed VM directory must be a new direct child of an existing real directory: %1")
+                            .arg(path));
+        return false;
+    }
+    QDir parentDirectory(parent.absoluteFilePath());
+    if (!parentDirectory.mkdir(target.fileName())) {
+        setError(error, QStringLiteral(
+            "Could not reserve the dedicated managed VM directory: %1").arg(path));
+        return false;
+    }
+    setError(error, {});
+    return true;
+}
+
+bool exclusiveDirectoryIsAvailable(const QString &path, QString *error)
+{
+    const QFileInfo target(path);
+    const QFileInfo parent(target.absolutePath());
+    if (!target.isAbsolute() || target.exists() || target.fileName().trimmed().isEmpty()
+        || !parent.exists() || !parent.isDir() || parent.isSymLink()
+#ifdef Q_OS_WIN
+        || parent.isJunction()
+#endif
+    ) {
+        setError(error, QStringLiteral(
+            "Managed VM directory is no longer available for exclusive creation: %1")
+                            .arg(path));
+        return false;
+    }
+    setError(error, {});
+    return true;
 }
 
 QJsonObject catalogJson(const QList<Machine> &machines)
@@ -497,6 +974,25 @@ bool ConfigPatch::empty() const
         && !bridgedInterface && !isoPath;
 }
 
+QString managedOwnershipMarkerFileName()
+{
+    return QStringLiteral(".wimforge-managed-vm.json");
+}
+
+QByteArray managedOwnershipMarkerContents(const VmRef &reference, const QString &token)
+{
+    QJsonObject object{
+        {QStringLiteral("schema"), QStringLiteral("wimforge.managed-vm")},
+        {QStringLiteral("version"), 1},
+        {QStringLiteral("providerId"), reference.providerId},
+        {QStringLiteral("id"), reference.id},
+        {QStringLiteral("token"), token},
+    };
+    QByteArray result = QJsonDocument(object).toJson(QJsonDocument::Compact);
+    result.append('\n');
+    return result;
+}
+
 bool Command::valid(QString *error) const
 {
     if (executable.trimmed().isEmpty() || !QFileInfo(executable).isAbsolute()) {
@@ -554,6 +1050,17 @@ ProcessResult ProcessCommandRunner::run(const Command &command)
     process.setProcessChannelMode(QProcess::SeparateChannels);
     if (!command.workingDirectory.isEmpty())
         process.setWorkingDirectory(command.workingDirectory);
+    if (command.detached) {
+        qint64 processId = 0;
+        if (!process.startDetached(&processId)) {
+            result.error = process.errorString();
+            return result;
+        }
+        result.started = true;
+        result.exitCode = 0;
+        return result;
+    }
+    configureProcessWithoutConsole(process);
     QElapsedTimer elapsed;
     elapsed.start();
     process.start();
@@ -562,26 +1069,89 @@ ProcessResult ProcessCommandRunner::run(const Command &command)
         return result;
     }
     result.started = true;
-    const int remaining = std::max(1, command.timeoutMs - static_cast<int>(elapsed.elapsed()));
-    if (!process.waitForFinished(remaining)) {
+    bool deadlineExceeded = false;
+    while (process.state() != QProcess::NotRunning) {
+        drainProcess(process, result);
+        if (elapsed.elapsed() >= command.timeoutMs) {
+            deadlineExceeded = true;
+            if (command.interruptible)
+                break;
+        }
+        process.waitForFinished(50);
+    }
+    if (process.state() != QProcess::NotRunning) {
         result.timedOut = true;
         result.error = QStringLiteral("Provider command timed out after %1 ms.").arg(command.timeoutMs);
         process.kill();
         process.waitForFinished(5000);
     }
-    result.standardOutput = process.readAllStandardOutput();
-    result.standardError = process.readAllStandardError();
+    drainProcess(process, result);
     if (!result.timedOut) {
         result.exitCode = process.exitCode();
         if (process.exitStatus() != QProcess::NormalExit)
             result.error = QStringLiteral("Provider command crashed.");
+        else if (deadlineExceeded)
+            result.deadlineExceeded = true;
     }
     return result;
 }
 
-DeletionGuard PathPolicy::managedDeletionGuard(const Machine &machine,
-                                               const QString &managedRoot,
-                                               const QList<Machine> &catalogMachines)
+CreationGuard PathPolicy::managedCreateGuard(const QString &managedRoot,
+                                             const QString &targetDirectory)
+{
+    CreationGuard result;
+    const QFileInfo rootInfo(managedRoot);
+    const QFileInfo targetInfo(targetDirectory);
+    if (!rootInfo.isAbsolute() || !rootInfo.exists() || !rootInfo.isDir()
+        || rootInfo.isSymLink()
+#ifdef Q_OS_WIN
+        || rootInfo.isJunction()
+#endif
+    ) {
+        result.error = QStringLiteral("Managed VM root is missing, invalid, or a reparse point.");
+        return result;
+    }
+    const QString canonicalRoot = rootInfo.canonicalFilePath();
+    if (canonicalRoot.isEmpty() || !targetInfo.isAbsolute() || targetInfo.exists()
+        || !isSafeMachineFileStem(targetInfo.fileName())) {
+        result.error = QStringLiteral(
+            "Managed VM target must be a new safe directory beneath the managed root.");
+        return result;
+    }
+    const QFileInfo parent(targetInfo.absolutePath());
+    const QString canonicalParent = parent.canonicalFilePath();
+    if (!parent.exists() || !parent.isDir() || parent.isSymLink()
+#ifdef Q_OS_WIN
+        || parent.isJunction()
+#endif
+        || canonicalParent.isEmpty() || !samePath(canonicalParent, canonicalRoot)) {
+        result.error = QStringLiteral(
+            "Managed VM target must be a direct child of the canonical managed root.");
+        return result;
+    }
+    QString identityError;
+    const QString rootIdentity = pathIdentity(canonicalRoot, &identityError);
+    if (rootIdentity.isEmpty()) {
+        result.error = identityError.isEmpty()
+            ? QStringLiteral("Could not bind managed root identity for creation.")
+            : identityError;
+        return result;
+    }
+    result.allowed = true;
+    result.canonicalRoot = canonicalRoot;
+    result.targetDirectory = targetInfo.absoluteFilePath();
+    result.rootIdentity = rootIdentity;
+    return result;
+}
+
+namespace {
+
+enum class DeletionTargetPresence { MustBePresent, MustBeAbsent };
+
+DeletionGuard managedDeletionGuardImpl(const Machine &machine,
+                                       const QString &managedRoot,
+                                       const QList<Machine> &catalogMachines,
+                                       DeletionTargetPresence targetPresence)
 {
     DeletionGuard result;
     if (machine.ownership != Ownership::Managed) {
@@ -627,6 +1197,11 @@ DeletionGuard PathPolicy::managedDeletionGuard(const Machine &machine,
         result.error = reparseError;
         return result;
     }
+    QString markerError;
+    if (!managedMarkerMatches(machine, canonicalDirectory, &markerError)) {
+        result.error = markerError;
+        return result;
+    }
     for (const QString &storagePath : machine.storagePaths) {
         const QFileInfo storage(storagePath);
         const QString canonicalStorage = storage.canonicalFilePath();
@@ -642,6 +1217,20 @@ DeletionGuard PathPolicy::managedDeletionGuard(const Machine &machine,
 #endif
         ) {
             result.error = QStringLiteral("Managed deletion refuses reparse storage: %1").arg(storagePath);
+            return result;
+        }
+    }
+    const QString expectedConfiguration = QFileInfo(machine.configPath).canonicalFilePath();
+    QDirIterator configurationIterator(
+        canonicalDirectory, {QStringLiteral("*.vmx"), QStringLiteral("*.vbox")},
+        QDir::Files | QDir::Hidden | QDir::System, QDirIterator::Subdirectories);
+    while (configurationIterator.hasNext()) {
+        const QString discovered = QFileInfo(configurationIterator.next()).canonicalFilePath();
+        if (expectedConfiguration.isEmpty() || discovered.isEmpty()
+            || !samePath(discovered, expectedConfiguration)) {
+            result.error = QStringLiteral(
+                "Managed deletion found an untracked VM configuration inside the target: %1")
+                               .arg(configurationIterator.filePath());
             return result;
         }
     }
@@ -684,8 +1273,13 @@ DeletionGuard PathPolicy::managedDeletionGuard(const Machine &machine,
             }
         }
     }
-    if (!targetPresent) {
+    if (targetPresence == DeletionTargetPresence::MustBePresent && !targetPresent) {
         result.error = QStringLiteral("Deletion target is absent from the refreshed VM inventory.");
+        return result;
+    }
+    if (targetPresence == DeletionTargetPresence::MustBeAbsent && targetPresent) {
+        result.error = QStringLiteral(
+            "Provider inventory still reports the VM after unregister; local files were preserved.");
         return result;
     }
     QString identityError;
@@ -696,9 +1290,69 @@ DeletionGuard PathPolicy::managedDeletionGuard(const Machine &machine,
             : identityError;
         return result;
     }
+    result.rootIdentity = pathIdentity(canonicalRoot, &identityError);
+    if (result.rootIdentity.isEmpty()) {
+        result.error = identityError.isEmpty()
+            ? QStringLiteral("Could not bind the managed root identity.")
+            : identityError;
+        return result;
+    }
     result.allowed = true;
+    result.canonicalRoot = canonicalRoot;
     result.canonicalDirectory = canonicalDirectory;
     return result;
+}
+
+bool deleteManagedDirectoryWithLease(const DeletionGuard &guard,
+                                     ManagedPathLease &lease,
+                                     QString *error)
+{
+    if (!lease.validate(error))
+        return false;
+#ifdef Q_OS_WIN
+    if (lease.targetHandle() == INVALID_HANDLE_VALUE) {
+        setError(error, QStringLiteral("Managed deletion target lease is missing."));
+        return false;
+    }
+    if (!deleteTreeNoFollowWindows(guard.canonicalDirectory, guard.identity, error,
+                                   lease.targetHandle())) {
+        return false;
+    }
+    lease.closeTarget();
+    if (QFileInfo::exists(guard.canonicalDirectory)) {
+        setError(error, QStringLiteral(
+            "Managed VM directory remained after handle-bound deletion."));
+        return false;
+    }
+#else
+    QDir directory(guard.canonicalDirectory);
+    if (!directory.removeRecursively()) {
+        setError(error, QStringLiteral("Provider files could not be removed from %1.")
+                            .arg(guard.canonicalDirectory));
+        return false;
+    }
+#endif
+    setError(error, {});
+    return true;
+}
+
+} // namespace
+
+DeletionGuard PathPolicy::managedDeletionGuard(const Machine &machine,
+                                               const QString &managedRoot,
+                                               const QList<Machine> &catalogMachines)
+{
+    return managedDeletionGuardImpl(machine, managedRoot, catalogMachines,
+                                    DeletionTargetPresence::MustBePresent);
+}
+
+DeletionGuard PathPolicy::managedDeletionGuardAfterUnregister(
+    const Machine &machine,
+    const QString &managedRoot,
+    const QList<Machine> &catalogMachines)
+{
+    return managedDeletionGuardImpl(machine, managedRoot, catalogMachines,
+                                    DeletionTargetPresence::MustBeAbsent);
 }
 
 bool PathPolicy::deleteManagedDirectory(const Machine &machine,
@@ -716,22 +1370,16 @@ bool PathPolicy::deleteManagedDirectory(const Machine &machine,
         setError(error, QStringLiteral("Managed VM directory identity changed after preview."));
         return false;
     }
-#ifdef Q_OS_WIN
-    if (!deleteTreeNoFollowWindows(guard.canonicalDirectory, expectedIdentity, error))
-        return false;
-#else
-    QDir directory(guard.canonicalDirectory);
-    if (!directory.removeRecursively()) {
-        setError(error, QStringLiteral("Provider files could not be removed from %1.")
-                            .arg(guard.canonicalDirectory));
+    ManagedPathLease lease;
+    if (!lease.acquireDeletion(guard.canonicalRoot, guard.canonicalDirectory,
+                               guard.rootIdentity, expectedIdentity, error)) {
         return false;
     }
-#endif
-    setError(error, {});
-    return true;
+    return deleteManagedDirectoryWithLease(guard, lease, error);
 }
 
 Catalog::Catalog(QString path) : m_path(std::move(path)) {}
+Catalog::~Catalog() = default;
 QString Catalog::path() const { return m_path; }
 QList<Machine> Catalog::machines() const { return m_machines; }
 
@@ -757,8 +1405,16 @@ bool Catalog::upsert(const Machine &machine, QString *error)
             existing.inaccessibleReason.clear();
             existing.warnings.clear();
             existing.storagePaths.clear();
+            existing.storageDevices.clear();
+            existing.networkDevices.clear();
+            existing.cpuCount.reset();
+            existing.memoryMiB.reset();
+            existing.firmware.reset();
+            existing.secureBoot.reset();
+            existing.tpm.reset();
             existing.stateRevision.clear();
             existing.inventoryComplete = false;
+            existing.hardwareInventoryComplete = false;
             setError(error, {});
             return true;
         }
@@ -768,8 +1424,16 @@ bool Catalog::upsert(const Machine &machine, QString *error)
     portable.inaccessibleReason.clear();
     portable.warnings.clear();
     portable.storagePaths.clear();
+    portable.storageDevices.clear();
+    portable.networkDevices.clear();
+    portable.cpuCount.reset();
+    portable.memoryMiB.reset();
+    portable.firmware.reset();
+    portable.secureBoot.reset();
+    portable.tpm.reset();
     portable.stateRevision.clear();
     portable.inventoryComplete = false;
+    portable.hardwareInventoryComplete = false;
     m_machines.append(portable);
     setError(error, {});
     return true;
@@ -805,6 +1469,11 @@ bool Catalog::load(QString *error)
         setError(error, file.errorString());
         return false;
     }
+    constexpr qint64 MaxCatalogBytes = 4 * 1024 * 1024;
+    if (file.size() < 0 || file.size() > MaxCatalogBytes) {
+        setError(error, QStringLiteral("VM catalog exceeds the 4 MiB safety limit."));
+        return false;
+    }
     const QByteArray bytes = file.readAll();
     QJsonParseError parseError;
     const QJsonDocument document = QJsonDocument::fromJson(bytes, &parseError);
@@ -820,6 +1489,11 @@ bool Catalog::load(QString *error)
         return false;
     }
     QList<Machine> loaded;
+    constexpr qsizetype MaxCatalogMachines = 2048;
+    if (root.value(QStringLiteral("machines")).toArray().size() > MaxCatalogMachines) {
+        setError(error, QStringLiteral("VM catalog contains too many machine entries."));
+        return false;
+    }
     QSet<QString> identities;
     for (const QJsonValue &value : root.value(QStringLiteral("machines")).toArray()) {
         if (!value.isObject()) {
@@ -832,6 +1506,7 @@ bool Catalog::load(QString *error)
         machine.ref.id = object.value(QStringLiteral("id")).toString();
         machine.ref.name = object.value(QStringLiteral("name")).toString();
         machine.configPath = object.value(QStringLiteral("configPath")).toString();
+        machine.ownershipToken = object.value(QStringLiteral("ownershipToken")).toString();
         const QString ownership = object.value(QStringLiteral("ownership")).toString();
         if (ownership == QStringLiteral("managed"))
             machine.ownership = Ownership::Managed;
@@ -842,7 +1517,13 @@ bool Catalog::load(QString *error)
             return false;
         }
         const QString identity = machine.ref.providerId + QChar::Null + machine.ref.id;
-        if (!machine.ref.valid() || !QFileInfo(machine.configPath).isAbsolute()
+        constexpr qsizetype MaxCatalogText = 32768;
+        if (machine.ref.providerId.size() > MaxCatalogText
+            || machine.ref.id.size() > MaxCatalogText
+            || machine.ref.name.size() > MaxCatalogText
+            || machine.configPath.size() > MaxCatalogText
+            || machine.ownershipToken.size() > 128
+            || !machine.ref.valid() || !QFileInfo(machine.configPath).isAbsolute()
             || identities.contains(identity)) {
             setError(error, QStringLiteral("VM catalog contains an invalid or duplicate machine."));
             return false;
@@ -869,11 +1550,16 @@ bool Catalog::save(QString *error)
         setError(error, QStringLiteral("Could not create VM catalog directory."));
         return false;
     }
-    QLockFile lock(m_path + QStringLiteral(".lock"));
-    lock.setStaleLockTime(30000);
-    if (!lock.tryLock(5000)) {
+    std::unique_ptr<QLockFile> localLock;
+    QLockFile *lock = m_transactionLock.get();
+    if (!lock) {
+        localLock = std::make_unique<QLockFile>(m_path + QStringLiteral(".lock"));
+        localLock->setStaleLockTime(30000);
+        lock = localLock.get();
+    }
+    if (!lock->isLocked() && !lock->tryLock(5000)) {
         setError(error, QStringLiteral("VM catalog is locked by another writer: %1")
-                            .arg(lock.error()));
+                            .arg(lock->error()));
         return false;
     }
     const bool exists = QFileInfo::exists(m_path);
@@ -911,6 +1597,50 @@ bool Catalog::save(QString *error)
     m_expectedMissing = false;
     setError(error, {});
     return true;
+}
+
+bool Catalog::beginTransaction(const QString &expectedRevision, QString *error)
+{
+    if (m_transactionLock) {
+        setError(error, QStringLiteral("A VM catalog transaction is already active."));
+        return false;
+    }
+    if (expectedRevision.trimmed().isEmpty() || m_path.trimmed().isEmpty()
+        || !QFileInfo(m_path).isAbsolute()
+        || !QDir().mkpath(QFileInfo(m_path).absolutePath())) {
+        setError(error, QStringLiteral("VM catalog transaction path or revision is invalid."));
+        return false;
+    }
+    auto lock = std::make_unique<QLockFile>(m_path + QStringLiteral(".lock"));
+    lock->setStaleLockTime(30000);
+    if (!lock->tryLock(5000)) {
+        setError(error, QStringLiteral("VM catalog is locked by another writer: %1")
+                            .arg(lock->error()));
+        return false;
+    }
+    QString loadError;
+    if (!load(&loadError)) {
+        setError(error, loadError);
+        return false;
+    }
+    if (revision() != expectedRevision) {
+        setError(error, QStringLiteral(
+            "VM catalog changed after preview; refresh inventory and review again."));
+        return false;
+    }
+    m_transactionLock = std::move(lock);
+    setError(error, {});
+    return true;
+}
+
+void Catalog::endTransaction()
+{
+    m_transactionLock.reset();
+}
+
+bool Catalog::transactionActive() const
+{
+    return m_transactionLock && m_transactionLock->isLocked();
 }
 
 bool Executor::validate(const Plan &plan,
@@ -957,6 +1687,85 @@ bool Executor::validate(const Plan &plan,
             return false;
         }
     }
+    for (const FileEvidence &evidence : plan.filePreflight) {
+        const QFileInfo file(evidence.path);
+        if (!file.isAbsolute() || !file.exists() || !file.isFile()
+            || evidence.expectedSize < 0 || file.size() != evidence.expectedSize
+            || evidence.expectedLastModifiedMs < 0
+            || file.lastModified().toMSecsSinceEpoch() != evidence.expectedLastModifiedMs
+            || evidence.expectedIdentity.isEmpty()) {
+            setError(error, QStringLiteral("Reviewed file changed or disappeared: %1")
+                                .arg(evidence.description));
+            return false;
+        }
+        QString identityError;
+        const QString currentIdentity = pathIdentity(file.absoluteFilePath(), &identityError);
+        if (!identityError.isEmpty() || currentIdentity != evidence.expectedIdentity) {
+            setError(error, identityError.isEmpty()
+                                ? QStringLiteral("Reviewed file identity changed: %1")
+                                      .arg(evidence.description)
+                                : identityError);
+            return false;
+        }
+    }
+    if (plan.managedCreateReservation && plan.managedDeletionAfterCommands) {
+        setError(error, QStringLiteral(
+            "A VM plan cannot create and delete managed paths in one execution."));
+        return false;
+    }
+    if (plan.managedCreateReservation) {
+        const ManagedCreateReservation &reservation = *plan.managedCreateReservation;
+        const CreationGuard guard = PathPolicy::managedCreateGuard(
+            reservation.managedRoot, reservation.targetDirectory);
+        if (!guard.allowed) {
+            setError(error, guard.error);
+            return false;
+        }
+        if (reservation.expectedRootIdentity.isEmpty()
+            || guard.rootIdentity != reservation.expectedRootIdentity
+            || !samePath(guard.targetDirectory, reservation.targetDirectory)) {
+            setError(error, QStringLiteral(
+                "Managed create root or target changed after preview."));
+            return false;
+        }
+        if (plan.managedOwnershipToken.isEmpty()) {
+            setError(error, QStringLiteral(
+                "Managed create plan lacks its durable ownership token."));
+            return false;
+        }
+        const QString markerPath = QDir(guard.targetDirectory).filePath(
+            managedOwnershipMarkerFileName());
+        const QByteArray markerContents = managedOwnershipMarkerContents(
+            preview.target, plan.managedOwnershipToken);
+        const bool hasExactMarker = std::any_of(
+            plan.atomicWritesAfterCommands.cbegin(),
+            plan.atomicWritesAfterCommands.cend(),
+            [&markerPath, &markerContents](const AtomicWrite &write) {
+                return samePath(write.path, markerPath)
+                    && write.expectedSha256.isEmpty()
+                    && write.contents == markerContents;
+            });
+        if (!hasExactMarker) {
+            setError(error, QStringLiteral(
+                "Managed create plan lacks its exact ownership marker write."));
+            return false;
+        }
+        for (const AtomicWrite &write : plan.atomicWritesAfterCommands) {
+            if (!containedPath(guard.targetDirectory, write.path)) {
+                setError(error, QStringLiteral(
+                    "Managed create refuses an atomic write outside its leased target: %1")
+                                    .arg(write.path));
+                return false;
+            }
+        }
+    }
+    for (const QString &directory : plan.directoriesBeforeCommands) {
+        QString directoryError;
+        if (!exclusiveDirectoryIsAvailable(directory, &directoryError)) {
+            setError(error, directoryError);
+            return false;
+        }
+    }
     for (const AtomicWrite &write : plan.atomicWritesAfterCommands) {
         QString revisionError;
         if (!atomicWriteRevisionMatches(write, &revisionError)) {
@@ -966,6 +1775,15 @@ bool Executor::validate(const Plan &plan,
     }
     if (plan.managedDeletionAfterCommands) {
         const ManagedDeletion &deletion = *plan.managedDeletionAfterCommands;
+        if (preview.risk != Risk::Destructive
+            || !plan.atomicWritesAfterCommands.isEmpty()
+            || !plan.directoriesBeforeCommands.isEmpty()
+            || (deletion.expectTargetAbsentAfterCommands
+                && preview.commands.isEmpty())) {
+            setError(error, QStringLiteral(
+                "Managed deletion plan has an unsafe execution shape."));
+            return false;
+        }
         const DeletionGuard guard = PathPolicy::managedDeletionGuard(
             deletion.machine, deletion.managedRoot, deletion.catalogMachines);
         if (!guard.allowed) {
@@ -973,7 +1791,9 @@ bool Executor::validate(const Plan &plan,
             return false;
         }
         if (deletion.expectedIdentity.isEmpty()
-            || guard.identity != deletion.expectedIdentity) {
+            || deletion.expectedRootIdentity.isEmpty()
+            || guard.identity != deletion.expectedIdentity
+            || guard.rootIdentity != deletion.expectedRootIdentity) {
             setError(error, QStringLiteral("Managed VM directory identity changed after preview."));
             return false;
         }
@@ -986,12 +1806,58 @@ Result Executor::execute(const Plan &plan,
                          const QString &currentRevision,
                          const QString &typedConfirmation,
                          const QDateTime &now,
-                         CommandRunner &runner)
+                         CommandRunner &runner,
+                         const ManagedInventoryRefresh &managedInventoryRefresh)
 {
     Result result;
     if (!validate(plan, currentRevision, typedConfirmation, now, &result.error))
         return result;
+    std::unique_ptr<ManagedPathLease> managedLease;
+    if (plan.managedCreateReservation) {
+        const ManagedCreateReservation &reservation = *plan.managedCreateReservation;
+        managedLease = std::make_unique<ManagedPathLease>();
+        if (!managedLease->reserveCreate(
+                reservation.managedRoot, reservation.targetDirectory,
+                reservation.expectedRootIdentity, &result.error)) {
+            return result;
+        }
+    } else if (plan.managedDeletionAfterCommands) {
+        const ManagedDeletion &deletion = *plan.managedDeletionAfterCommands;
+        const DeletionGuard guard = PathPolicy::managedDeletionGuard(
+            deletion.machine, deletion.managedRoot, deletion.catalogMachines);
+        if (!guard.allowed) {
+            result.error = guard.error;
+            return result;
+        }
+        managedLease = std::make_unique<ManagedPathLease>();
+        if (!managedLease->acquireDeletion(
+                guard.canonicalRoot, guard.canonicalDirectory,
+                deletion.expectedRootIdentity, deletion.expectedIdentity,
+                &result.error)) {
+            return result;
+        }
+    }
+    const auto validateLease = [&managedLease, &result]() {
+        return !managedLease || managedLease->validate(&result.error);
+    };
+    for (const FileEvidence &evidence : plan.filePreflight) {
+        if (!validateLease())
+            return result;
+        FileEvidence verified = evidence;
+        verified.expectedSha256 = fileSha256(evidence.path, &result.error);
+        if (!result.error.isEmpty() || verified.expectedSha256.size() != 64)
+            return result;
+        result.verifiedFiles.append(std::move(verified));
+    }
+    for (const QString &directory : plan.directoriesBeforeCommands) {
+        if (!validateLease())
+            return result;
+        if (!prepareExclusiveDirectory(directory, &result.error))
+            return result;
+    }
     for (const CommandEvidence &evidence : plan.preflight) {
+        if (!validateLease())
+            return result;
         ProcessResult process = runner.run(evidence.command);
         result.processes.append(process);
         if (!process.ok()) {
@@ -1004,6 +1870,8 @@ Result Executor::execute(const Plan &plan,
                 : process.error;
             return result;
         }
+        if (!validateLease())
+            return result;
         QString evidenceError;
         const QString current = commandEvidence(
             evidence.format, process.standardOutput, &evidenceError);
@@ -1016,6 +1884,8 @@ Result Executor::execute(const Plan &plan,
         }
     }
     for (const Command &command : plan.preview.commands) {
+        if (!validateLease())
+            return result;
         ProcessResult process = runner.run(command);
         result.processes.append(process);
         if (!process.ok()) {
@@ -1033,16 +1903,56 @@ Result Executor::execute(const Plan &plan,
             }
             return result;
         }
-    }
-    for (const AtomicWrite &write : plan.atomicWritesAfterCommands) {
-        if (!atomicWriteRevisionMatches(write, &result.error) || !writeAtomic(write, &result.error))
+        if (!validateLease())
             return result;
     }
+    std::optional<DeletionGuard> finalDeletionGuard;
     if (plan.managedDeletionAfterCommands) {
+        if (!managedInventoryRefresh) {
+            result.error = QStringLiteral(
+                "Managed deletion requires a second complete provider inventory after provider commands.");
+            return result;
+        }
+        QList<Machine> refreshedMachines;
+        if (!managedInventoryRefresh(runner, &refreshedMachines, &result.error)) {
+            if (result.error.isEmpty()) {
+                result.error = QStringLiteral(
+                    "Post-command provider inventory was incomplete; managed files were preserved.");
+            }
+            return result;
+        }
+        if (!validateLease())
+            return result;
         const ManagedDeletion &deletion = *plan.managedDeletionAfterCommands;
-        if (!PathPolicy::deleteManagedDirectory(
-                deletion.machine, deletion.managedRoot, deletion.catalogMachines,
-                deletion.expectedIdentity, &result.error)) {
+        const DeletionGuard guard = deletion.expectTargetAbsentAfterCommands
+            ? PathPolicy::managedDeletionGuardAfterUnregister(
+                  deletion.machine, deletion.managedRoot, refreshedMachines)
+            : PathPolicy::managedDeletionGuard(
+                  deletion.machine, deletion.managedRoot, refreshedMachines);
+        if (!guard.allowed) {
+            result.error = guard.error;
+            return result;
+        }
+        if (guard.identity != deletion.expectedIdentity
+            || guard.rootIdentity != deletion.expectedRootIdentity) {
+            result.error = QStringLiteral(
+                "Managed root or target identity changed after provider commands.");
+            return result;
+        }
+        finalDeletionGuard = guard;
+    }
+    for (const AtomicWrite &write : plan.atomicWritesAfterCommands) {
+        if (!validateLease())
+            return result;
+        if (!atomicWriteRevisionMatches(write, &result.error) || !writeAtomic(write, &result.error))
+            return result;
+        if (!validateLease())
+            return result;
+    }
+    if (finalDeletionGuard) {
+        if (!managedLease
+            || !deleteManagedDirectoryWithLease(*finalDeletionGuard, *managedLease,
+                                                &result.error)) {
             return result;
         }
     }
@@ -1074,6 +1984,37 @@ OperationPreview makePreview(const QString &action,
     return preview;
 }
 
+Plan makeForgetCatalogPlan(const Machine &machine,
+                           const QString &revision,
+                           const QDateTime &now)
+{
+    Plan plan;
+    if (!machine.ref.valid()) {
+        plan.errors.append(QStringLiteral(
+            "A valid catalog VM identity is required before forgetting an entry."));
+        return plan;
+    }
+    if (machine.ownership != Ownership::External) {
+        plan.errors.append(QStringLiteral(
+            "WimForge-managed VMs cannot be forgotten while their owned files remain. "
+            "Delete the managed VM through the reviewed file-deletion workflow instead."));
+        return plan;
+    }
+    if (revision.isEmpty() || !now.isValid()) {
+        plan.errors.append(QStringLiteral(
+            "Refresh catalog state before forgetting a VM entry."));
+        return plan;
+    }
+    plan.preview = makePreview(
+        QStringLiteral("forget"), machine.ref, Risk::Reversible,
+        {QStringLiteral(
+            "Remove only the external VM's WimForge catalog entry; provider registration and every VM file remain unchanged.")},
+        {QStringLiteral(
+            "This provider-independent repair action is available even when the VM configuration or provider is missing.")},
+        {}, revision, now);
+    return plan;
+}
+
 QString fileSha256(const QString &path, QString *error)
 {
     QFile file(path);
@@ -1088,6 +2029,30 @@ QString fileSha256(const QString &path, QString *error)
     }
     setError(error, {});
     return QString::fromLatin1(hash.result().toHex());
+}
+
+bool addFileEvidence(Plan &plan, const QString &path, const QString &description,
+                     QString *error)
+{
+    const QFileInfo file(path);
+    if (!file.isAbsolute() || !file.exists() || !file.isFile()) {
+        setError(error, QStringLiteral("Reviewed file must be an existing absolute file: %1")
+                            .arg(path));
+        return false;
+    }
+    QString identityError;
+    const QString identity = pathIdentity(file.absoluteFilePath(), &identityError);
+    if (!identityError.isEmpty() || identity.isEmpty()) {
+        setError(error, identityError.isEmpty()
+                            ? QStringLiteral("Could not bind reviewed file identity.")
+                            : identityError);
+        return false;
+    }
+    plan.filePreflight.append(FileEvidence{
+        file.absoluteFilePath(), {}, file.size(),
+        file.lastModified().toMSecsSinceEpoch(), identity, description});
+    setError(error, {});
+    return true;
 }
 
 QString commandEvidence(EvidenceFormat format, const QByteArray &standardOutput,

@@ -1,8 +1,12 @@
+set(WIMFORGE_PROCESS_LAUNCH_SOURCE
+    ${PROJECT_SOURCE_DIR}/src/core/ProcessLaunch.cpp)
+
 function(wimforge_add_core_test target)
     cmake_parse_arguments(TEST "" "" "SOURCES;CORE_SOURCES" ${ARGN})
     qt_add_executable(${target}
         ${TEST_SOURCES}
         ${TEST_CORE_SOURCES}
+        ${WIMFORGE_PROCESS_LAUNCH_SOURCE}
     )
     target_include_directories(${target} PRIVATE ${PROJECT_SOURCE_DIR}/src)
     target_compile_definitions(${target} PRIVATE
@@ -39,6 +43,17 @@ wimforge_add_core_test(notification_store_tests
 wimforge_add_core_test(opencode_setup_tests
     SOURCES opencode_setup_tests.cpp
     CORE_SOURCES ${PROJECT_SOURCE_DIR}/src/core/OpenCodeSetup.cpp
+)
+
+wimforge_add_core_test(process_launch_tests
+    SOURCES process_launch_tests.cpp
+)
+
+wimforge_add_core_test(embedded_terminal_tests
+    SOURCES embedded_terminal_tests.cpp
+    CORE_SOURCES
+        ${PROJECT_SOURCE_DIR}/src/core/EmbeddedTerminalSession.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/EmbeddedTerminalSession.h
 )
 
 wimforge_add_core_test(qml_contract_tests
@@ -119,6 +134,30 @@ wimforge_add_core_test(vm_lab_tests
         ${PROJECT_SOURCE_DIR}/src/core/VmLabVmx.cpp
 )
 
+wimforge_add_core_test(vm_lab_manager_tests
+    SOURCES vm_lab_manager_tests.cpp
+    CORE_SOURCES
+        ${PROJECT_SOURCE_DIR}/src/core/VmLab.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmLabProviders.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmLabVmx.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmLabManager.cpp
+)
+
+wimforge_add_core_test(vm_validation_store_tests
+    SOURCES vm_validation_store_tests.cpp
+    CORE_SOURCES ${PROJECT_SOURCE_DIR}/src/core/VmValidationStore.cpp
+)
+
+wimforge_add_core_test(vm_lab_cli_service_tests
+    SOURCES vm_lab_cli_service_tests.cpp
+    CORE_SOURCES
+        ${PROJECT_SOURCE_DIR}/src/core/VmLab.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmLabProviders.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmLabVmx.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmLabManager.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmLabCliService.cpp
+)
+
 wimforge_add_core_test(cli_runner_tests
     SOURCES cli_runner_tests.cpp
     CORE_SOURCES
@@ -133,5 +172,12 @@ wimforge_add_core_test(cli_runner_tests
         ${PROJECT_SOURCE_DIR}/src/core/ProjectBundle.cpp
         ${PROJECT_SOURCE_DIR}/src/core/ServicingPlan.cpp
         ${PROJECT_SOURCE_DIR}/src/core/UnattendBuilder.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmLab.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmLabProviders.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmLabVmx.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmLabManager.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmLabCliService.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmLabScope.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/VmValidationStore.cpp
         ${PROJECT_SOURCE_DIR}/src/core/WinForgeBridge.cpp
 )

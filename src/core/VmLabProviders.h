@@ -29,6 +29,9 @@ struct ProviderProbePaths
     QString executable;
     QString consoleExecutable;
     QString diskManagerExecutable;
+    // Non-empty only for automatic probes. Every executable that exists must
+    // resolve beneath this protected, registry-derived installation root.
+    QString trustedRoot;
 };
 
 class ProviderDetector

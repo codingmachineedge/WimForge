@@ -1,4 +1,5 @@
 #include "JobEngine.h"
+#include "ProcessLaunch.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -430,6 +431,7 @@ void JobEngine::launch(int index)
     appendLog(logPath, header.toUtf8());
 
     auto *process = new QProcess(this);
+    configureProcessWithoutConsole(*process);
     process->setProgram(operation.executable);
     process->setArguments(operation.arguments);
     process->setProcessChannelMode(QProcess::MergedChannels);

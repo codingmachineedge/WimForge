@@ -109,8 +109,9 @@ ScrollView {
                     model: [
                         { icon: "①", en: "Choose Windows ISO / WIM / ESD / SWM", zh: "揀 Windows ISO / WIM / ESD / SWM", page: 1 },
                         { icon: "②", en: "Select editions and customize the recipe", zh: "揀版本，再調校你份配方", page: 2 },
-                        { icon: "③", en: "Review exact commands and safety checks", zh: "逐條睇清楚指令同安全檢查", page: 7 },
-                        { icon: "④", en: "Run concurrently with crash-safe checkpoints", zh: "平行開工，仲有防死機檢查點", page: 7 }
+                        { icon: "③", en: "Review exact commands and safety checks", zh: "逐條睇清楚指令同安全檢查", page: 8 },
+                        { icon: "④", en: "Run concurrently with crash-safe checkpoints", zh: "平行開工，仲有防死機檢查點", page: 8 },
+                        { icon: "⑤", en: "Load the ISO in VMware or VirtualBox and record validation", zh: "將 ISO 載入 VMware 或 VirtualBox，再記錄驗證", page: 7 }
                     ]
                     delegate: ItemDelegate {
                         required property var modelData

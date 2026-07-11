@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <QSettings>
 #include <QVersionNumber>
 
 #include <algorithm>
@@ -18,6 +19,64 @@ void setError(QString *target, const QString &message)
 {
     if (target)
         *target = message;
+}
+
+bool trustedInstalledFile(const QString &path, const QString &trustedRoot,
+                          QString *canonicalPath, QString *error)
+{
+    const QFileInfo rootInfo(trustedRoot);
+    const QFileInfo fileInfo(path);
+    const QString canonicalRoot = rootInfo.canonicalFilePath();
+    const QString canonicalFile = fileInfo.canonicalFilePath();
+    if (!rootInfo.isAbsolute() || !rootInfo.exists() || !rootInfo.isDir()
+        || canonicalRoot.isEmpty() || !fileInfo.isAbsolute() || !fileInfo.exists()
+        || !fileInfo.isFile() || canonicalFile.isEmpty()) {
+        setError(error, QStringLiteral("Provider executable is not a resolvable installed file."));
+        return false;
+    }
+    const QString relative = QDir(canonicalRoot).relativeFilePath(canonicalFile);
+    if (relative == QStringLiteral("..") || relative.startsWith(QStringLiteral("../"))
+        || relative.startsWith(QStringLiteral("..\\")) || QDir::isAbsolutePath(relative)) {
+        setError(error, QStringLiteral("Provider executable resolves outside protected Program Files."));
+        return false;
+    }
+    QString cursor = canonicalRoot;
+    for (const QString &segment : relative.split(QLatin1Char('/'), Qt::SkipEmptyParts)) {
+        cursor = QDir(cursor).filePath(segment);
+        const QFileInfo component(cursor);
+        if (component.isSymLink()
+#ifdef Q_OS_WIN
+            || component.isJunction()
+#endif
+        ) {
+            setError(error, QStringLiteral("Provider executable path contains a reparse point."));
+            return false;
+        }
+    }
+    if (canonicalPath)
+        *canonicalPath = canonicalFile;
+    setError(error, {});
+    return true;
+}
+
+QStringList protectedProgramFilesRoots()
+{
+#ifdef Q_OS_WIN
+    QSettings registry(
+        QStringLiteral("HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion"),
+        QSettings::NativeFormat);
+    QStringList roots{
+        registry.value(QStringLiteral("ProgramFilesDir")).toString(),
+        registry.value(QStringLiteral("ProgramFilesDir (x86)")).toString(),
+    };
+    roots.removeAll(QString{});
+    for (QString &root : roots)
+        root = QDir::cleanPath(QFileInfo(root).absoluteFilePath());
+    roots.removeDuplicates();
+    return roots;
+#else
+    return {};
+#endif
 }
 
 QString outputText(const ProcessResult &result)
@@ -106,6 +165,30 @@ PowerState virtualBoxState(const QString &value)
     if (state == QStringLiteral("aborted")) return PowerState::Aborted;
     if (state == QStringLiteral("inaccessible")) return PowerState::Inaccessible;
     return PowerState::Unknown;
+}
+
+bool providerBoolean(const QString &value)
+{
+    return value.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0
+        || value.compare(QStringLiteral("on"), Qt::CaseInsensitive) == 0
+        || value.compare(QStringLiteral("enabled"), Qt::CaseInsensitive) == 0
+        || value == QStringLiteral("1");
+}
+
+NetworkMode parsedNetworkMode(const QString &value)
+{
+    if (value.compare(QStringLiteral("nat"), Qt::CaseInsensitive) == 0
+        || value.compare(QStringLiteral("natnetwork"), Qt::CaseInsensitive) == 0)
+        return NetworkMode::Nat;
+    if (value.compare(QStringLiteral("bridged"), Qt::CaseInsensitive) == 0
+        || value.compare(QStringLiteral("bridgednetworking"), Qt::CaseInsensitive) == 0)
+        return NetworkMode::Bridged;
+    if (value.contains(QStringLiteral("hostonly"), Qt::CaseInsensitive))
+        return NetworkMode::HostOnly;
+    if (value.compare(QStringLiteral("intnet"), Qt::CaseInsensitive) == 0
+        || value.compare(QStringLiteral("custom"), Qt::CaseInsensitive) == 0)
+        return NetworkMode::Internal;
+    return NetworkMode::Disconnected;
 }
 
 QString virtualBoxNic(NetworkMode mode)
@@ -221,13 +304,7 @@ QString tpm() { return QStringLiteral("tpm"); }
 
 QList<ProviderProbePaths> ProviderDetector::defaultWindowsCandidates()
 {
-    QStringList programRoots{
-        qEnvironmentVariable("ProgramW6432"),
-        qEnvironmentVariable("ProgramFiles"),
-        qEnvironmentVariable("ProgramFiles(x86)"),
-    };
-    programRoots.removeAll(QString{});
-    programRoots.removeDuplicates();
+    const QStringList programRoots = protectedProgramFilesRoots();
     QList<ProviderProbePaths> candidates;
     QSet<QString> seen;
     auto append = [&candidates, &seen](const ProviderProbePaths &candidate) {
@@ -242,23 +319,23 @@ QList<ProviderProbePaths> ProviderDetector::defaultWindowsCandidates()
         const QString virtualBox = QDir(root).filePath(QStringLiteral("Oracle/VirtualBox"));
         append(ProviderProbePaths{
             virtualBoxProviderId(), QDir(virtualBox).filePath(QStringLiteral("VBoxManage.exe")),
-            QDir(virtualBox).filePath(QStringLiteral("VirtualBox.exe")), {}});
+            QDir(virtualBox).filePath(QStringLiteral("VirtualBox.exe")), {}, root});
 
         const QString workstation = QDir(root).filePath(QStringLiteral("VMware/VMware Workstation"));
         append(ProviderProbePaths{
             vmwareWorkstationProviderId(), QDir(workstation).filePath(QStringLiteral("vmrun.exe")),
             QDir(workstation).filePath(QStringLiteral("vmware.exe")),
-            QDir(workstation).filePath(QStringLiteral("vmware-vdiskmanager.exe"))});
+            QDir(workstation).filePath(QStringLiteral("vmware-vdiskmanager.exe")), root});
         append(ProviderProbePaths{
             vmwarePlayerProviderId(), QDir(workstation).filePath(QStringLiteral("vmrun.exe")),
             QDir(workstation).filePath(QStringLiteral("vmplayer.exe")),
-            QDir(workstation).filePath(QStringLiteral("vmware-vdiskmanager.exe"))});
+            QDir(workstation).filePath(QStringLiteral("vmware-vdiskmanager.exe")), root});
 
         const QString player = QDir(root).filePath(QStringLiteral("VMware/VMware Player"));
         append(ProviderProbePaths{
             vmwarePlayerProviderId(), QDir(player).filePath(QStringLiteral("vmrun.exe")),
             QDir(player).filePath(QStringLiteral("vmplayer.exe")),
-            QDir(player).filePath(QStringLiteral("vmware-vdiskmanager.exe"))});
+            QDir(player).filePath(QStringLiteral("vmware-vdiskmanager.exe")), root});
     }
     return candidates;
 }
@@ -268,17 +345,50 @@ QList<ProviderInfo> ProviderDetector::detect(const QList<ProviderProbePaths> &ca
 {
     QList<ProviderInfo> providers;
     for (const ProviderProbePaths &candidate : candidates) {
-        if (candidate.providerId == virtualBoxProviderId()) {
+        ProviderProbePaths safe = candidate;
+        if (!candidate.trustedRoot.isEmpty() && QFileInfo::exists(candidate.executable)) {
+            QString pathError;
+            if (!trustedInstalledFile(candidate.executable, candidate.trustedRoot,
+                                      &safe.executable, &pathError)) {
+                ProviderInfo rejected;
+                rejected.id = candidate.providerId;
+                rejected.warnings.append(QStringLiteral(
+                    "Automatic provider probe was rejected: %1").arg(pathError));
+                providers.append(rejected);
+                continue;
+            }
+            const auto normalizeOptional = [&candidate, &pathError](
+                                               const QString &path,
+                                               QString *destination) {
+                if (path.isEmpty() || !QFileInfo::exists(path)) {
+                    destination->clear();
+                    return true;
+                }
+                return trustedInstalledFile(path, candidate.trustedRoot,
+                                            destination, &pathError);
+            };
+            if (!normalizeOptional(candidate.consoleExecutable, &safe.consoleExecutable)
+                || !normalizeOptional(candidate.diskManagerExecutable,
+                                      &safe.diskManagerExecutable)) {
+                ProviderInfo rejected;
+                rejected.id = candidate.providerId;
+                rejected.warnings.append(QStringLiteral(
+                    "Automatic provider companion probe was rejected: %1").arg(pathError));
+                providers.append(rejected);
+                continue;
+            }
+        }
+        if (safe.providerId == virtualBoxProviderId()) {
             providers.append(VirtualBoxProvider::detect(
-                candidate.executable, candidate.consoleExecutable, runner));
-        } else if (candidate.providerId == vmwareWorkstationProviderId()
-                   || candidate.providerId == vmwarePlayerProviderId()) {
+                safe.executable, safe.consoleExecutable, runner));
+        } else if (safe.providerId == vmwareWorkstationProviderId()
+                   || safe.providerId == vmwarePlayerProviderId()) {
             providers.append(VmwareProvider::detect(
-                candidate.providerId, candidate.executable, candidate.consoleExecutable,
-                candidate.diskManagerExecutable, runner));
+                safe.providerId, safe.executable, safe.consoleExecutable,
+                safe.diskManagerExecutable, runner));
         } else {
             ProviderInfo unsupported;
-            unsupported.id = candidate.providerId;
+            unsupported.id = safe.providerId;
             unsupported.warnings.append(QStringLiteral("Unknown VM provider probe was ignored."));
             providers.append(unsupported);
         }
@@ -301,7 +411,9 @@ ProviderInfo VirtualBoxProvider::detect(const QString &vboxManagePath,
         info.warnings.append(QStringLiteral("VBoxManage was not found at the probed absolute path."));
         return info;
     }
-    const Command probe{info.executable, {QStringLiteral("--version")}, {}, 10000};
+    const Command probe{info.executable, {QStringLiteral("--version")},
+                        QFileInfo(info.executable).absolutePath(), 10000,
+                        false, true};
     const ProcessResult result = runner.run(probe);
     info.evidence.append(QStringLiteral("%1 --version").arg(info.executable));
     if (!result.ok()) {
@@ -361,14 +473,128 @@ std::optional<Machine> VirtualBoxProvider::parseMachineInfo(const QByteArray &ou
     machine.ref = VmRef{virtualBoxProviderId(), uuid, name};
     machine.configPath = values.value(QStringLiteral("CfgFile"));
     machine.powerState = virtualBoxState(values.value(QStringLiteral("VMState")));
+    bool integerOk = false;
+    const int cpus = values.value(QStringLiteral("cpus")).toInt(&integerOk);
+    if (integerOk && cpus > 0)
+        machine.cpuCount = cpus;
+    const int memory = values.value(QStringLiteral("memory")).toInt(&integerOk);
+    if (integerOk && memory > 0)
+        machine.memoryMiB = memory;
+    const QString firmware = values.value(QStringLiteral("firmware"));
+    if (!firmware.isEmpty())
+        machine.firmware = firmware.contains(QStringLiteral("efi"), Qt::CaseInsensitive)
+            ? Firmware::Efi : Firmware::Bios;
+    const QString secureBoot = values.value(QStringLiteral("SecureBoot"),
+        values.value(QStringLiteral("secureboot")));
+    if (!secureBoot.isEmpty())
+        machine.secureBoot = providerBoolean(secureBoot);
+    const QString tpmType = values.value(QStringLiteral("TPMType"),
+        values.value(QStringLiteral("TPM")));
+    if (!tpmType.isEmpty())
+        machine.tpm = tpmType.compare(QStringLiteral("none"), Qt::CaseInsensitive) != 0
+            && tpmType.compare(QStringLiteral("disabled"), Qt::CaseInsensitive) != 0;
+    struct ControllerTopology {
+        QString name;
+        QString bus;
+        int index = 0;
+    };
+    QList<ControllerTopology> controllers;
+    for (int index = 0; index < 16; ++index) {
+        const QString suffix = QString::number(index);
+        const QString controllerName = values.value(
+            QStringLiteral("storagecontrollername") + suffix);
+        if (controllerName.isEmpty())
+            continue;
+        const QString type = values.value(QStringLiteral("storagecontrollertype") + suffix);
+        QString bus = QStringLiteral("scsi");
+        if (type.contains(QStringLiteral("ahci"), Qt::CaseInsensitive))
+            bus = QStringLiteral("sata");
+        else if (type.contains(QStringLiteral("piix"), Qt::CaseInsensitive)
+                 || type.contains(QStringLiteral("ich6"), Qt::CaseInsensitive))
+            bus = QStringLiteral("ide");
+        else if (type.contains(QStringLiteral("nvme"), Qt::CaseInsensitive))
+            bus = QStringLiteral("nvme");
+        else if (type.contains(QStringLiteral("sas"), Qt::CaseInsensitive))
+            bus = QStringLiteral("sas");
+        controllers.append(ControllerTopology{controllerName, bus, index});
+    }
     static const QRegularExpression storageKey(
-        QStringLiteral("^(?:IDE|SATA|SCSI|SAS|NVMe)-[0-9]+-[0-9]+$"),
+        QStringLiteral("^(.+)-([0-9]+)-([0-9]+)$"),
         QRegularExpression::CaseInsensitiveOption);
     for (auto iterator = values.cbegin(); iterator != values.cend(); ++iterator) {
-        if (storageKey.match(iterator.key()).hasMatch()
-            && QFileInfo(iterator.value()).isAbsolute()) {
-            machine.storagePaths.append(QFileInfo(iterator.value()).absoluteFilePath());
+        const QRegularExpressionMatch match = storageKey.match(iterator.key());
+        if (!match.hasMatch() || !QFileInfo(iterator.value()).isAbsolute())
+            continue;
+        const QString controllerText = match.captured(1);
+        const auto knownController = std::find_if(
+            controllers.cbegin(), controllers.cend(),
+            [&controllerText](const ControllerTopology &controller) {
+                return controller.name.compare(controllerText, Qt::CaseInsensitive) == 0;
+            });
+        QString bus = controllerText.toLower();
+        int controllerIndex = 0;
+        QString controllerName = controllerText;
+        if (knownController != controllers.cend()) {
+            bus = knownController->bus;
+            controllerIndex = knownController->index;
+            controllerName = knownController->name;
+        } else if (bus != QStringLiteral("ide") && bus != QStringLiteral("sata")
+                   && bus != QStringLiteral("scsi") && bus != QStringLiteral("sas")
+                   && bus != QStringLiteral("nvme")) {
+            continue;
         }
+        StorageAttachment attachment;
+        attachment.id = iterator.key();
+        attachment.bus = bus;
+        attachment.controller = controllerIndex;
+        attachment.controllerName = controllerName;
+        attachment.port = match.captured(2).toInt();
+        attachment.device = match.captured(3).toInt();
+        attachment.path = QFileInfo(iterator.value()).absoluteFilePath();
+        attachment.optical = QFileInfo(attachment.path).suffix().compare(
+            QStringLiteral("iso"), Qt::CaseInsensitive) == 0;
+        machine.storageDevices.append(attachment);
+    }
+    std::sort(machine.storageDevices.begin(), machine.storageDevices.end(),
+              [](const StorageAttachment &left, const StorageAttachment &right) {
+        const int controllerNameOrder = left.controllerName.compare(
+            right.controllerName, Qt::CaseInsensitive);
+        if (controllerNameOrder != 0)
+            return controllerNameOrder < 0;
+        if (left.controller != right.controller)
+            return left.controller < right.controller;
+        if (left.port != right.port)
+            return left.port < right.port;
+        if (left.device != right.device)
+            return left.device < right.device;
+        if (left.optical != right.optical)
+            return !left.optical;
+        return left.path.compare(right.path, Qt::CaseInsensitive) < 0;
+    });
+    for (const StorageAttachment &attachment : std::as_const(machine.storageDevices)) {
+        if (!attachment.optical)
+            machine.storagePaths.append(attachment.path);
+    }
+    for (int slot = 1; slot <= 36; ++slot) {
+        const QString suffix = QString::number(slot);
+        const QString modeText = values.value(QStringLiteral("nic") + suffix);
+        if (modeText.isEmpty() || modeText.compare(QStringLiteral("none"), Qt::CaseInsensitive) == 0)
+            continue;
+        NetworkAttachment attachment;
+        attachment.id = QStringLiteral("nic%1").arg(slot);
+        attachment.slot = slot;
+        attachment.mode = parsedNetworkMode(modeText);
+        attachment.model = values.value(QStringLiteral("nictype") + suffix);
+        attachment.macAddress = values.value(QStringLiteral("macaddress") + suffix);
+        attachment.connected = providerBoolean(
+            values.value(QStringLiteral("cableconnected") + suffix, QStringLiteral("on")));
+        if (attachment.mode == NetworkMode::Bridged)
+            attachment.interfaceName = values.value(QStringLiteral("bridgeadapter") + suffix);
+        else if (attachment.mode == NetworkMode::HostOnly)
+            attachment.interfaceName = values.value(QStringLiteral("hostonlyadapter") + suffix);
+        else if (attachment.mode == NetworkMode::Internal)
+            attachment.interfaceName = values.value(QStringLiteral("intnet") + suffix);
+        machine.networkDevices.append(attachment);
     }
     if (values.value(QStringLiteral("accessible")).compare(QStringLiteral("false"), Qt::CaseInsensitive) == 0) {
         machine.powerState = PowerState::Inaccessible;
@@ -376,6 +602,7 @@ std::optional<Machine> VirtualBoxProvider::parseMachineInfo(const QByteArray &ou
     }
     machine.stateRevision = commandEvidence(EvidenceFormat::RawSha256, output);
     machine.inventoryComplete = true;
+    machine.hardwareInventoryComplete = true;
     setError(error, {});
     return machine;
 }
@@ -414,7 +641,8 @@ QList<Snapshot> VirtualBoxProvider::parseSnapshotList(const QByteArray &output, 
 
 Command VirtualBoxProvider::command(const QStringList &arguments, int timeoutMs) const
 {
-    return Command{m_info.executable, arguments, {}, timeoutMs};
+    return Command{m_info.executable, arguments,
+                   QFileInfo(m_info.executable).absolutePath(), timeoutMs};
 }
 
 void VirtualBoxProvider::addPreflight(Plan &plan, const Machine &machine) const
@@ -426,16 +654,25 @@ void VirtualBoxProvider::addPreflight(Plan &plan, const Machine &machine) const
     plan.preflight.append(CommandEvidence{
         machineInfoCommand(machine.ref), EvidenceFormat::RawSha256,
         machine.stateRevision, QStringLiteral("VirtualBox machine state/configuration")});
+    QString fileError;
+    if (!addFileEvidence(plan, machine.configPath,
+                         QStringLiteral("VirtualBox machine configuration"), &fileError))
+        plan.errors.append(fileError);
 }
 
 Command VirtualBoxProvider::inventoryCommand() const
 {
-    return command({QStringLiteral("list"), QStringLiteral("vms")});
+    Command result = command({QStringLiteral("list"), QStringLiteral("vms")});
+    result.interruptible = true;
+    return result;
 }
 
 Command VirtualBoxProvider::machineInfoCommand(const VmRef &machine) const
 {
-    return command({QStringLiteral("showvminfo"), machine.id, QStringLiteral("--machinereadable")});
+    Command result = command(
+        {QStringLiteral("showvminfo"), machine.id, QStringLiteral("--machinereadable")});
+    result.interruptible = true;
+    return result;
 }
 
 Plan VirtualBoxProvider::create(const CreateSpec &spec, const QString &revision,
@@ -504,6 +741,10 @@ Plan VirtualBoxProvider::create(const CreateSpec &spec, const QString &revision,
                                {QStringLiteral("Create and register a VirtualBox VM under %1.")
                                     .arg(spec.directory)},
                                {}, commands, revision, now);
+    if (!spec.isoPath.isEmpty()
+        && !addFileEvidence(plan, spec.isoPath,
+                            QStringLiteral("VirtualBox installation ISO"), &validationError))
+        plan.errors.append(validationError);
     return plan;
 }
 
@@ -513,6 +754,16 @@ Plan VirtualBoxProvider::registerMachine(const QString &vboxPath, const QString 
     if (!m_info.supports(capability::registerMachine())
         || !QFileInfo(m_info.executable).isAbsolute() || !QFileInfo(vboxPath).isAbsolute())
         return invalidPlan(QStringLiteral("VirtualBox registration requires an absolute .vbox path."));
+    constexpr qint64 MaxVirtualBoxConfigBytes = 16 * 1024 * 1024;
+    const QFileInfo configuration(vboxPath);
+    if (!configuration.exists() || !configuration.isFile() || configuration.isSymLink()
+#ifdef Q_OS_WIN
+        || configuration.isJunction()
+#endif
+        || configuration.size() < 0 || configuration.size() > MaxVirtualBoxConfigBytes) {
+        return invalidPlan(QStringLiteral(
+            "VirtualBox registration requires a regular configuration no larger than 16 MiB."));
+    }
     QFile file(vboxPath);
     if (!file.open(QIODevice::ReadOnly))
         return invalidPlan(file.errorString());
@@ -526,6 +777,10 @@ Plan VirtualBoxProvider::registerMachine(const QString &vboxPath, const QString 
     plan.preview = makePreview(QStringLiteral("register"), target, Risk::Reversible,
                                {QStringLiteral("Register the existing .vbox file without deleting or moving it.")},
                                {}, {command({QStringLiteral("registervm"), vboxPath})}, revision, now);
+    QString evidenceError;
+    if (!addFileEvidence(plan, vboxPath,
+                         QStringLiteral("VirtualBox registration file"), &evidenceError))
+        plan.errors.append(evidenceError);
     return plan;
 }
 
@@ -537,7 +792,7 @@ Plan VirtualBoxProvider::openConsole(const Machine &machine, const QString &revi
         || !QFileInfo(m_info.consoleExecutable).isAbsolute())
         return invalidPlan(error.isEmpty() ? QStringLiteral("VirtualBox console capability is unavailable.") : error);
     const Command open{m_info.consoleExecutable,
-                       {QStringLiteral("--startvm"), machine.ref.id}, {}, 30000};
+                       {QStringLiteral("--startvm"), machine.ref.id}, {}, 30000, true};
     Plan plan;
     plan.preview = makePreview(QStringLiteral("open-console"), machine.ref, Risk::Disruptive,
                                {QStringLiteral("Open the provider console and start the VM if needed.")},
@@ -701,6 +956,11 @@ Plan VirtualBoxProvider::attachIso(const Machine &machine, const QString &isoPat
     patch.isoPath = isoPath;
     Plan plan = configure(machine, patch, revision, now);
     plan.preview.action = QStringLiteral("attach-iso");
+    QString evidenceError;
+    if (plan.ok() && !addFileEvidence(plan, isoPath,
+                                      QStringLiteral("VirtualBox attached ISO"),
+                                      &evidenceError))
+        plan.errors.append(evidenceError);
     return plan;
 }
 
@@ -721,10 +981,12 @@ Plan VirtualBoxProvider::listSnapshots(const Machine &machine, const QString &re
     if (!machineMatches(machine, m_info, &error) || !m_info.supports(capability::snapshots()))
         return invalidPlan(error.isEmpty() ? QStringLiteral("VirtualBox snapshot capability is unavailable.") : error);
     Plan plan;
+    Command list = command({QStringLiteral("snapshot"), machine.ref.id,
+                            QStringLiteral("list"), QStringLiteral("--machinereadable")});
+    list.interruptible = true;
     plan.preview = makePreview(QStringLiteral("list-snapshots"), machine.ref, Risk::ReadOnly,
                                {QStringLiteral("Read provider snapshot inventory.")}, {},
-                               {command({QStringLiteral("snapshot"), machine.ref.id,
-                                         QStringLiteral("list"), QStringLiteral("--machinereadable")})},
+                               {list},
                                revision, now);
     return plan;
 }
@@ -750,7 +1012,8 @@ Plan VirtualBoxProvider::takeSnapshot(const Machine &machine, const QString &nam
 Plan VirtualBoxProvider::restoreSnapshot(const Machine &machine, const Snapshot &snapshot,
                                          const QString &revision, const QDateTime &now) const
 {
-    if (snapshot.id.isEmpty()) return invalidPlan(QStringLiteral("Snapshot ID is required."));
+    if (snapshot.id.isEmpty() || snapshot.inventoryRevision.isEmpty())
+        return invalidPlan(QStringLiteral("Refresh snapshot inventory before restoring this snapshot."));
     QString error;
     if (!machineMatches(machine, m_info, &error)
         || !m_info.supports(capability::snapshots())
@@ -764,13 +1027,20 @@ Plan VirtualBoxProvider::restoreSnapshot(const Machine &machine, const Snapshot 
                                {command({QStringLiteral("snapshot"), machine.ref.id,
                                          QStringLiteral("restore"), snapshot.id})}, revision, now);
     addPreflight(plan, machine);
+    plan.preflight.append(CommandEvidence{
+        command({QStringLiteral("snapshot"), machine.ref.id,
+                 QStringLiteral("list"), QStringLiteral("--machinereadable")}),
+        EvidenceFormat::RawSha256, snapshot.inventoryRevision,
+        QStringLiteral("VirtualBox snapshot inventory")});
+    plan.preflight.last().command.interruptible = true;
     return plan;
 }
 
 Plan VirtualBoxProvider::deleteSnapshot(const Machine &machine, const Snapshot &snapshot,
                                         const QString &revision, const QDateTime &now) const
 {
-    if (snapshot.id.isEmpty()) return invalidPlan(QStringLiteral("Snapshot ID is required."));
+    if (snapshot.id.isEmpty() || snapshot.inventoryRevision.isEmpty())
+        return invalidPlan(QStringLiteral("Refresh snapshot inventory before deleting this snapshot."));
     QString error;
     if (!machineMatches(machine, m_info, &error)
         || !m_info.supports(capability::snapshots())
@@ -784,6 +1054,12 @@ Plan VirtualBoxProvider::deleteSnapshot(const Machine &machine, const Snapshot &
                                          QStringLiteral("delete"), snapshot.id}, 10 * 60 * 1000)},
                                revision, now);
     addPreflight(plan, machine);
+    plan.preflight.append(CommandEvidence{
+        command({QStringLiteral("snapshot"), machine.ref.id,
+                 QStringLiteral("list"), QStringLiteral("--machinereadable")}),
+        EvidenceFormat::RawSha256, snapshot.inventoryRevision,
+        QStringLiteral("VirtualBox snapshot inventory")});
+    plan.preflight.last().command.interruptible = true;
     return plan;
 }
 
@@ -793,6 +1069,11 @@ Plan VirtualBoxProvider::unregisterMachine(const Machine &machine, const QString
     QString error;
     if (!machineMatches(machine, m_info, &error) || machine.powerState != PowerState::PoweredOff)
         return invalidPlan(error.isEmpty() ? QStringLiteral("Unregister requires a powered-off VM.") : error);
+    if (machine.ownership != Ownership::External) {
+        return invalidPlan(QStringLiteral(
+            "Managed VMs cannot be unregistered while their owned files remain. "
+            "Use the guarded delete operation instead."));
+    }
     Plan plan;
     plan.preview = makePreview(QStringLiteral("unregister"), machine.ref, Risk::Reversible,
                                {QStringLiteral("Unregister the VM while preserving every provider file.")}, {},
@@ -822,7 +1103,8 @@ Plan VirtualBoxProvider::deleteMachine(const Machine &machine, const QString &ma
     // managed-root, shared-storage, and reparse-point guards immediately after
     // unregistering, then remove only the canonical contained directory.
     plan.managedDeletionAfterCommands = ManagedDeletion{
-        machine, managedRoot, catalogMachines, guard.identity};
+        machine, managedRoot, catalogMachines, guard.identity,
+        guard.rootIdentity, true};
     addPreflight(plan, machine);
     return plan;
 }
@@ -851,7 +1133,9 @@ ProviderInfo VmwareProvider::detect(const QString &providerId,
     const QString target = providerId == vmwarePlayerProviderId()
         ? QStringLiteral("player") : QStringLiteral("ws");
     const ProcessResult inventoryProbe = runner.run(
-        Command{info.executable, {QStringLiteral("-T"), target, QStringLiteral("list")}, {}, 10000});
+        Command{info.executable, {QStringLiteral("-T"), target, QStringLiteral("list")},
+                QFileInfo(info.executable).absolutePath(),
+                10000, false, true});
     info.evidence.append(QStringLiteral("%1 -T %2 list").arg(info.executable, target));
     if (!inventoryProbe.ok()) {
         info.warnings.append(inventoryProbe.error.isEmpty()
@@ -863,7 +1147,9 @@ ProviderInfo VmwareProvider::detect(const QString &providerId,
     info.available = true;
     // vmrun prints its version in the usage banner. A non-zero usage exit is
     // acceptable evidence only for version text, never for availability.
-    const ProcessResult versionProbe = runner.run(Command{info.executable, {}, {}, 10000});
+    const ProcessResult versionProbe = runner.run(
+        Command{info.executable, {}, QFileInfo(info.executable).absolutePath(),
+                10000, false, true});
     info.evidence.append(QStringLiteral("%1 [usage/version banner]").arg(info.executable));
     const QString banner = outputText(versionProbe);
     const QRegularExpression versionExpression(
@@ -992,6 +1278,73 @@ Machine VmwareProvider::inspectMachine(const QString &vmxPath,
     if (!displayName.trimmed().isEmpty())
         machine.ref.name = displayName;
     machine.storagePaths = document->storagePaths(QFileInfo(vmxPath).absolutePath());
+    bool integerOk = false;
+    const int cpus = document->value(QStringLiteral("numvcpus")).toInt(&integerOk);
+    if (integerOk && cpus > 0)
+        machine.cpuCount = cpus;
+    const int memory = document->value(QStringLiteral("memsize")).toInt(&integerOk);
+    if (integerOk && memory > 0)
+        machine.memoryMiB = memory;
+    const QString firmware = document->value(QStringLiteral("firmware"));
+    if (!firmware.isEmpty())
+        machine.firmware = firmware.compare(QStringLiteral("efi"), Qt::CaseInsensitive) == 0
+            ? Firmware::Efi : Firmware::Bios;
+    if (document->contains(QStringLiteral("uefi.secureBoot.enabled")))
+        machine.secureBoot = providerBoolean(
+            document->value(QStringLiteral("uefi.secureBoot.enabled")));
+    if (document->contains(QStringLiteral("tpm.present"))
+        || document->contains(QStringLiteral("managedVM.autoAddVTPM"))) {
+        machine.tpm = providerBoolean(document->value(QStringLiteral("tpm.present")))
+            || providerBoolean(document->value(QStringLiteral("managedVM.autoAddVTPM")));
+    }
+    static const QRegularExpression vmwareStorage(
+        QStringLiteral("^(ide|sata|scsi|nvme)([0-9]+):([0-9]+)\\.fileName$"),
+        QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression vmwareEthernet(
+        QStringLiteral("^ethernet([0-9]+)\\.present$"),
+        QRegularExpression::CaseInsensitiveOption);
+    for (const QString &key : document->keys()) {
+        const QRegularExpressionMatch storage = vmwareStorage.match(key);
+        if (storage.hasMatch()) {
+            const QString prefix = key.left(key.size() - QStringLiteral(".fileName").size());
+            if (!providerBoolean(document->value(prefix + QStringLiteral(".present"))))
+                continue;
+            const QString configured = document->value(key);
+            const QFileInfo source(configured);
+            StorageAttachment attachment;
+            attachment.id = prefix;
+            attachment.bus = storage.captured(1).toLower();
+            attachment.controller = storage.captured(2).toInt();
+            attachment.port = storage.captured(3).toInt();
+            attachment.controllerName = attachment.bus + QString::number(attachment.controller);
+            attachment.path = source.isAbsolute() ? source.absoluteFilePath()
+                : QFileInfo(QDir(QFileInfo(vmxPath).absolutePath()).filePath(configured)).absoluteFilePath();
+            attachment.optical = document->value(prefix + QStringLiteral(".deviceType"))
+                                     .contains(QStringLiteral("cdrom"), Qt::CaseInsensitive)
+                || QFileInfo(attachment.path).suffix().compare(
+                       QStringLiteral("iso"), Qt::CaseInsensitive) == 0;
+            machine.storageDevices.append(attachment);
+            continue;
+        }
+        const QRegularExpressionMatch ethernet = vmwareEthernet.match(key);
+        if (!ethernet.hasMatch() || !providerBoolean(document->value(key)))
+            continue;
+        const int zeroBased = ethernet.captured(1).toInt();
+        const QString prefix = QStringLiteral("ethernet%1").arg(zeroBased);
+        NetworkAttachment attachment;
+        attachment.id = prefix;
+        attachment.slot = zeroBased + 1;
+        attachment.mode = parsedNetworkMode(
+            document->value(prefix + QStringLiteral(".connectionType")));
+        attachment.interfaceName = document->value(prefix + QStringLiteral(".vnet"));
+        attachment.model = document->value(prefix + QStringLiteral(".virtualDev"));
+        attachment.macAddress = document->value(prefix + QStringLiteral(".address"));
+        if (attachment.macAddress.isEmpty())
+            attachment.macAddress = document->value(prefix + QStringLiteral(".generatedAddress"));
+        attachment.connected = providerBoolean(
+            document->value(prefix + QStringLiteral(".startConnected")));
+        machine.networkDevices.append(attachment);
+    }
     machine.powerState = std::any_of(
         runningVmxPaths.cbegin(), runningVmxPaths.cend(), [&vmxPath](const QString &running) {
             return providerPathEqual(vmxPath, running);
@@ -1013,6 +1366,7 @@ Machine VmwareProvider::inspectMachine(const QString &vmxPath,
     machine.stateRevision = commandEvidence(
         EvidenceFormat::VmwareRunningPathsSha256, runningEvidence);
     machine.inventoryComplete = true;
+    machine.hardwareInventoryComplete = true;
     setError(error, {});
     return machine;
 }
@@ -1026,7 +1380,8 @@ Command VmwareProvider::vmrun(const QStringList &arguments, int timeoutMs) const
 {
     QStringList complete{QStringLiteral("-T"), targetToken()};
     complete.append(arguments);
-    return Command{m_info.executable, complete, {}, timeoutMs};
+    return Command{m_info.executable, complete,
+                   QFileInfo(m_info.executable).absolutePath(), timeoutMs};
 }
 
 void VmwareProvider::addPreflight(Plan &plan, const Machine &machine) const
@@ -1038,11 +1393,17 @@ void VmwareProvider::addPreflight(Plan &plan, const Machine &machine) const
     plan.preflight.append(CommandEvidence{
         inventoryCommand(), EvidenceFormat::VmwareRunningPathsSha256,
         machine.stateRevision, QStringLiteral("VMware running-machine inventory")});
+    QString fileError;
+    if (!addFileEvidence(plan, machine.configPath,
+                         QStringLiteral("VMware VMX configuration"), &fileError))
+        plan.errors.append(fileError);
 }
 
 Command VmwareProvider::inventoryCommand() const
 {
-    return vmrun({QStringLiteral("list")});
+    Command result = vmrun({QStringLiteral("list")});
+    result.interruptible = true;
+    return result;
 }
 
 Plan VmwareProvider::create(const CreateSpec &spec, const QString &revision,
@@ -1072,13 +1433,18 @@ Plan VmwareProvider::create(const CreateSpec &spec, const QString &revision,
                        {QStringLiteral("-c"), QStringLiteral("-s"),
                         QStringLiteral("%1MB").arg(spec.diskMiB), QStringLiteral("-a"),
                         QStringLiteral("lsilogic"), QStringLiteral("-t"), QStringLiteral("1"),
-                        diskPath}, {}, 10 * 60 * 1000};
+                        diskPath}, QFileInfo(m_info.diskManagerExecutable).absolutePath(),
+                       10 * 60 * 1000};
     Plan plan;
     plan.preview = makePreview(QStringLiteral("create"), target, Risk::Reversible,
                                {QStringLiteral("Create a VMDK and atomically write %1.").arg(vmxPath)},
                                {QStringLiteral("VMware registration is not claimed; open or start the VMX explicitly.")},
                                {disk}, revision, now);
     plan.atomicWritesAfterCommands.append(AtomicWrite{vmxPath, document->serialize(), {}});
+    if (!spec.isoPath.isEmpty()
+        && !addFileEvidence(plan, spec.isoPath,
+                            QStringLiteral("VMware installation ISO"), &validationError))
+        plan.errors.append(validationError);
     return plan;
 }
 
@@ -1094,7 +1460,7 @@ Plan VmwareProvider::openConsole(const Machine &machine, const QString &revision
     QString error;
     if (!machineMatches(machine, m_info, &error) || !m_info.supports(capability::openConsole()))
         return invalidPlan(error.isEmpty() ? QStringLiteral("VMware console capability is unavailable.") : error);
-    const Command open{m_info.consoleExecutable, {vmxTarget(machine)}, {}, 30000};
+    const Command open{m_info.consoleExecutable, {vmxTarget(machine)}, {}, 30000, true};
     Plan plan;
     plan.preview = makePreview(QStringLiteral("open-console"), machine.ref, Risk::ReadOnly,
                                {QStringLiteral("Open the VMX in the provider console.")}, {},
@@ -1230,6 +1596,11 @@ Plan VmwareProvider::attachIso(const Machine &machine, const QString &isoPath,
     patch.isoPath = isoPath;
     Plan plan = configure(machine, patch, revision, now);
     plan.preview.action = QStringLiteral("attach-iso");
+    QString evidenceError;
+    if (plan.ok() && !addFileEvidence(plan, isoPath,
+                                      QStringLiteral("VMware attached ISO"),
+                                      &evidenceError))
+        plan.errors.append(evidenceError);
     return plan;
 }
 
@@ -1248,9 +1619,12 @@ Plan VmwareProvider::listSnapshots(const Machine &machine, const QString &revisi
 {
     if (!m_info.supports(capability::snapshots()))
         return invalidPlan(QStringLiteral("VMware snapshot capability is unavailable."));
-    return lifecycle(machine, {QStringLiteral("listSnapshots"), vmxTarget(machine)},
+    Plan plan = lifecycle(machine, {QStringLiteral("listSnapshots"), vmxTarget(machine)},
                      QStringLiteral("list-snapshots"), Risk::ReadOnly,
                      QStringLiteral("Read VMware snapshot inventory."), revision, now);
+    if (!plan.preview.commands.isEmpty())
+        plan.preview.commands.first().interruptible = true;
+    return plan;
 }
 
 Plan VmwareProvider::takeSnapshot(const Machine &machine, const QString &name,
@@ -1271,25 +1645,39 @@ Plan VmwareProvider::takeSnapshot(const Machine &machine, const QString &name,
 Plan VmwareProvider::restoreSnapshot(const Machine &machine, const Snapshot &snapshot,
                                      const QString &revision, const QDateTime &now) const
 {
-    if (snapshot.name.isEmpty()) return invalidPlan(QStringLiteral("Snapshot name is required."));
+    if (snapshot.name.isEmpty() || snapshot.inventoryRevision.isEmpty())
+        return invalidPlan(QStringLiteral("Refresh snapshot inventory before restoring this snapshot."));
     if (machine.powerState != PowerState::PoweredOff)
         return invalidPlan(QStringLiteral("Snapshot restore requires a powered-off VM."));
-    return lifecycle(machine, {QStringLiteral("revertToSnapshot"), vmxTarget(machine), snapshot.name},
-                     QStringLiteral("restore-snapshot"), Risk::Destructive,
-                     QStringLiteral("Restore snapshot '%1'; newer state may be lost.").arg(snapshot.name),
-                     revision, now);
+    Plan plan = lifecycle(machine, {QStringLiteral("revertToSnapshot"), vmxTarget(machine), snapshot.name},
+                      QStringLiteral("restore-snapshot"), Risk::Destructive,
+                      QStringLiteral("Restore snapshot '%1'; newer state may be lost.").arg(snapshot.name),
+                      revision, now);
+    plan.preflight.append(CommandEvidence{
+        vmrun({QStringLiteral("listSnapshots"), vmxTarget(machine)}),
+        EvidenceFormat::RawSha256, snapshot.inventoryRevision,
+        QStringLiteral("VMware snapshot inventory")});
+    plan.preflight.last().command.interruptible = true;
+    return plan;
 }
 
 Plan VmwareProvider::deleteSnapshot(const Machine &machine, const Snapshot &snapshot,
                                     const QString &revision, const QDateTime &now) const
 {
-    if (snapshot.name.isEmpty()) return invalidPlan(QStringLiteral("Snapshot name is required."));
+    if (snapshot.name.isEmpty() || snapshot.inventoryRevision.isEmpty())
+        return invalidPlan(QStringLiteral("Refresh snapshot inventory before deleting this snapshot."));
     if (machine.powerState != PowerState::PoweredOff)
         return invalidPlan(QStringLiteral("Snapshot deletion requires a powered-off VM."));
-    return lifecycle(machine, {QStringLiteral("deleteSnapshot"), vmxTarget(machine), snapshot.name},
-                     QStringLiteral("delete-snapshot"), Risk::Destructive,
-                     QStringLiteral("Permanently delete snapshot '%1'.").arg(snapshot.name),
-                     revision, now);
+    Plan plan = lifecycle(machine, {QStringLiteral("deleteSnapshot"), vmxTarget(machine), snapshot.name},
+                      QStringLiteral("delete-snapshot"), Risk::Destructive,
+                      QStringLiteral("Permanently delete snapshot '%1'.").arg(snapshot.name),
+                      revision, now);
+    plan.preflight.append(CommandEvidence{
+        vmrun({QStringLiteral("listSnapshots"), vmxTarget(machine)}),
+        EvidenceFormat::RawSha256, snapshot.inventoryRevision,
+        QStringLiteral("VMware snapshot inventory")});
+    plan.preflight.last().command.interruptible = true;
+    return plan;
 }
 
 Plan VmwareProvider::unregisterMachine(const Machine &, const QString &,
@@ -1315,7 +1703,8 @@ Plan VmwareProvider::deleteMachine(const Machine &machine, const QString &manage
                                {QStringLiteral("VMX, virtual disks, snapshots, and logs will be permanently deleted.")},
                                {}, revision, now);
     plan.managedDeletionAfterCommands = ManagedDeletion{
-        machine, managedRoot, catalogMachines, guard.identity};
+        machine, managedRoot, catalogMachines, guard.identity,
+        guard.rootIdentity, false};
     addPreflight(plan, machine);
     return plan;
 }

@@ -132,8 +132,15 @@ std::optional<VmxDocument> VmxDocument::parse(const QByteArray &bytes, QString *
 
 std::optional<VmxDocument> VmxDocument::load(const QString &path, QString *error)
 {
-    if (!QFileInfo(path).isAbsolute()) {
-        setError(error, QStringLiteral("VMX path must be absolute."));
+    constexpr qint64 MaxVmxBytes = 16 * 1024 * 1024;
+    const QFileInfo info(path);
+    if (!info.isAbsolute() || !info.exists() || !info.isFile() || info.isSymLink()
+#ifdef Q_OS_WIN
+        || info.isJunction()
+#endif
+        || info.size() < 0 || info.size() > MaxVmxBytes) {
+        setError(error, QStringLiteral(
+            "VMX must be a regular, non-link absolute file no larger than 16 MiB."));
         return std::nullopt;
     }
     QFile file(path);
@@ -225,6 +232,22 @@ QString VmxDocument::value(const QString &key) const
         if (iterator->assignment && iterator->key.compare(key, Qt::CaseInsensitive) == 0)
             return iterator->value;
     return {};
+}
+
+QStringList VmxDocument::keys() const
+{
+    QStringList result;
+    for (const Line &line : m_lines) {
+        if (!line.assignment)
+            continue;
+        const auto existing = std::find_if(
+            result.cbegin(), result.cend(), [&line](const QString &key) {
+                return key.compare(line.key, Qt::CaseInsensitive) == 0;
+            });
+        if (existing == result.cend())
+            result.append(line.key);
+    }
+    return result;
 }
 
 bool VmxDocument::contains(const QString &key) const
@@ -346,8 +369,9 @@ bool applyConfigPatch(VmxDocument &document, const ConfigPatch &patch, QString *
         setError(error, QStringLiteral("Memory must be between 256 MiB and 1 TiB."));
         return false;
     }
-    if (patch.tpm && *patch.tpm) {
-        setError(error, QStringLiteral("VMware TPM edits require a declared encrypted-VM capability."));
+    if (patch.tpm.has_value()) {
+        setError(error, QStringLiteral(
+            "VMware TPM edits in either direction require encrypted-VM inventory and are unavailable."));
         return false;
     }
     const Firmware effectiveFirmware = patch.firmware.value_or(

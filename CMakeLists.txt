@@ -13,7 +13,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 QuickDialogs2)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -22,6 +22,8 @@ set(WIMFORGE_CORE_SOURCES
     src/cli/CliRunner.h
     src/core/ActionHistory.cpp
     src/core/ActionHistory.h
+    src/core/EmbeddedTerminalSession.cpp
+    src/core/EmbeddedTerminalSession.h
     src/core/GitHistory.cpp
     src/core/GitHistory.h
     src/core/NotificationStore.cpp
@@ -40,6 +42,8 @@ set(WIMFORGE_CORE_SOURCES
     src/core/JobEngine.h
     src/core/PackageStudio.cpp
     src/core/PackageStudio.h
+    src/core/ProcessLaunch.cpp
+    src/core/ProcessLaunch.h
     src/core/ServicingPlan.cpp
     src/core/ServicingPlan.h
     src/core/SearchIndex.cpp
@@ -48,8 +52,16 @@ set(WIMFORGE_CORE_SOURCES
     src/core/UnattendBuilder.h
     src/core/VmLab.cpp
     src/core/VmLab.h
+    src/core/VmLabCliService.cpp
+    src/core/VmLabCliService.h
+    src/core/VmLabManager.cpp
+    src/core/VmLabManager.h
     src/core/VmLabProviders.cpp
     src/core/VmLabProviders.h
+    src/core/VmLabScope.cpp
+    src/core/VmLabScope.h
+    src/core/VmValidationStore.cpp
+    src/core/VmValidationStore.h
     src/core/VmLabVmx.cpp
     src/core/VmLabVmx.h
     src/core/WinForgeBridge.cpp
@@ -90,7 +102,9 @@ qt_add_qml_module(WimForge
         qml/pages/PlanPage.qml
         qml/pages/SettingsPage.qml
         qml/pages/SourcePage.qml
+        qml/pages/TerminalPage.qml
         qml/pages/UnattendedStudioPage.qml
+        qml/pages/VmLabPage.qml
         qml/pages/WinForgeBridgePage.qml
     RESOURCES
         assets/app-icon.svg
@@ -115,12 +129,16 @@ target_link_libraries(WimForge PRIVATE
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickControls2
+    Qt6::QuickDialogs2
 )
 target_link_libraries(WimForgeCli PRIVATE Qt6::Core)
 
 if(MSVC)
     target_compile_options(WimForge PRIVATE /W4 /permissive- /utf-8)
     target_compile_options(WimForgeCli PRIVATE /W4 /permissive- /utf-8)
+    # The application resource already embeds the audited DPI/elevation
+    # manifest. Prevent link.exe from adding a second resource with ID 1.
+    target_link_options(WimForge PRIVATE /MANIFEST:NO)
 else()
     target_compile_options(WimForge PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(WimForgeCli PRIVATE -Wall -Wextra -Wpedantic)

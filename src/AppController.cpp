@@ -1,5 +1,7 @@
 #include "AppController.h"
 #include "core/GpoPolicyCompiler.h"
+#include "core/ProcessLaunch.h"
+#include "core/VmLabScope.h"
 
 #include <QClipboard>
 #include <QCoreApplication>
@@ -11,6 +13,7 @@
 #include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QMetaObject>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -241,6 +244,425 @@ QString bridgeActionSummary(const WinForgeAction &action)
     return {};
 }
 
+std::optional<vmlab::Firmware> vmFirmware(const QString &value)
+{
+    const QString normalized = value.trimmed().toLower();
+    if (normalized == QStringLiteral("efi") || normalized == QStringLiteral("uefi"))
+        return vmlab::Firmware::Efi;
+    if (normalized == QStringLiteral("bios"))
+        return vmlab::Firmware::Bios;
+    return std::nullopt;
+}
+
+std::optional<vmlab::NetworkMode> vmNetworkMode(const QString &value)
+{
+    const QString normalized = value.trimmed().toLower();
+    if (normalized == QStringLiteral("nat")) return vmlab::NetworkMode::Nat;
+    if (normalized == QStringLiteral("bridged")) return vmlab::NetworkMode::Bridged;
+    if (normalized == QStringLiteral("host-only")) return vmlab::NetworkMode::HostOnly;
+    if (normalized == QStringLiteral("internal")) return vmlab::NetworkMode::Internal;
+    if (normalized == QStringLiteral("disconnected")) return vmlab::NetworkMode::Disconnected;
+    return std::nullopt;
+}
+
+std::optional<vmlab::StorageBus> vmStorageBus(const QString &value)
+{
+    const QString normalized = value.trimmed().toLower();
+    if (normalized == QStringLiteral("ide")) return vmlab::StorageBus::Ide;
+    if (normalized == QStringLiteral("sata")) return vmlab::StorageBus::Sata;
+    if (normalized == QStringLiteral("scsi")) return vmlab::StorageBus::Scsi;
+    if (normalized == QStringLiteral("nvme")) return vmlab::StorageBus::Nvme;
+    return std::nullopt;
+}
+
+QString providerGuestType(const QString &providerId, const QString &label)
+{
+    const QString normalized = label.trimmed().toLower();
+    const bool virtualBox = providerId == vmlab::virtualBoxProviderId();
+    if (normalized.contains(QStringLiteral("windows 11")))
+        return virtualBox ? QStringLiteral("Windows11_64") : QStringLiteral("windows11-64");
+    if (normalized.contains(QStringLiteral("windows 10")))
+        return virtualBox ? QStringLiteral("Windows10_64") : QStringLiteral("windows10-64");
+    if (normalized.contains(QStringLiteral("server 2025"))) {
+        // Current provider releases do not expose a stable cross-version 2025
+        // identifier. Use the latest compatible Windows Server 64-bit profile.
+        return virtualBox ? QStringLiteral("Windows2022_64")
+                          : QStringLiteral("windows2019srvNext-64");
+    }
+    if (normalized.contains(QStringLiteral("server 2022")))
+        return virtualBox ? QStringLiteral("Windows2022_64")
+                          : QStringLiteral("windows2019srvNext-64");
+    if (normalized.contains(QStringLiteral("other")))
+        return virtualBox ? QStringLiteral("Windows10_64") : QStringLiteral("windows10-64");
+    return label.trimmed();
+}
+
+QString isoTimestamp(const QDateTime &value)
+{
+    return value.isValid() ? value.toLocalTime().toString(Qt::ISODateWithMs) : QString();
+}
+
+QVariantMap vmProviderVariant(const vmlab::ProviderInfo &provider)
+{
+    QStringList capabilities(provider.capabilities.cbegin(), provider.capabilities.cend());
+    capabilities.sort(Qt::CaseInsensitive);
+    return QVariantMap{
+        {QStringLiteral("id"), provider.id},
+        {QStringLiteral("displayName"), provider.displayName},
+        {QStringLiteral("available"), provider.available},
+        {QStringLiteral("executable"), provider.executable},
+        {QStringLiteral("consoleExecutable"), provider.consoleExecutable},
+        {QStringLiteral("diskManagerExecutable"), provider.diskManagerExecutable},
+        {QStringLiteral("version"), provider.version},
+        {QStringLiteral("capabilities"), capabilities},
+        {QStringLiteral("evidence"), provider.evidence},
+        {QStringLiteral("warnings"), provider.warnings},
+    };
+}
+
+QStringList vmAllowedActions(const vmlab::Machine &machine)
+{
+    QStringList result;
+    const bool virtualBox = machine.ref.providerId == vmlab::virtualBoxProviderId();
+    const bool vmware = machine.ref.providerId == vmlab::vmwareWorkstationProviderId()
+        || machine.ref.providerId == vmlab::vmwarePlayerProviderId();
+    if (!virtualBox && !vmware)
+        return result;
+    const bool active = machine.powerState == vmlab::PowerState::Running
+        || machine.powerState == vmlab::PowerState::Paused;
+    if ((virtualBox && (machine.powerState == vmlab::PowerState::PoweredOff
+                        || machine.powerState == vmlab::PowerState::Saved))
+        || (vmware && (machine.powerState == vmlab::PowerState::PoweredOff
+                       || machine.powerState == vmlab::PowerState::Suspended
+                       || machine.powerState == vmlab::PowerState::Saved))) {
+        result.append(QStringLiteral("start"));
+    }
+    if (active) {
+        result.append({QStringLiteral("shutdown"), QStringLiteral("powerOff"),
+                       QStringLiteral("reset"), QStringLiteral("saveState")});
+    }
+    if (machine.powerState == vmlab::PowerState::Running)
+        result.append(QStringLiteral("pause"));
+    if ((virtualBox && machine.powerState == vmlab::PowerState::Paused)
+        || (vmware && (machine.powerState == vmlab::PowerState::Running
+                       || machine.powerState == vmlab::PowerState::Paused))) {
+        result.append(QStringLiteral("resume"));
+    }
+    if (machine.powerState == vmlab::PowerState::PoweredOff)
+        result.append({QStringLiteral("configure"), QStringLiteral("delete")});
+    if (machine.ownership == vmlab::Ownership::External)
+        result.append(QStringLiteral("forget"));
+    return result;
+}
+
+QVariantMap vmMachineVariant(const vmlab::Machine &machine, const QString &consoleLog)
+{
+    QVariantList storageDevices;
+    QVariantList opticalDevices;
+    for (const vmlab::StorageAttachment &attachment : machine.storageDevices) {
+        QVariantMap item{
+            {QStringLiteral("id"), attachment.id},
+            {QStringLiteral("bus"), attachment.bus},
+            {QStringLiteral("controller"), attachment.controller},
+            {QStringLiteral("port"), attachment.port},
+            {QStringLiteral("device"), attachment.device},
+            {QStringLiteral("controllerName"), attachment.controllerName},
+            {QStringLiteral("path"), attachment.path},
+            {QStringLiteral("optical"), attachment.optical},
+        };
+        if (attachment.optical) {
+            item.insert(QStringLiteral("name"), QStringLiteral("%1 %2:%3")
+                            .arg(attachment.bus)
+                            .arg(attachment.controller)
+                            .arg(attachment.port));
+            item.insert(QStringLiteral("isoPath"), attachment.path);
+            opticalDevices.append(item);
+        } else {
+            storageDevices.append(item);
+        }
+    }
+    QVariantList networkDevices;
+    for (const vmlab::NetworkAttachment &attachment : machine.networkDevices) {
+        networkDevices.append(QVariantMap{
+            {QStringLiteral("id"), attachment.id},
+            {QStringLiteral("slot"), attachment.slot},
+            {QStringLiteral("name"), QStringLiteral("Adapter %1").arg(attachment.slot)},
+            {QStringLiteral("mode"), vmlab::networkModeName(attachment.mode)},
+            {QStringLiteral("interfaceName"), attachment.interfaceName},
+            {QStringLiteral("model"), attachment.model},
+            {QStringLiteral("macAddress"), attachment.macAddress},
+            {QStringLiteral("connected"), attachment.connected},
+        });
+    }
+    QVariantMap result{
+        {QStringLiteral("id"), machine.ref.id},
+        {QStringLiteral("providerId"), machine.ref.providerId},
+        {QStringLiteral("name"), machine.ref.name},
+        {QStringLiteral("configPath"), machine.configPath},
+        {QStringLiteral("storagePaths"), machine.storagePaths},
+        {QStringLiteral("storageDevices"), storageDevices},
+        {QStringLiteral("opticalDevices"), opticalDevices},
+        {QStringLiteral("networkDevices"), networkDevices},
+        {QStringLiteral("allowedActions"), vmAllowedActions(machine)},
+        {QStringLiteral("powerState"), vmlab::powerStateName(machine.powerState)},
+        {QStringLiteral("ownership"), vmlab::ownershipName(machine.ownership)},
+        {QStringLiteral("inaccessibleReason"), machine.inaccessibleReason},
+        {QStringLiteral("warnings"), machine.warnings},
+        {QStringLiteral("inventoryComplete"), machine.inventoryComplete},
+        {QStringLiteral("stateRevision"), machine.stateRevision},
+        {QStringLiteral("consoleLog"), consoleLog},
+    };
+    if (machine.cpuCount)
+        result.insert(QStringLiteral("cpuCount"), *machine.cpuCount);
+    if (machine.memoryMiB)
+        result.insert(QStringLiteral("memoryMiB"), *machine.memoryMiB);
+    if (machine.firmware)
+        result.insert(QStringLiteral("firmware"), vmlab::firmwareName(*machine.firmware));
+    if (machine.secureBoot)
+        result.insert(QStringLiteral("secureBoot"), *machine.secureBoot);
+    if (machine.tpm)
+        result.insert(QStringLiteral("tpm"), *machine.tpm);
+    return result;
+}
+
+QVariantMap vmSnapshotVariant(const vmlab::Snapshot &snapshot)
+{
+    return QVariantMap{
+        {QStringLiteral("id"), snapshot.id},
+        {QStringLiteral("name"), snapshot.name},
+        {QStringLiteral("description"), snapshot.description},
+        {QStringLiteral("createdAt"), isoTimestamp(snapshot.createdAt)},
+        {QStringLiteral("current"), snapshot.current},
+        {QStringLiteral("inventoryRevision"), snapshot.inventoryRevision},
+    };
+}
+
+QString validationResultName(vmvalidation::RunStatus status)
+{
+    switch (status) {
+    case vmvalidation::RunStatus::Running: return QStringLiteral("running");
+    case vmvalidation::RunStatus::Passed: return QStringLiteral("pass");
+    case vmvalidation::RunStatus::Failed: return QStringLiteral("fail");
+    case vmvalidation::RunStatus::Cancelled: return QStringLiteral("aborted");
+    }
+    return QStringLiteral("running");
+}
+
+QString validationMilestoneResult(vmvalidation::MilestoneStatus status)
+{
+    switch (status) {
+    case vmvalidation::MilestoneStatus::Reached: return QStringLiteral("pass");
+    case vmvalidation::MilestoneStatus::Failed: return QStringLiteral("fail");
+    case vmvalidation::MilestoneStatus::Skipped: return QStringLiteral("skip");
+    }
+    return QStringLiteral("pending");
+}
+
+int validationMilestoneTarget(const QString &profile)
+{
+    if (profile == QStringLiteral("installation")) return 3;
+    if (profile == QStringLiteral("first-boot")) return 4;
+    if (profile == QStringLiteral("upgrade")) return 5;
+    if (profile == QStringLiteral("customization")) return 3;
+    return 8;
+}
+
+QStringList validationRequiredMilestones(const QString &profile)
+{
+    if (profile == QStringLiteral("installation")) {
+        return {QStringLiteral("installation-boot"), QStringLiteral("disk-layout"),
+                QStringLiteral("installation-complete")};
+    }
+    if (profile == QStringLiteral("first-boot")) {
+        return {QStringLiteral("first-boot"), QStringLiteral("drivers"),
+                QStringLiteral("networking"), QStringLiteral("smoke-test")};
+    }
+    if (profile == QStringLiteral("upgrade")) {
+        return {QStringLiteral("installation-boot"), QStringLiteral("installation-complete"),
+                QStringLiteral("first-boot"), QStringLiteral("drivers"),
+                QStringLiteral("smoke-test")};
+    }
+    if (profile == QStringLiteral("customization")) {
+        return {QStringLiteral("customizations"), QStringLiteral("first-boot"),
+                QStringLiteral("smoke-test")};
+    }
+    if (profile == QStringLiteral("full-smoke")) {
+        return {QStringLiteral("installation-boot"), QStringLiteral("disk-layout"),
+                QStringLiteral("installation-complete"), QStringLiteral("first-boot"),
+                QStringLiteral("drivers"), QStringLiteral("networking"),
+                QStringLiteral("customizations"), QStringLiteral("smoke-test")};
+    }
+    return {};
+}
+
+QStringList validationPassBlockers(const vmvalidation::ValidationRun &run)
+{
+    QStringList blockers;
+    const QString profile = run.configSnapshot.value(QStringLiteral("profile")).toString();
+    const QStringList required = validationRequiredMilestones(profile);
+    if (required.isEmpty())
+        blockers.append(QStringLiteral("The validation profile is unsupported."));
+    for (const vmvalidation::ValidationMilestone &milestone : run.milestones) {
+        if (milestone.status == vmvalidation::MilestoneStatus::Failed) {
+            blockers.append(QStringLiteral("Milestone '%1' failed.").arg(milestone.name));
+        }
+    }
+    for (const QString &name : required) {
+        const bool reached = std::any_of(
+            run.milestones.cbegin(), run.milestones.cend(),
+            [&name](const vmvalidation::ValidationMilestone &milestone) {
+                return milestone.name == name
+                    && milestone.status == vmvalidation::MilestoneStatus::Reached;
+            });
+        if (!reached)
+            blockers.append(QStringLiteral("Required milestone '%1' has not passed.").arg(name));
+    }
+    const bool hashedEvidence = std::any_of(
+        run.evidence.cbegin(), run.evidence.cend(),
+        [](const vmvalidation::EvidenceReference &evidence) {
+            return !evidence.file.sha256.isEmpty();
+        });
+    if (!hashedEvidence)
+        blockers.append(QStringLiteral("At least one hashed evidence file is required."));
+    blockers.removeDuplicates();
+    return blockers;
+}
+
+QVariantMap vmValidationVariant(const vmvalidation::ValidationRun &run,
+                                const QString &projectDirectory)
+{
+    QVariantList milestones;
+    for (const vmvalidation::ValidationMilestone &milestone : run.milestones) {
+        milestones.append(QVariantMap{
+            {QStringLiteral("id"), milestone.id},
+            {QStringLiteral("kind"), milestone.name},
+            {QStringLiteral("name"), milestone.name},
+            {QStringLiteral("phase"), vmvalidation::milestonePhaseName(milestone.phase)},
+            {QStringLiteral("result"), validationMilestoneResult(milestone.status)},
+            {QStringLiteral("occurredAt"), isoTimestamp(milestone.occurredAt)},
+            {QStringLiteral("evidence"), milestone.data.value(QStringLiteral("evidence")).toString()},
+            {QStringLiteral("notes"), milestone.note},
+            {QStringLiteral("data"), milestone.data.toVariantMap()},
+        });
+    }
+    QVariantList evidence;
+    for (const vmvalidation::EvidenceReference &item : run.evidence) {
+        evidence.append(QVariantMap{
+            {QStringLiteral("id"), item.id},
+            {QStringLiteral("kind"), vmvalidation::evidenceKindName(item.kind)},
+            {QStringLiteral("label"), item.label},
+            {QStringLiteral("path"), item.file.resolvedPath(projectDirectory)},
+            {QStringLiteral("sha256"), item.file.sha256},
+            {QStringLiteral("capturedAt"), isoTimestamp(item.capturedAt)},
+        });
+    }
+    QStringList logLines;
+    for (const vmvalidation::ValidationLogEntry &entry : run.logs) {
+        logLines.append(QStringLiteral("[%1] %2: %3")
+                            .arg(isoTimestamp(entry.occurredAt), entry.channel, entry.message));
+    }
+    if (!run.completionNote.isEmpty())
+        logLines.append(QStringLiteral("Result: %1").arg(run.completionNote));
+    const QString profile = run.configSnapshot.value(QStringLiteral("profile")).toString();
+    const QStringList passBlockers = validationPassBlockers(run);
+    QString name = run.configSnapshot.value(QStringLiteral("runName")).toString().trimmed();
+    if (name.isEmpty())
+        name = run.vm.vmName;
+    return QVariantMap{
+        {QStringLiteral("id"), run.id},
+        {QStringLiteral("name"), name},
+        {QStringLiteral("profile"), profile},
+        {QStringLiteral("status"), vmvalidation::runStatusName(run.status)},
+        {QStringLiteral("result"), validationResultName(run.status)},
+        {QStringLiteral("startedAt"), isoTimestamp(run.startedAt)},
+        {QStringLiteral("finishedAt"), isoTimestamp(run.endedAt)},
+        {QStringLiteral("updatedAt"), isoTimestamp(run.updatedAt)},
+        {QStringLiteral("providerId"), run.vm.providerId},
+        {QStringLiteral("providerVersion"), run.vm.providerVersion},
+        {QStringLiteral("vmId"), run.vm.vmId},
+        {QStringLiteral("vmName"), run.vm.vmName},
+        {QStringLiteral("vmConfigPath"), run.vm.config.resolvedPath(projectDirectory)},
+        {QStringLiteral("isoPath"), run.iso.resolvedPath(projectDirectory)},
+        {QStringLiteral("isoSha256"), run.iso.sha256},
+        {QStringLiteral("imagePath"), run.image.resolvedPath(projectDirectory)},
+        {QStringLiteral("imageSha256"), run.image.sha256},
+        {QStringLiteral("configSnapshot"), run.configSnapshot.toVariantMap()},
+        {QStringLiteral("milestones"), milestones},
+        {QStringLiteral("milestoneCount"), validationMilestoneTarget(profile)},
+        {QStringLiteral("completedMilestones"), milestones.size()},
+        {QStringLiteral("evidenceFiles"), evidence},
+        {QStringLiteral("canPass"), run.status == vmvalidation::RunStatus::Running
+             && passBlockers.isEmpty()},
+        {QStringLiteral("passBlockers"), passBlockers},
+        {QStringLiteral("log"), logLines.join(QLatin1Char('\n'))},
+        {QStringLiteral("revision"), run.revision},
+    };
+}
+
+QString vmEvidenceText(const vmlab::OperationEvidence &evidence)
+{
+    QStringList lines;
+    lines.append(QStringLiteral("%1  %2  %3")
+                     .arg(isoTimestamp(evidence.finishedAt), evidence.action,
+                          evidence.success ? QStringLiteral("OK")
+                                           : evidence.cancelled ? QStringLiteral("CANCELLED")
+                                                                : QStringLiteral("FAILED")));
+    for (const vmlab::CommandTranscript &transcript : evidence.commands) {
+        lines.append(QStringLiteral("> %1\n  args: %2")
+                         .arg(transcript.command.executable,
+                              transcript.command.arguments.join(QStringLiteral(" | "))));
+        if (!transcript.result.standardOutput.trimmed().isEmpty())
+            lines.append(QString::fromUtf8(transcript.result.standardOutput).trimmed());
+        if (transcript.result.standardOutputTruncated)
+            lines.append(QStringLiteral("[provider stdout truncated at the bounded capture limit]"));
+        if (!transcript.result.standardError.trimmed().isEmpty())
+            lines.append(QStringLiteral("stderr: %1")
+                             .arg(QString::fromUtf8(transcript.result.standardError).trimmed()));
+        if (transcript.result.standardErrorTruncated)
+            lines.append(QStringLiteral("[provider stderr truncated at the bounded capture limit]"));
+        if (!transcript.result.error.trimmed().isEmpty())
+            lines.append(QStringLiteral("error: %1").arg(transcript.result.error));
+    }
+    for (const vmlab::FileEvidence &file : evidence.files) {
+        lines.append(QStringLiteral("file: %1\n  sha256: %2\n  purpose: %3")
+                         .arg(file.path, file.expectedSha256, file.description));
+    }
+    if (!evidence.error.isEmpty())
+        lines.append(evidence.error);
+    return lines.join(QLatin1Char('\n'));
+}
+
+QVariantMap vmPreviewVariant(const vmlab::OperationPreview &preview)
+{
+    QVariantList commands;
+    for (const vmlab::Command &command : preview.commands) {
+        commands.append(QVariantMap{
+            {QStringLiteral("executable"), command.executable},
+            {QStringLiteral("arguments"), command.arguments},
+            {QStringLiteral("workingDirectory"), command.workingDirectory},
+            {QStringLiteral("timeoutMs"), command.timeoutMs},
+            {QStringLiteral("detached"), command.detached},
+            {QStringLiteral("interruptible"), command.interruptible},
+        });
+    }
+    return QVariantMap{
+        {QStringLiteral("id"), preview.id.toString(QUuid::WithoutBraces)},
+        {QStringLiteral("action"), preview.action},
+        {QStringLiteral("risk"), vmlab::riskName(preview.risk)},
+        {QStringLiteral("target"), QVariantMap{
+             {QStringLiteral("providerId"), preview.target.providerId},
+             {QStringLiteral("id"), preview.target.id},
+             {QStringLiteral("name"), preview.target.name},
+         }},
+        {QStringLiteral("effects"), preview.effects},
+        {QStringLiteral("warnings"), preview.warnings},
+        {QStringLiteral("commands"), commands},
+        {QStringLiteral("confirmation"), preview.confirmation},
+        {QStringLiteral("expiresAt"), isoTimestamp(preview.expiry)},
+        {QStringLiteral("revision"), preview.revision},
+    };
+}
+
 } // namespace
 
 AppController::AppController(QObject *parent)
@@ -328,6 +750,8 @@ AppController::AppController(QObject *parent)
     const QString lastProject = m_settings.value(QStringLiteral("project/last")).toString();
     if (!lastProject.isEmpty() && QFileInfo::exists(QDir(lastProject).filePath(QStringLiteral("project.json"))))
         openProject(lastProject);
+    if (!m_vmManager)
+        recreateVmLab();
 
     // Installation and live verification are asynchronous and surface only
     // in-app progress, so automatic setup never blocks servicing jobs or opens
@@ -339,6 +763,11 @@ AppController::AppController(QObject *parent)
 
 AppController::~AppController()
 {
+    if (m_vmManager && m_vmManager->busy())
+        m_vmManager->cancel();
+    m_vmManager.reset();
+    if (m_vmValidationWorker.joinable())
+        m_vmValidationWorker.join();
     if (m_openCodeSetup)
         m_openCodeSetup->shutdown();
     if (!m_openCodeProcess)
@@ -660,6 +1089,92 @@ bool AppController::winForgeBridgeIncludeRuntime() const { return m_winForgeIncl
 QString AppController::winForgeBridgeRuntimePath() const { return m_winForgeRuntimePath; }
 QString AppController::winForgeBridgeRuntimeStatus() const { return m_winForgeRuntimeStatus; }
 QString AppController::winForgeBridgeStatus() const { return m_winForgeBridgeStatus; }
+QVariantList AppController::vmProviders() const
+{
+    QVariantList result;
+    if (!m_vmManager)
+        return result;
+    for (const vmlab::ProviderInfo &provider : m_vmManager->providers())
+        result.append(vmProviderVariant(provider));
+    return result;
+}
+
+QVariantList AppController::vmInventory() const
+{
+    QVariantList result;
+    if (!m_vmManager)
+        return result;
+    for (const vmlab::Machine &machine : m_vmManager->machines())
+        result.append(vmMachineVariant(machine, {}));
+    return result;
+}
+
+QString AppController::vmSelectedId() const
+{
+    if (!m_vmManager)
+        return {};
+    const std::optional<vmlab::Machine> selected = m_vmManager->selectedMachine();
+    return selected ? selected->ref.id : QString();
+}
+
+QVariant AppController::vmSelected() const
+{
+    if (!m_vmManager)
+        return {};
+    const std::optional<vmlab::Machine> selected = m_vmManager->selectedMachine();
+    return selected ? QVariant(vmMachineVariant(*selected, m_vmLog)) : QVariant();
+}
+
+QVariantList AppController::vmSnapshots() const
+{
+    QVariantList result;
+    if (!m_vmManager)
+        return result;
+    for (const vmlab::Snapshot &snapshot : m_vmManager->snapshots())
+        result.append(vmSnapshotVariant(snapshot));
+    return result;
+}
+
+QVariantList AppController::vmValidationRuns() const { return m_vmValidationItems; }
+bool AppController::vmBusy() const
+{
+    return m_vmValidationBusy || (m_vmManager && m_vmManager->busy());
+}
+
+QVariantMap AppController::vmStatus() const
+{
+    const QString state = m_vmManager
+        ? vmlab::managerStateName(m_vmManager->state()) : QStringLiteral("unavailable");
+    return QVariantMap{
+        {QStringLiteral("state"), state},
+        {QStringLiteral("tone"), m_vmStatusTone},
+        {QStringLiteral("message"), m_vmStatusMessage.isEmpty()
+             ? localized(QStringLiteral("VM Lab is ready."),
+                         QStringLiteral("VM 實驗室準備好。"))
+             : m_vmStatusMessage},
+        {QStringLiteral("detail"), m_vmStatusDetail},
+        {QStringLiteral("managedRoot"), m_vmManager ? m_vmManager->managedRoot() : QString()},
+        {QStringLiteral("projectScoped"), m_project.has_value()},
+        {QStringLiteral("validationAvailable"), bool(m_vmValidationStore)},
+    };
+}
+
+QVariantMap AppController::vmPendingPreview() const { return m_vmPendingPreview; }
+
+QString AppController::currentOutput() const
+{
+    if (!m_project)
+        return {};
+    const QString output = cleanPath(m_project->outputPath);
+    const QFileInfo outputInfo(output);
+    if (!output.isEmpty()
+        && outputInfo.suffix().compare(QStringLiteral("iso"), Qt::CaseInsensitive) == 0
+        && outputInfo.isFile()) {
+        return outputInfo.absoluteFilePath();
+    }
+    return {};
+}
+
 QString AppController::searchQuery() const { return m_searchQuery; }
 QVariantList AppController::searchResults() const { return m_searchResults; }
 
@@ -1003,6 +1518,7 @@ void AppController::inspectSource()
     connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) { m_inspecting = false; showError(process->errorString()); process->deleteLater(); emit stateChanged(); }
     });
+    configureProcessWithoutConsole(*process);
     process->start();
 }
 
@@ -1026,6 +1542,7 @@ void AppController::importHostDrivers()
         } else showError(output.trimmed());
         emit stateChanged();
     });
+    configureProcessWithoutConsole(*process);
     process->start();
 }
 
@@ -1571,6 +2088,7 @@ void AppController::safeUnmountRecovery()
                QStringLiteral("DISM succeeded and recovery run %1 is now closed without claiming its external steps were rolled back.").arg(runId),
                QStringLiteral("success"));
     });
+    configureProcessWithoutConsole(*process);
     process->start();
 }
 
@@ -1615,9 +2133,11 @@ void AppController::search(const QString &query)
         {"unattended", "Unattended Studio", "無人值守工房", "answer file autounattend oobe setup", 4},
         {"packages", "Package Studio", "套件工房", "software winget choco scoop npm pip profile", 5},
         {"winforge", "WinForge Bridge", "WinForge 橋接", "recipe runtime post setup automation", 6},
-        {"plan", "Review & run", "檢查同開工", "servicing operations command dependencies execute", 7},
-        {"history", "History & recovery", "歷史同復原", "git undo redo restore branch notifications", 8},
-        {"settings", "Settings", "設定", "theme language density motion workers safety", 9},
+        {"vm-lab", "Virtual Machine Lab", "虛擬機實驗室", "vmware virtualbox vm iso test snapshots validation", 7},
+        {"plan", "Review & run", "檢查同開工", "servicing operations command dependencies execute", 8},
+        {"history", "History & recovery", "歷史同復原", "git undo redo restore branch notifications", 9},
+        {"settings", "Settings", "設定", "theme language density motion workers safety", 10},
+        {"terminal", "Embedded terminal", "內嵌終端機", "conpty windows terminal powershell cmd console shell", 11},
     };
     for (const StaticEntry &page : pages) {
         add(QStringLiteral("page:%1").arg(QString::fromLatin1(page.id)),
@@ -1628,16 +2148,16 @@ void AppController::search(const QString &query)
     }
 
     static constexpr StaticEntry settings[]{
-        {"language", "Language mode", "語言模式", "english cantonese bilingual zh hk", 9},
-        {"theme", "Color theme", "顏色主題", "light dark system appearance", 9},
-        {"density", "Interface density", "介面密度", "scale spacing compact comfortable", 9},
-        {"motion", "Motion and transitions", "動畫同轉場", "animation accessibility reduced motion", 9},
-        {"parallel", "Parallel servicing jobs", "平行維護工序", "workers concurrency job engine", 9},
-        {"threads", "CPU thread ceiling", "CPU 執行緒上限", "processor cpu worker limit", 9},
-        {"scratch", "Scratch-space reserve", "暫存空間預留", "disk free space reserve", 9},
-        {"journal", "Crash recovery journal", "崩潰復原日誌", "recovery safety journal", 9},
-        {"hash", "Verify source hashes", "驗證來源雜湊", "sha256 integrity source", 9},
-        {"checkpoint", "Destructive checkpoints", "破壞性工序檢查點", "backup recovery safety", 9},
+        {"language", "Language mode", "語言模式", "english cantonese bilingual zh hk", 10},
+        {"theme", "Color theme", "顏色主題", "light dark system appearance", 10},
+        {"density", "Interface density", "介面密度", "scale spacing compact comfortable", 10},
+        {"motion", "Motion and transitions", "動畫同轉場", "animation accessibility reduced motion", 10},
+        {"parallel", "Parallel servicing jobs", "平行維護工序", "workers concurrency job engine", 10},
+        {"threads", "CPU thread ceiling", "CPU 執行緒上限", "processor cpu worker limit", 10},
+        {"scratch", "Scratch-space reserve", "暫存空間預留", "disk free space reserve", 10},
+        {"journal", "Crash recovery journal", "崩潰復原日誌", "recovery safety journal", 10},
+        {"hash", "Verify source hashes", "驗證來源雜湊", "sha256 integrity source", 10},
+        {"checkpoint", "Destructive checkpoints", "破壞性工序檢查點", "backup recovery safety", 10},
     };
     for (const StaticEntry &setting : settings) {
         add(QStringLiteral("setting:%1").arg(QString::fromLatin1(setting.id)),
@@ -1681,12 +2201,12 @@ void AppController::search(const QString &query)
         {"open-project", "Open an existing project", "開啟現有工程", "open load project", 0},
         {"inspect-source", "Inspect source editions", "檢查來源版本", "scan iso wim esd source", 1},
         {"import-host-drivers", "Import host drivers", "匯入本機驅動程式", "export pnputil drivers", 2},
-        {"refresh-plan", "Rebuild the servicing plan", "重建維護計劃", "refresh review regenerate operations", 7},
-        {"export-script", "Export reviewed PowerShell", "匯出已檢查 PowerShell", "script powershell plan", 7},
-        {"run-plan", "Run the reviewed plan", "執行已檢查計劃", "apply execute servicing", 7},
+        {"refresh-plan", "Rebuild the servicing plan", "重建維護計劃", "refresh review regenerate operations", 8},
+        {"export-script", "Export reviewed PowerShell", "匯出已檢查 PowerShell", "script powershell plan", 8},
+        {"run-plan", "Run the reviewed plan", "執行已檢查計劃", "apply execute servicing", 8},
         {"package-ai", "Load AI development package template", "載入 AI 開發套件範本", "software profile opencode node python", 5},
         {"unattend-ai", "Load AI development unattended template", "載入 AI 開發無人值守範本", "answer file oobe setup", 4},
-        {"test-notification", "Send a test notification", "傳送測試通知", "notification center alert", 8},
+        {"test-notification", "Send a test notification", "傳送測試通知", "notification center alert", 9},
     };
     for (const CommandEntry &command : commands) {
         add(QStringLiteral("command:%1").arg(QString::fromLatin1(command.id)),
@@ -2418,6 +2938,7 @@ void AppController::processNextOpenCodeRequest()
                 emit studioChanged();
                 processNextOpenCodeRequest();
             });
+        configureProcessWithoutConsole(*process);
         process->start();
     });
 }
@@ -2805,6 +3326,917 @@ bool AppController::stageWinForgeBridgeIntoIso(const QString &isoStagingPath)
     return true;
 }
 
+void AppController::updateVmStatus(const QString &message,
+                                   const QString &tone,
+                                   const QString &detail)
+{
+    m_vmStatusMessage = message;
+    m_vmStatusTone = tone;
+    m_vmStatusDetail = detail;
+    emit vmLabChanged();
+}
+
+void AppController::appendVmLog(const QString &message)
+{
+    const QString trimmed = message.trimmed();
+    if (trimmed.isEmpty())
+        return;
+    if (!m_vmLog.isEmpty())
+        m_vmLog.append(QStringLiteral("\n\n"));
+    m_vmLog.append(trimmed);
+    constexpr qsizetype maximumCharacters = 128 * 1024;
+    if (m_vmLog.size() > maximumCharacters)
+        m_vmLog = m_vmLog.right(maximumCharacters);
+}
+
+void AppController::refreshVmValidationRuns()
+{
+    m_vmValidationItems.clear();
+    if (!m_vmValidationStore) {
+        emit vmLabChanged();
+        return;
+    }
+    QString error;
+    vmvalidation::RunFilter filter;
+    filter.maximumCount = 1'000;
+    const QList<vmvalidation::ValidationRun> runs = m_vmValidationStore->history(filter, &error);
+    if (!error.isEmpty()) {
+        updateVmStatus(localized(QStringLiteral("Validation history needs attention."),
+                                 QStringLiteral("驗證歷史需要處理。")),
+                       QStringLiteral("error"), error);
+        return;
+    }
+    for (const vmvalidation::ValidationRun &run : runs)
+        m_vmValidationItems.append(vmValidationVariant(run, m_vmValidationStore->projectDirectory()));
+    emit vmLabChanged();
+}
+
+void AppController::recreateVmLab()
+{
+    if (m_vmManager && m_vmManager->busy())
+        m_vmManager->cancel();
+    m_vmManager.reset();
+    if (m_vmValidationWorker.joinable())
+        m_vmValidationWorker.join();
+    m_vmValidationBusy = false;
+    m_pendingVmBootProvider.clear();
+    m_pendingVmBootId.clear();
+
+    QString scopeError;
+    const vmlab::VmLabScope scope = vmlab::resolveVmLabScope(
+        m_project ? m_project->projectDirectory : QString{}, &scopeError);
+    QString scopeRoot = scope.root;
+    if (scopeRoot.isEmpty()) {
+        m_vmValidationStore.reset();
+        updateVmStatus(localized(QStringLiteral("Project VM Lab identity could not be prepared safely."),
+                                 QStringLiteral("無法安全準備工程 VM 實驗室身份。")),
+                       QStringLiteral("error"), scopeError);
+        return;
+    }
+    if (m_project) {
+        // Multi-gigabyte VM files and absolute provider paths never live in
+        // the Git-backed project. A persisted project UUID keeps each
+        // catalog isolated while validation evidence remains project-scoped.
+        m_vmValidationStore = std::make_unique<vmvalidation::VmValidationStore>(
+            m_project->projectDirectory);
+    } else {
+        m_vmValidationStore.reset();
+        m_vmValidationItems.clear();
+    }
+    scopeRoot = QFileInfo(scopeRoot).absoluteFilePath();
+    if (!QDir().mkpath(scopeRoot)) {
+        updateVmStatus(localized(QStringLiteral("VM Lab storage could not be prepared."),
+                                 QStringLiteral("無法準備 VM 實驗室儲存空間。")),
+                       QStringLiteral("error"), scopeRoot);
+        return;
+    }
+
+    m_vmManager = std::make_unique<vmlab::VmLabManager>(
+        QDir(scopeRoot).filePath(QStringLiteral("catalog.json")),
+        QDir(scopeRoot).filePath(QStringLiteral("machines")));
+
+    connect(m_vmManager.get(), &vmlab::VmLabManager::stateChanged, this,
+            [this](vmlab::ManagerState state) {
+        QString message;
+        switch (state) {
+        case vmlab::ManagerState::Idle:
+            message = localized(QStringLiteral("VM Lab is ready."),
+                                QStringLiteral("VM 實驗室準備好。"));
+            break;
+        case vmlab::ManagerState::DetectingProviders:
+            message = localized(QStringLiteral("Detecting VMware and VirtualBox…"),
+                                QStringLiteral("正在偵測 VMware 同 VirtualBox……"));
+            break;
+        case vmlab::ManagerState::RefreshingInventory:
+            message = localized(QStringLiteral("Refreshing provider inventory…"),
+                                QStringLiteral("正在重新整理供應器清單……"));
+            break;
+        case vmlab::ManagerState::RefreshingSnapshots:
+            message = localized(QStringLiteral("Refreshing snapshots…"),
+                                QStringLiteral("正在重新整理快照……"));
+            break;
+        case vmlab::ManagerState::Executing:
+            message = localized(QStringLiteral("Executing the exact reviewed VM operation…"),
+                                QStringLiteral("正在執行完全相同嘅已審閱 VM 操作……"));
+            break;
+        case vmlab::ManagerState::Cancelling:
+            message = localized(QStringLiteral("Cancelling the provider operation…"),
+                                QStringLiteral("正在取消供應器操作……"));
+            break;
+        case vmlab::ManagerState::Error:
+            message = localized(QStringLiteral("VM Lab needs attention."),
+                                QStringLiteral("VM 實驗室需要處理。"));
+            break;
+        }
+        const QString tone = state == vmlab::ManagerState::Error
+            ? QStringLiteral("error") : state == vmlab::ManagerState::Idle
+                ? QStringLiteral("success") : QStringLiteral("info");
+        updateVmStatus(message, tone, m_vmManager ? m_vmManager->lastError() : QString());
+    });
+    connect(m_vmManager.get(), &vmlab::VmLabManager::providersChanged,
+            this, &AppController::vmLabChanged);
+    connect(m_vmManager.get(), &vmlab::VmLabManager::machinesChanged, this, [this] {
+        emit vmLabChanged();
+        QTimer::singleShot(0, this, [this] {
+            tryPendingVmBoot();
+            if (!m_vmManager || m_vmManager->busy() || !m_vmManager->selectedMachine())
+                return;
+            const QString providerId = m_vmManager->selectedMachine()->ref.providerId;
+            const auto providers = m_vmManager->providers();
+            const auto found = std::find_if(providers.cbegin(), providers.cend(),
+                                            [&providerId](const vmlab::ProviderInfo &provider) {
+                return provider.id == providerId;
+            });
+            if (found != providers.cend()
+                && found->supports(vmlab::capability::snapshots())) {
+                m_vmManager->refreshSnapshots();
+            }
+        });
+    });
+    connect(m_vmManager.get(), &vmlab::VmLabManager::selectionChanged,
+            this, &AppController::vmLabChanged);
+    connect(m_vmManager.get(), &vmlab::VmLabManager::snapshotsChanged,
+            this, &AppController::vmLabChanged);
+    connect(m_vmManager.get(), &vmlab::VmLabManager::reviewedPlanChanged,
+            this, &AppController::vmLabChanged);
+    connect(m_vmManager.get(), &vmlab::VmLabManager::evidenceAdded, this,
+            [this](const vmlab::OperationEvidence &evidence) {
+        appendVmLog(vmEvidenceText(evidence));
+        emit vmLabChanged();
+    });
+    connect(m_vmManager.get(), &vmlab::VmLabManager::errorOccurred, this,
+            [this](const QString &error) {
+        updateVmStatus(localized(QStringLiteral("VM operation was rejected or failed."),
+                                 QStringLiteral("VM 操作被拒絕或失敗。")),
+                       QStringLiteral("error"), error);
+        emit snackbarRequested(error, QStringLiteral("error"));
+    });
+    connect(m_vmManager.get(), &vmlab::VmLabManager::taskFinished, this,
+            [this](const vmlab::OperationEvidence &evidence) {
+        if (evidence.action == QStringLiteral("create") && !evidence.success) {
+            m_pendingVmBootProvider.clear();
+            m_pendingVmBootId.clear();
+        }
+        updateVmStatus(
+            evidence.success
+                ? localized(QStringLiteral("VM operation completed."),
+                            QStringLiteral("VM 操作已完成。"))
+                : evidence.cancelled
+                    ? localized(QStringLiteral("VM operation was cancelled."),
+                                QStringLiteral("VM 操作已取消。"))
+                    : localized(QStringLiteral("VM operation failed."),
+                                QStringLiteral("VM 操作失敗。")),
+            evidence.success ? QStringLiteral("success")
+                             : evidence.cancelled ? QStringLiteral("warning")
+                                                  : QStringLiteral("error"),
+            evidence.error);
+    });
+
+    QString loadError;
+    if (!m_vmManager->load(&loadError)) {
+        updateVmStatus(localized(QStringLiteral("VM Lab catalog could not be loaded."),
+                                 QStringLiteral("無法載入 VM 實驗室目錄。")),
+                       QStringLiteral("error"), loadError);
+        return;
+    }
+    refreshVmValidationRuns();
+    updateVmStatus(
+        m_project
+            ? localized(QStringLiteral("Project VM Lab is ready."),
+                        QStringLiteral("工程 VM 實驗室準備好。"))
+            : localized(QStringLiteral("Global VM management is ready; open a project to record validation evidence."),
+                        QStringLiteral("全域 VM 管理準備好；開啟工程先可以記錄驗證證據。")),
+        QStringLiteral("success"));
+    QTimer::singleShot(0, this, [this] {
+        if (m_vmManager && !m_vmManager->busy())
+            m_vmManager->detectProviders();
+    });
+}
+
+void AppController::tryPendingVmBoot()
+{
+    if (!m_vmManager || m_vmManager->busy()
+        || m_pendingVmBootProvider.isEmpty() || m_pendingVmBootId.isEmpty()) {
+        return;
+    }
+    const QList<vmlab::Machine> machines = m_vmManager->machines();
+    const auto found = std::find_if(machines.cbegin(), machines.cend(), [this](const vmlab::Machine &machine) {
+        return machine.ref.providerId == m_pendingVmBootProvider
+            && machine.ref.id == m_pendingVmBootId;
+    });
+    if (found == machines.cend())
+        return;
+    const QString providerId = m_pendingVmBootProvider;
+    const QString id = m_pendingVmBootId;
+    m_pendingVmBootProvider.clear();
+    m_pendingVmBootId.clear();
+    if (!m_vmManager->selectMachine(providerId, id))
+        return;
+    const std::optional<vmlab::OperationPreview> preview = m_vmManager->reviewStart(false);
+    if (!stageVmPreview(preview)) {
+        updateVmStatus(localized(QStringLiteral("The VM was created, but automatic boot was rejected."),
+                                 QStringLiteral("VM 已建立，但自動啟動被拒絕。")),
+                       QStringLiteral("warning"), m_vmManager->lastError());
+    }
+}
+
+void AppController::refreshVmLab()
+{
+    if (!m_vmManager) {
+        recreateVmLab();
+        return;
+    }
+    if (m_vmManager->busy()) {
+        updateVmStatus(localized(QStringLiteral("Wait for the active VM task before refreshing."),
+                                 QStringLiteral("等目前 VM 工作完成先重新整理。")),
+                       QStringLiteral("warning"));
+        return;
+    }
+    m_vmManager->detectProviders();
+}
+
+bool AppController::selectVm(const QString &providerId, const QString &id)
+{
+    if (!m_vmManager || m_vmManager->busy())
+        return false;
+    const QList<vmlab::Machine> machines = m_vmManager->machines();
+    const auto match = std::find_if(machines.cbegin(), machines.cend(),
+                                    [&providerId, &id](const vmlab::Machine &machine) {
+        return machine.ref.providerId == providerId && machine.ref.id == id;
+    });
+    if (match == machines.cend()) {
+        const QString error = QStringLiteral("The selected VM is no longer in provider inventory.");
+        updateVmStatus(localized(QStringLiteral("The VM selection could not be applied."),
+                                 QStringLiteral("無法套用 VM 選擇。")),
+                       QStringLiteral("error"), error);
+        return false;
+    }
+    if (!m_vmManager->selectMachine(match->ref.providerId, match->ref.id))
+        return false;
+    updateVmStatus(localized(QStringLiteral("Virtual machine selected."),
+                             QStringLiteral("已選取虛擬機。")),
+                   QStringLiteral("success"), match->ref.name);
+    const auto providers = m_vmManager->providers();
+    const auto provider = std::find_if(providers.cbegin(), providers.cend(),
+                                       [&providerId](const vmlab::ProviderInfo &item) {
+        return item.id == providerId;
+    });
+    if (provider != providers.cend() && provider->supports(vmlab::capability::snapshots())) {
+        QTimer::singleShot(0, this, [this] {
+            if (m_vmManager && !m_vmManager->busy())
+                m_vmManager->refreshSnapshots();
+        });
+    }
+    emit vmLabChanged();
+    return true;
+}
+
+bool AppController::stageVmPreview(
+    const std::optional<vmlab::OperationPreview> &preview)
+{
+    if (!m_vmManager)
+        return false;
+    m_vmPendingPreview.clear();
+    m_pendingVmBootProvider.clear();
+    m_pendingVmBootId.clear();
+    if (!preview) {
+        updateVmStatus(localized(QStringLiteral("The provider could not produce a safe operation preview."),
+                                 QStringLiteral("供應器無法產生安全操作預覽。")),
+                       QStringLiteral("error"), m_vmManager->lastError());
+        return false;
+    }
+    m_vmPendingPreview = vmPreviewVariant(*preview);
+    appendVmLog(QStringLiteral("PREVIEW %1 [%2]\nEffects: %3\nWarnings: %4")
+                    .arg(preview->action,
+                         preview->id.toString(QUuid::WithoutBraces),
+                         preview->effects.join(QStringLiteral(" | ")),
+                         preview->warnings.join(QStringLiteral(" | "))));
+    updateVmStatus(localized(QStringLiteral("Review the exact provider operation before execution."),
+                             QStringLiteral("執行前請審閱完全相同嘅供應器操作。")),
+                   QStringLiteral("warning"), preview->action);
+    emit vmLabChanged();
+    emit vmPreviewReady();
+    return true;
+}
+
+bool AppController::executePendingVmPreview(const QString &previewId,
+                                            const QString &typedConfirmation)
+{
+    if (!m_vmManager || m_vmPendingPreview.isEmpty())
+        return false;
+    const QString expectedId = m_vmPendingPreview.value(QStringLiteral("id")).toString();
+    if (previewId.trimmed() != expectedId) {
+        updateVmStatus(localized(QStringLiteral("The reviewed preview changed; review the operation again."),
+                                 QStringLiteral("已審閱預覽已改變；請重新審閱操作。")),
+                       QStringLiteral("error"));
+        return false;
+    }
+    const QString expectedConfirmation = m_vmPendingPreview
+        .value(QStringLiteral("confirmation")).toString();
+    if (!expectedConfirmation.isEmpty() && typedConfirmation != expectedConfirmation) {
+        updateVmStatus(localized(QStringLiteral("The exact destructive confirmation token did not match."),
+                                 QStringLiteral("破壞性操作嘅完整確認字句唔吻合。")),
+                       QStringLiteral("error"), expectedConfirmation);
+        return false;
+    }
+    appendVmLog(QStringLiteral("EXECUTE REVIEWED PREVIEW %1 [%2]")
+                    .arg(m_vmPendingPreview.value(QStringLiteral("action")).toString(),
+                         expectedId));
+    const QUuid id(expectedId);
+    if (id.isNull() || !m_vmManager->executeReviewed(id, typedConfirmation)) {
+        updateVmStatus(localized(QStringLiteral("The reviewed VM operation was not executed."),
+                                 QStringLiteral("已審閱 VM 操作未有執行。")),
+                       QStringLiteral("error"), m_vmManager->lastError());
+        return false;
+    }
+    const QString action = m_vmPendingPreview.value(QStringLiteral("action")).toString();
+    m_vmPendingPreview.clear();
+    updateVmStatus(localized(QStringLiteral("Executing the exact reviewed provider operation…"),
+                             QStringLiteral("正在執行完全相同嘅已審閱供應器操作……")),
+                   QStringLiteral("info"), action);
+    emit vmLabChanged();
+    return true;
+}
+
+void AppController::discardPendingVmPreview()
+{
+    if (m_vmManager)
+        m_vmManager->clearReviewedPlan();
+    m_vmPendingPreview.clear();
+    m_pendingVmBootProvider.clear();
+    m_pendingVmBootId.clear();
+    updateVmStatus(localized(QStringLiteral("Reviewed VM operation was discarded."),
+                             QStringLiteral("已放棄審閱嘅 VM 操作。")),
+                   QStringLiteral("info"));
+    emit vmLabChanged();
+}
+
+bool AppController::createVm(const QVariantMap &spec)
+{
+    if (!m_vmManager || m_vmManager->busy())
+        return false;
+    vmlab::CreateSpec request;
+    request.providerId = spec.value(QStringLiteral("providerId")).toString().trimmed();
+    request.name = spec.value(QStringLiteral("name")).toString().trimmed();
+    request.directory = request.providerId == vmlab::virtualBoxProviderId()
+        ? m_vmManager->managedRoot()
+        : QDir(m_vmManager->managedRoot()).filePath(request.name);
+    request.guestType = providerGuestType(
+        request.providerId, spec.value(QStringLiteral("guestType")).toString());
+    const std::optional<vmlab::Firmware> firmware = vmFirmware(
+        spec.value(QStringLiteral("firmware"), QStringLiteral("efi")).toString());
+    const std::optional<vmlab::NetworkMode> network = vmNetworkMode(
+        spec.value(QStringLiteral("networkMode"), QStringLiteral("nat")).toString());
+    if (!firmware || !network) {
+        updateVmStatus(localized(QStringLiteral("VM firmware or network mode is invalid."),
+                                 QStringLiteral("VM 韌體或網絡模式無效。")),
+                       QStringLiteral("error"));
+        return false;
+    }
+    request.firmware = *firmware;
+    request.networkMode = *network;
+    request.secureBoot = spec.value(QStringLiteral("secureBoot"), false).toBool();
+    request.tpm = spec.value(QStringLiteral("tpm"), false).toBool();
+    request.cpuCount = spec.value(QStringLiteral("cpuCount"), 2).toInt();
+    request.memoryMiB = spec.value(QStringLiteral("memoryMiB"), 4096).toInt();
+    request.diskMiB = spec.value(QStringLiteral("diskMiB"), 65536).toInt();
+    request.bridgedInterface = spec.value(QStringLiteral("bridgedInterface")).toString().trimmed();
+    request.isoPath = cleanPath(spec.value(QStringLiteral("isoPath")).toString());
+    request.unattendedBoot = spec.value(QStringLiteral("unattendedBoot"), false).toBool();
+    const bool virtualBoxCreate = request.providerId == vmlab::virtualBoxProviderId();
+    const bool vmwareCreate = request.providerId == vmlab::vmwareWorkstationProviderId()
+        || request.providerId == vmlab::vmwarePlayerProviderId();
+    if (vmwareCreate && request.networkMode == vmlab::NetworkMode::Internal) {
+        updateVmStatus(localized(QStringLiteral("VMware creation does not expose a provider-neutral internal network."),
+                                 QStringLiteral("VMware 建立流程未有提供供應器中立嘅 internal network。")),
+                       QStringLiteral("error"));
+        return false;
+    }
+    if (virtualBoxCreate
+        && (request.networkMode == vmlab::NetworkMode::Bridged
+            || request.networkMode == vmlab::NetworkMode::HostOnly
+            || request.networkMode == vmlab::NetworkMode::Internal)
+        && request.bridgedInterface.isEmpty()) {
+        updateVmStatus(localized(QStringLiteral("This VirtualBox network mode needs an explicit host interface or network name."),
+                                 QStringLiteral("呢個 VirtualBox 網絡模式需要指定主機介面或網絡名稱。")),
+                       QStringLiteral("error"));
+        return false;
+    }
+    if (vmwareCreate)
+        request.bridgedInterface.clear();
+    const std::optional<vmlab::OperationPreview> preview = m_vmManager->reviewCreate(
+        request, vmlab::Ownership::Managed);
+    if (!preview)
+        return stageVmPreview(preview);
+    if (!stageVmPreview(preview))
+        return false;
+    if (spec.value(QStringLiteral("bootAfterCreate"), false).toBool()) {
+        m_pendingVmBootProvider = preview->target.providerId;
+        m_pendingVmBootId = preview->target.id;
+    }
+    return true;
+}
+
+bool AppController::runVmAction(const QString &action, const QVariantMap &options)
+{
+    if (!m_vmManager || m_vmManager->busy())
+        return false;
+    const QString normalized = action.trimmed();
+    if (normalized == QStringLiteral("register")) {
+        const QString providerId = options.value(QStringLiteral("providerId")).toString().trimmed();
+        const QString path = cleanPath(options.value(QStringLiteral("path")).toString());
+        const QString name = options.value(QStringLiteral("name")).toString().trimmed();
+        return stageVmPreview(m_vmManager->reviewRegister(
+            providerId, path, name, vmlab::Ownership::External));
+    }
+    const std::optional<vmlab::Machine> selected = m_vmManager->selectedMachine();
+    if (!selected) {
+        updateVmStatus(localized(QStringLiteral("Select a virtual machine first."),
+                                 QStringLiteral("請先選取虛擬機。")),
+                       QStringLiteral("warning"));
+        return false;
+    }
+    const QString expectedId = options.value(QStringLiteral("vmId")).toString();
+    if (!expectedId.isEmpty() && expectedId != selected->ref.id) {
+        updateVmStatus(localized(QStringLiteral("The VM selection changed; review the action again."),
+                                 QStringLiteral("VM 選擇已改變；請重新審閱操作。")),
+                       QStringLiteral("error"));
+        return false;
+    }
+    std::optional<vmlab::OperationPreview> preview;
+    if (normalized == QStringLiteral("openConsole")) preview = m_vmManager->reviewOpenConsole();
+    else if (normalized == QStringLiteral("start"))
+        preview = m_vmManager->reviewStart(options.value(QStringLiteral("headless"), false).toBool());
+    else if (normalized == QStringLiteral("shutdown")) preview = m_vmManager->reviewGracefulShutdown();
+    else if (normalized == QStringLiteral("powerOff")) {
+        preview = m_vmManager->reviewPowerOff();
+    } else if (normalized == QStringLiteral("pause")) preview = m_vmManager->reviewPause();
+    else if (normalized == QStringLiteral("resume")) preview = m_vmManager->reviewResume();
+    else if (normalized == QStringLiteral("reset")) {
+        preview = m_vmManager->reviewReset();
+    } else if (normalized == QStringLiteral("saveState")) preview = m_vmManager->reviewSaveState();
+    else if (normalized == QStringLiteral("forget")) {
+        preview = m_vmManager->reviewForgetCatalog();
+    } else if (normalized == QStringLiteral("delete")) {
+        const bool deleteFiles = options.value(QStringLiteral("deleteFiles"), false).toBool();
+        if (!deleteFiles && selected->ownership == vmlab::Ownership::Managed) {
+            updateVmStatus(localized(
+                QStringLiteral("Managed VM files cannot be orphaned by removing their ownership record. Keep the VM or use the reviewed delete-files action."),
+                QStringLiteral("唔可以刪除受管理 VM 嘅擁有權記錄而留下孤立檔案。請保留 VM，或者使用已審閱嘅刪除檔案操作。")),
+                QStringLiteral("error"));
+            return false;
+        }
+        preview = deleteFiles ? m_vmManager->reviewDelete()
+                              : m_vmManager->reviewUnregister();
+    } else {
+        updateVmStatus(localized(QStringLiteral("That VM action is unsupported."),
+                                 QStringLiteral("唔支援呢個 VM 操作。")),
+                       QStringLiteral("error"), normalized);
+        return false;
+    }
+    return stageVmPreview(preview);
+}
+
+bool AppController::updateVmConfiguration(const QVariantMap &spec)
+{
+    if (!m_vmManager || m_vmManager->busy() || !m_vmManager->selectedMachine())
+        return false;
+    const QString expectedId = spec.value(QStringLiteral("vmId")).toString();
+    if (!expectedId.isEmpty() && expectedId != m_vmManager->selectedMachine()->ref.id)
+        return false;
+    vmlab::ConfigPatch patch;
+    if (spec.contains(QStringLiteral("cpuCount")))
+        patch.cpuCount = spec.value(QStringLiteral("cpuCount")).toInt();
+    if (spec.contains(QStringLiteral("memoryMiB")))
+        patch.memoryMiB = spec.value(QStringLiteral("memoryMiB")).toInt();
+    if (spec.contains(QStringLiteral("firmware"))) {
+        const std::optional<vmlab::Firmware> value = vmFirmware(
+            spec.value(QStringLiteral("firmware")).toString());
+        if (!value)
+            return false;
+        patch.firmware = *value;
+    }
+    if (spec.contains(QStringLiteral("secureBoot")))
+        patch.secureBoot = spec.value(QStringLiteral("secureBoot")).toBool();
+    if (spec.contains(QStringLiteral("tpm")))
+        patch.tpm = spec.value(QStringLiteral("tpm")).toBool();
+    if (spec.contains(QStringLiteral("networkMode"))) {
+        const std::optional<vmlab::NetworkMode> value = vmNetworkMode(
+            spec.value(QStringLiteral("networkMode")).toString());
+        if (!value)
+            return false;
+        patch.networkMode = *value;
+        patch.bridgedInterface = spec.value(QStringLiteral("bridgedInterface")).toString();
+    }
+    if (spec.contains(QStringLiteral("isoPath")))
+        patch.isoPath = cleanPath(spec.value(QStringLiteral("isoPath")).toString());
+    return stageVmPreview(m_vmManager->reviewConfigure(patch));
+}
+
+bool AppController::vmDeviceAction(const QString &action, const QVariantMap &spec)
+{
+    if (!m_vmManager || m_vmManager->busy() || !m_vmManager->selectedMachine())
+        return false;
+    const QString expectedId = spec.value(QStringLiteral("vmId")).toString();
+    if (!expectedId.isEmpty() && expectedId != m_vmManager->selectedMachine()->ref.id)
+        return false;
+    const QString normalized = action.trimmed();
+    if (normalized == QStringLiteral("addNetwork")) {
+        const std::optional<vmlab::NetworkMode> mode = vmNetworkMode(
+            spec.value(QStringLiteral("mode")).toString());
+        const int slot = spec.value(QStringLiteral("slot")).toInt();
+        QString interfaceName = spec.value(QStringLiteral("interfaceName")).toString().trimmed();
+        if (!mode || slot < 1 || slot > 32)
+            return false;
+        const QString providerId = m_vmManager->selectedMachine()->ref.providerId;
+        const bool virtualBox = providerId == vmlab::virtualBoxProviderId();
+        const bool vmware = providerId == vmlab::vmwareWorkstationProviderId()
+            || providerId == vmlab::vmwarePlayerProviderId();
+        if (vmware && *mode == vmlab::NetworkMode::Internal) {
+            updateVmStatus(localized(QStringLiteral("VMware does not expose a provider-neutral internal network mode."),
+                                     QStringLiteral("VMware 未有提供供應器中立嘅 internal network 模式。")),
+                           QStringLiteral("error"));
+            return false;
+        }
+        if (virtualBox
+            && (*mode == vmlab::NetworkMode::Bridged
+                || *mode == vmlab::NetworkMode::HostOnly
+                || *mode == vmlab::NetworkMode::Internal)
+            && interfaceName.isEmpty()) {
+            updateVmStatus(localized(QStringLiteral("This network mode needs an explicit interface or network name."),
+                                     QStringLiteral("呢個網絡模式需要指定介面或網絡名稱。")),
+                           QStringLiteral("error"));
+            return false;
+        }
+        if (vmware)
+            interfaceName.clear();
+        vmlab::NetworkAdapterSpec network;
+        network.slot = slot;
+        network.mode = *mode;
+        network.interfaceName = interfaceName;
+        network.connected = *mode != vmlab::NetworkMode::Disconnected;
+        return stageVmPreview(m_vmManager->reviewAttachNetwork(network));
+    }
+    if (normalized == QStringLiteral("removeNetwork")) {
+        const int slot = spec.value(QStringLiteral("slot")).toInt();
+        if (slot < 1 || slot > 32)
+            return false;
+        return stageVmPreview(m_vmManager->reviewDetachNetwork(slot));
+    }
+
+    const std::optional<vmlab::StorageBus> bus = vmStorageBus(
+        spec.value(QStringLiteral("bus")).toString());
+    if (!bus || !spec.contains(QStringLiteral("controller"))
+        || !spec.contains(QStringLiteral("port"))
+        || !spec.contains(QStringLiteral("device"))) {
+        updateVmStatus(localized(QStringLiteral("Storage actions require an explicit bus, controller, port, and device."),
+                                 QStringLiteral("儲存操作需要明確 bus、controller、port 同 device。")),
+                       QStringLiteral("error"));
+        return false;
+    }
+    vmlab::StorageDeviceSpec storage;
+    storage.bus = *bus;
+    storage.controller = spec.value(QStringLiteral("controller")).toInt();
+    storage.port = spec.value(QStringLiteral("port")).toInt();
+    storage.device = spec.value(QStringLiteral("device")).toInt();
+    storage.controllerName = spec.value(QStringLiteral("controllerName")).toString().trimmed();
+    storage.path = cleanPath(normalized == QStringLiteral("attachIso")
+        ? spec.value(QStringLiteral("isoPath")).toString()
+        : spec.value(QStringLiteral("path")).toString());
+    storage.optical = normalized == QStringLiteral("attachIso")
+        || normalized == QStringLiteral("ejectIso");
+    if (m_vmManager->selectedMachine()->ref.providerId == vmlab::virtualBoxProviderId()
+        && storage.controllerName.isEmpty()) {
+        updateVmStatus(localized(QStringLiteral("VirtualBox storage actions require the exact controller name from live inventory."),
+                                 QStringLiteral("VirtualBox 儲存操作需要即時清單提供嘅確切 controller 名稱。")),
+                       QStringLiteral("error"));
+        return false;
+    }
+    if (normalized == QStringLiteral("addDisk") || normalized == QStringLiteral("attachIso"))
+        return stageVmPreview(m_vmManager->reviewAttachStorage(storage));
+    if (normalized == QStringLiteral("detachDisk"))
+        return stageVmPreview(m_vmManager->reviewDetachStorage(storage));
+    if (normalized == QStringLiteral("ejectIso"))
+        return stageVmPreview(m_vmManager->reviewDetachStorage(storage));
+    updateVmStatus(localized(QStringLiteral("That device action is unsupported."),
+                             QStringLiteral("唔支援呢個裝置操作。")),
+                   QStringLiteral("error"), normalized);
+    return false;
+}
+
+bool AppController::vmSnapshotAction(const QString &action, const QVariantMap &spec)
+{
+    if (!m_vmManager || m_vmManager->busy() || !m_vmManager->selectedMachine())
+        return false;
+    const QString expectedId = spec.value(QStringLiteral("vmId")).toString();
+    if (!expectedId.isEmpty() && expectedId != m_vmManager->selectedMachine()->ref.id)
+        return false;
+    const QString normalized = action.trimmed();
+    if (normalized == QStringLiteral("take")) {
+        return stageVmPreview(m_vmManager->reviewTakeSnapshot(
+            spec.value(QStringLiteral("name")).toString().trimmed(),
+            spec.value(QStringLiteral("description")).toString().trimmed()));
+    }
+    const QString snapshotId = spec.value(QStringLiteral("snapshotId")).toString();
+    const QList<vmlab::Snapshot> snapshots = m_vmManager->snapshots();
+    const auto found = std::find_if(snapshots.cbegin(), snapshots.cend(),
+                                    [&snapshotId](const vmlab::Snapshot &snapshot) {
+        return snapshot.id == snapshotId;
+    });
+    if (found == snapshots.cend()) {
+        updateVmStatus(localized(QStringLiteral("The snapshot selection changed; refresh and review again."),
+                                 QStringLiteral("快照選擇已改變；請重新整理再審閱。")),
+                       QStringLiteral("error"));
+        return false;
+    }
+    if (normalized == QStringLiteral("restore"))
+        return stageVmPreview(m_vmManager->reviewRestoreSnapshot(*found));
+    if (normalized == QStringLiteral("delete"))
+        return stageVmPreview(m_vmManager->reviewDeleteSnapshot(*found));
+    return false;
+}
+
+bool AppController::startVmValidation(const QVariantMap &spec)
+{
+    if (!m_project || !m_vmValidationStore) {
+        updateVmStatus(localized(QStringLiteral("Open a project before recording validation evidence."),
+                                 QStringLiteral("記錄驗證證據之前請先開工程。")),
+                       QStringLiteral("warning"));
+        return false;
+    }
+    if (vmBusy() || !m_vmManager || !m_vmManager->selectedMachine())
+        return false;
+    const vmlab::Machine machine = *m_vmManager->selectedMachine();
+    if ((!spec.value(QStringLiteral("vmId")).toString().isEmpty()
+         && spec.value(QStringLiteral("vmId")).toString() != machine.ref.id)
+        || (!spec.value(QStringLiteral("providerId")).toString().isEmpty()
+            && spec.value(QStringLiteral("providerId")).toString() != machine.ref.providerId)) {
+        updateVmStatus(localized(QStringLiteral("The selected VM changed before validation started."),
+                                 QStringLiteral("驗證開始前所選 VM 已改變。")),
+                       QStringLiteral("error"));
+        return false;
+    }
+    const QFileInfo iso(cleanPath(spec.value(QStringLiteral("isoPath")).toString()));
+    const QFileInfo image(cleanPath(m_project->imagePath));
+    const QFileInfo configuration(machine.configPath);
+    if (!iso.isAbsolute() || !iso.isFile()
+        || iso.suffix().compare(QStringLiteral("iso"), Qt::CaseInsensitive) != 0) {
+        updateVmStatus(localized(QStringLiteral("Validation requires an existing ISO output."),
+                                 QStringLiteral("驗證需要現有 ISO 輸出。")),
+                       QStringLiteral("error"), iso.filePath());
+        return false;
+    }
+    if (!image.isAbsolute() || !image.isFile()) {
+        updateVmStatus(localized(QStringLiteral("Validation requires the selected source image file."),
+                                 QStringLiteral("驗證需要已選來源映像檔。")),
+                       QStringLiteral("error"), image.filePath());
+        return false;
+    }
+    if (!configuration.isAbsolute() || !configuration.isFile()) {
+        updateVmStatus(localized(QStringLiteral("Validation requires the selected VM configuration file."),
+                                 QStringLiteral("驗證需要已選 VM 設定檔。")),
+                       QStringLiteral("error"), configuration.filePath());
+        return false;
+    }
+    QString providerVersion;
+    for (const vmlab::ProviderInfo &provider : m_vmManager->providers()) {
+        if (provider.id == machine.ref.providerId) {
+            providerVersion = provider.version;
+            break;
+        }
+    }
+    const QString runName = spec.value(QStringLiteral("name")).toString().trimmed();
+    const QString profile = spec.value(QStringLiteral("profile"),
+                                       QStringLiteral("full-smoke")).toString().trimmed();
+    const QString notes = spec.value(QStringLiteral("notes")).toString();
+    QJsonObject configSnapshot = QJsonObject::fromVariantMap(vmMachineVariant(machine, {}));
+    configSnapshot.insert(QStringLiteral("runName"), runName);
+    configSnapshot.insert(QStringLiteral("profile"), profile);
+    configSnapshot.insert(QStringLiteral("notes"), notes);
+    configSnapshot.insert(QStringLiteral("imageIndex"), m_project->selectedImageIndex);
+    configSnapshot.insert(QStringLiteral("outputFormat"), m_project->outputFormat);
+
+    vmvalidation::RunStart start;
+    start.isoPath = iso.absoluteFilePath();
+    start.isoSha256 = spec.value(QStringLiteral("isoSha256")).toString().trimmed().toLower();
+    start.imagePath = image.absoluteFilePath();
+    start.providerId = machine.ref.providerId;
+    start.providerVersion = providerVersion;
+    start.vmId = machine.ref.id;
+    start.vmName = machine.ref.name;
+    start.vmConfigPath = configuration.absoluteFilePath();
+    start.configSnapshot = configSnapshot;
+    start.startedAt = QDateTime::currentDateTimeUtc();
+    const QString scope = m_vmValidationStore->projectDirectory();
+    if (m_vmValidationWorker.joinable())
+        m_vmValidationWorker.join();
+    m_vmValidationBusy = true;
+    updateVmStatus(localized(QStringLiteral("Hashing the exact ISO and image for validation…"),
+                             QStringLiteral("正在雜湊驗證用嘅確切 ISO 同映像……")),
+                   QStringLiteral("info"), iso.absoluteFilePath());
+    m_vmValidationWorker = std::jthread([this, scope, start] {
+        vmvalidation::VmValidationStore store(scope);
+        vmvalidation::MutationResult mutation;
+        QString error;
+        const bool success = store.appendRun(start, &mutation, &error);
+        QMetaObject::invokeMethod(this, [this, scope, success, error] {
+            if (!m_vmValidationStore || m_vmValidationStore->projectDirectory() != scope)
+                return;
+            m_vmValidationBusy = false;
+            refreshVmValidationRuns();
+            updateVmStatus(
+                success
+                    ? localized(QStringLiteral("Validation run started with exact SHA-256 evidence."),
+                                QStringLiteral("驗證執行已開始，並記錄確切 SHA-256 證據。"))
+                    : localized(QStringLiteral("Validation run could not be started."),
+                                QStringLiteral("無法開始驗證執行。")),
+                success ? QStringLiteral("success") : QStringLiteral("error"), error);
+            if (!success && !error.isEmpty())
+                emit snackbarRequested(error, QStringLiteral("error"));
+        }, Qt::QueuedConnection);
+    });
+    emit vmLabChanged();
+    return true;
+}
+
+bool AppController::recordVmValidationMilestone(const QString &runId,
+                                                const QVariantMap &spec)
+{
+    if (!m_vmValidationStore || m_vmValidationBusy)
+        return false;
+    QString error;
+    const std::optional<vmvalidation::ValidationRun> run = m_vmValidationStore->find(runId, &error);
+    if (!run) {
+        updateVmStatus(localized(QStringLiteral("The validation run was not found."),
+                                 QStringLiteral("搵唔到驗證執行。")),
+                       QStringLiteral("error"), error);
+        return false;
+    }
+    const QString kind = spec.value(QStringLiteral("kind")).toString().trimmed();
+    const QString result = spec.value(QStringLiteral("result")).toString().trimmed().toLower();
+    if (kind.isEmpty() || (result != QStringLiteral("pass")
+                           && result != QStringLiteral("fail")
+                           && result != QStringLiteral("skip"))) {
+        return false;
+    }
+    vmvalidation::MilestoneDraft milestone;
+    milestone.phase = kind.startsWith(QStringLiteral("installation"))
+            || kind == QStringLiteral("disk-layout")
+        ? vmvalidation::MilestonePhase::Install : vmvalidation::MilestonePhase::Boot;
+    milestone.name = kind;
+    milestone.status = result == QStringLiteral("pass")
+        ? vmvalidation::MilestoneStatus::Reached
+        : result == QStringLiteral("fail")
+            ? vmvalidation::MilestoneStatus::Failed
+            : vmvalidation::MilestoneStatus::Skipped;
+    milestone.occurredAt = QDateTime::currentDateTimeUtc();
+    milestone.note = spec.value(QStringLiteral("notes")).toString();
+    milestone.data.insert(QStringLiteral("evidence"),
+                          spec.value(QStringLiteral("evidence")).toString());
+    vmvalidation::RunUpdate update;
+    update.milestones.append(milestone);
+    vmvalidation::LogDraft log;
+    log.occurredAt = milestone.occurredAt;
+    log.channel = QStringLiteral("milestone");
+    log.message = QStringLiteral("%1: %2").arg(kind, result);
+    update.logs.append(log);
+
+    const QString evidencePath = cleanPath(spec.value(QStringLiteral("evidence")).toString());
+    const QFileInfo evidenceFile(evidencePath);
+    const QString projectRoot = QFileInfo(m_vmValidationStore->projectDirectory()).canonicalFilePath();
+    if (evidenceFile.isFile() && !projectRoot.isEmpty()) {
+        const QString canonical = evidenceFile.canonicalFilePath();
+        const QString relative = QDir(projectRoot).relativeFilePath(canonical);
+        vmvalidation::EvidenceDraft evidence;
+        const QString suffix = evidenceFile.suffix().toLower();
+        evidence.kind = suffix == QStringLiteral("png") || suffix == QStringLiteral("jpg")
+                || suffix == QStringLiteral("jpeg")
+            ? vmvalidation::EvidenceKind::Screenshot
+            : suffix == QStringLiteral("log") || suffix == QStringLiteral("txt")
+                ? vmvalidation::EvidenceKind::Log
+                : suffix == QStringLiteral("json") || suffix == QStringLiteral("html")
+                    ? vmvalidation::EvidenceKind::Report
+                    : vmvalidation::EvidenceKind::Other;
+        evidence.label = kind;
+        evidence.path = canonical;
+        evidence.capturedAt = milestone.occurredAt;
+        const bool contained = !relative.startsWith(QStringLiteral("../"))
+            && relative != QStringLiteral("..");
+        if (!contained) {
+            evidence.external = true;
+            evidence.externalMetadata = QJsonObject{
+                {QStringLiteral("selectedBy"), QStringLiteral("desktop-user")},
+                {QStringLiteral("capturedFor"), kind},
+            };
+        }
+        update.evidence.append(evidence);
+    }
+    vmvalidation::MutationResult mutation;
+    if (!m_vmValidationStore->updateRun(runId, run->revision, update, &mutation, &error)) {
+        updateVmStatus(localized(QStringLiteral("The validation milestone was not saved."),
+                                 QStringLiteral("驗證里程碑未能儲存。")),
+                       QStringLiteral("error"), error);
+        return false;
+    }
+    refreshVmValidationRuns();
+    updateVmStatus(localized(QStringLiteral("Validation milestone saved."),
+                             QStringLiteral("驗證里程碑已儲存。")),
+                   result == QStringLiteral("fail") ? QStringLiteral("warning")
+                                                      : QStringLiteral("success"));
+    return true;
+}
+
+bool AppController::finishVmValidation(const QString &runId,
+                                       const QVariantMap &result)
+{
+    if (!m_vmValidationStore || m_vmValidationBusy)
+        return false;
+    QString error;
+    const std::optional<vmvalidation::ValidationRun> run = m_vmValidationStore->find(runId, &error);
+    if (!run)
+        return false;
+    const QString resultName = result.value(QStringLiteral("result")).toString().trimmed().toLower();
+    vmvalidation::RunStatus status;
+    if (resultName == QStringLiteral("pass")) status = vmvalidation::RunStatus::Passed;
+    else if (resultName == QStringLiteral("fail")) status = vmvalidation::RunStatus::Failed;
+    else if (resultName == QStringLiteral("aborted")
+             || resultName == QStringLiteral("cancelled")) {
+        status = vmvalidation::RunStatus::Cancelled;
+    } else {
+        return false;
+    }
+    const QString notes = result.value(QStringLiteral("notes")).toString().trimmed();
+    if ((status == vmvalidation::RunStatus::Failed
+         || status == vmvalidation::RunStatus::Cancelled)
+        && notes.isEmpty()) {
+        updateVmStatus(localized(QStringLiteral("Failed and aborted validation runs require reviewer notes."),
+                                 QStringLiteral("失敗同中止嘅驗證執行需要審查備註。")),
+                       QStringLiteral("warning"));
+        return false;
+    }
+    if (status == vmvalidation::RunStatus::Passed) {
+        const QStringList blockers = validationPassBlockers(*run);
+        if (!blockers.isEmpty()) {
+            updateVmStatus(localized(QStringLiteral("Validation cannot pass until every required gate has evidence."),
+                                     QStringLiteral("所有必要關卡有證據之前，驗證唔可以通過。")),
+                           QStringLiteral("warning"), blockers.join(QLatin1Char('\n')));
+            return false;
+        }
+    }
+    vmvalidation::MutationResult mutation;
+    if (!m_vmValidationStore->completeRun(
+            runId, run->revision, status, notes, {}, &mutation, &error)) {
+        updateVmStatus(localized(QStringLiteral("The validation result was not saved."),
+                                 QStringLiteral("驗證結果未能儲存。")),
+                       QStringLiteral("error"), error);
+        return false;
+    }
+    refreshVmValidationRuns();
+    updateVmStatus(localized(QStringLiteral("Validation result finalized and locked."),
+                             QStringLiteral("驗證結果已完成並鎖定。")),
+                   status == vmvalidation::RunStatus::Passed ? QStringLiteral("success")
+                                                             : QStringLiteral("warning"));
+    return true;
+}
+
+bool AppController::cancelVmAction()
+{
+    if (m_vmValidationBusy) {
+        updateVmStatus(localized(QStringLiteral("The initial SHA-256 capture finishes atomically and cannot be cancelled safely."),
+                                 QStringLiteral("初始 SHA-256 擷取會原子完成，無法安全取消。")),
+                       QStringLiteral("warning"));
+        return false;
+    }
+    return m_vmManager && m_vmManager->cancel();
+}
+
+QString AppController::pathFromUrl(const QUrl &url) const
+{
+    if (url.isLocalFile())
+        return QDir::cleanPath(url.toLocalFile());
+    return QDir::cleanPath(url.toString(QUrl::PreferLocalFile));
+}
+
 bool AppController::loadDemoProject(QString *error)
 {
     const QString directory = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
@@ -2978,6 +4410,7 @@ void AppController::loadProjectState()
             : bridgeError;
     }
     refreshPlan(); refreshHistory(); refreshRecoveryState(); updateWatcher();
+    recreateVmLab();
     emit stateChanged();
     emit studioChanged();
 }

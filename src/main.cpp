@@ -1,5 +1,6 @@
 #include "AppController.h"
 #include "cli/CliRunner.h"
+#include "core/EmbeddedTerminalSession.h"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
@@ -56,26 +57,42 @@ bool isCliInvocation(int argc, char *argv[])
         QStringLiteral("package"), QStringLiteral("packages"),
         QStringLiteral("package-manager"), QStringLiteral("gpo"),
         QStringLiteral("bundle"), QStringLiteral("action-history"),
-        QStringLiteral("winforge"),
+        QStringLiteral("winforge"), QStringLiteral("vm"), QStringLiteral("vm-lab"),
     };
-    for (int index = 1; index < argc; ++index)
-        if (QString::fromLocal8Bit(argv[index]) == QStringLiteral("--cli"))
-            return true;
+    bool explicitCliConfiguration = false;
     for (int index = 1; index < argc; ++index) {
         const QString argument = QString::fromLocal8Bit(argv[index]);
-        if (argument == QStringLiteral("--demo") || argument == QStringLiteral("--language")
-            || argument == QStringLiteral("--page"))
+        if (argument == QStringLiteral("--cli"))
+            return true;
+        if (argument == QStringLiteral("--demo"))
             return false;
-    }
-    for (int index = 1; index < argc; ++index) {
-        const QString argument = QString::fromLocal8Bit(argv[index]);
-        if (argument == QStringLiteral("--config")
-            || argument.startsWith(QLatin1Char('@'))
-            || commands.contains(argument.toLower())) {
-            return true;
+        if (argument == QStringLiteral("--page") || argument == QStringLiteral("--language"))
+            return false;
+        if (argument == QStringLiteral("--project")) {
+            if (index + 1 < argc)
+                ++index;
+            continue;
         }
+        if (argument == QStringLiteral("--config")) {
+            explicitCliConfiguration = true;
+            if (index + 1 < argc)
+                ++index;
+            continue;
+        }
+        if (argument.startsWith(QStringLiteral("--config="))) {
+            explicitCliConfiguration = true;
+            continue;
+        }
+        if (argument.startsWith(QLatin1Char('-')))
+            continue;
+        if (argument.startsWith(QLatin1Char('@'))
+            || commands.contains(argument.toLower()))
+            return true;
+        // Only the first positional token is a command. Option values such as
+        // a project folder named "vm" are consumed above and never reclassified.
+        return explicitCliConfiguration;
     }
-    return false;
+    return explicitCliConfiguration;
 }
 
 void writeCliOutput(const QString &standardOutput, const QString &standardError)
@@ -130,10 +147,11 @@ int main(int argc, char *argv[])
     parser.addOption({QStringLiteral("project"), QStringLiteral("Open a project folder."), QStringLiteral("folder")});
     parser.addOption({QStringLiteral("demo"), QStringLiteral("Open a safe populated demo project for screenshots and evaluation.")});
     parser.addOption({QStringLiteral("language"), QStringLiteral("UI language: en, zh-HK, or bilingual."), QStringLiteral("mode")});
-    parser.addOption({QStringLiteral("page"), QStringLiteral("Open a studio page: overview, source, customize, gpo, unattended, packages, winforge, plan, history, or settings."), QStringLiteral("id")});
+    parser.addOption({QStringLiteral("page"), QStringLiteral("Open a studio page: overview, source, customize, gpo, unattended, packages, winforge, vmlab, plan, history, settings, or terminal."), QStringLiteral("id")});
     parser.process(application);
 
     AppController controller;
+    wimforge::EmbeddedTerminalSession terminalSession;
     if (parser.isSet(QStringLiteral("demo"))) {
         QString error;
         if (!controller.loadDemoProject(&error))
@@ -148,11 +166,17 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("app"), &controller);
+    engine.rootContext()->setContextProperty(QStringLiteral("terminalSession"),
+                                             &terminalSession);
     const QStringList pageIds{QStringLiteral("overview"), QStringLiteral("source"),
         QStringLiteral("customize"), QStringLiteral("gpo"), QStringLiteral("unattended"),
-        QStringLiteral("packages"), QStringLiteral("winforge"), QStringLiteral("plan"),
-        QStringLiteral("history"), QStringLiteral("settings")};
-    const int requestedPage = qMax(0, pageIds.indexOf(parser.value(QStringLiteral("page")).toLower()));
+        QStringLiteral("packages"), QStringLiteral("winforge"), QStringLiteral("vmlab"),
+        QStringLiteral("plan"), QStringLiteral("history"), QStringLiteral("settings"),
+        QStringLiteral("terminal")};
+    QString requestedPageId = parser.value(QStringLiteral("page")).toLower();
+    if (requestedPageId == QStringLiteral("vm-lab"))
+        requestedPageId = QStringLiteral("vmlab");
+    const int requestedPage = qMax(0, pageIds.indexOf(requestedPageId));
     engine.rootContext()->setContextProperty(QStringLiteral("startupPage"), requestedPage);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
                      &application, [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);

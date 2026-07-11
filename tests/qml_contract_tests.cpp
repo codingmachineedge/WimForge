@@ -56,6 +56,84 @@ QString lowerFirst(QString value)
     return value;
 }
 
+qsizetype matchingBrace(const QString &text, qsizetype openingBrace)
+{
+    int depth = 0;
+    QChar quote;
+    bool escaped = false;
+    bool lineComment = false;
+    bool blockComment = false;
+    for (qsizetype index = openingBrace; index < text.size(); ++index) {
+        const QChar current = text.at(index);
+        const QChar next = index + 1 < text.size() ? text.at(index + 1) : QChar{};
+        if (lineComment) {
+            if (current == QLatin1Char('\n'))
+                lineComment = false;
+            continue;
+        }
+        if (blockComment) {
+            if (current == QLatin1Char('*') && next == QLatin1Char('/')) {
+                blockComment = false;
+                ++index;
+            }
+            continue;
+        }
+        if (!quote.isNull()) {
+            if (escaped) {
+                escaped = false;
+            } else if (current == QLatin1Char('\\')) {
+                escaped = true;
+            } else if (current == quote) {
+                quote = {};
+            }
+            continue;
+        }
+        if (current == QLatin1Char('/') && next == QLatin1Char('/')) {
+            lineComment = true;
+            ++index;
+        } else if (current == QLatin1Char('/') && next == QLatin1Char('*')) {
+            blockComment = true;
+            ++index;
+        } else if (current == QLatin1Char('"') || current == QLatin1Char('\'')) {
+            quote = current;
+        } else if (current == QLatin1Char('{')) {
+            ++depth;
+        } else if (current == QLatin1Char('}')) {
+            --depth;
+            if (depth == 0)
+                return index;
+        }
+    }
+    return -1;
+}
+
+QSet<QString> appConnectionHandlers(const QString &text,
+                                    const QRegularExpression &handlerExpression)
+{
+    QSet<QString> handlers;
+    const QRegularExpression connectionsExpression(
+        QStringLiteral(R"(\bConnections\s*\{)"));
+    const QRegularExpression appTargetExpression(
+        QStringLiteral(R"(\btarget\s*:\s*(?:root\.)?(?:app|controller)\b)"));
+    qsizetype offset = 0;
+    while (offset < text.size()) {
+        const QRegularExpressionMatch connection = connectionsExpression.match(text, offset);
+        if (!connection.hasMatch())
+            break;
+        const qsizetype openingBrace = text.indexOf(QLatin1Char('{'),
+                                                     connection.capturedStart());
+        const qsizetype closingBrace = matchingBrace(text, openingBrace);
+        if (openingBrace < 0 || closingBrace < 0)
+            break;
+        const QString block = text.mid(openingBrace + 1,
+                                       closingBrace - openingBrace - 1);
+        if (appTargetExpression.match(block).hasMatch())
+            handlers.unite(captures(block, handlerExpression));
+        offset = closingBrace + 1;
+    }
+    return handlers;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -115,7 +193,7 @@ int main(int argc, char *argv[])
                        QStringLiteral("%1 assigns read-only or unknown AppController property app.%2")
                            .arg(QDir(sourceRoot).relativeFilePath(path), name));
         }
-        for (const QString &handler : captures(text, signalHandlerExpression)) {
+        for (const QString &handler : appConnectionHandlers(text, signalHandlerExpression)) {
             const QString signal = lowerFirst(handler);
             test.check(controllerSignals.contains(signal),
                        QStringLiteral("%1 handles unknown AppController signal %2")

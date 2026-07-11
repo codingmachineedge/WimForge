@@ -12,6 +12,7 @@
 #include <QTextStream>
 
 #include <algorithm>
+#include <functional>
 #include <optional>
 
 using namespace wimforge::vmlab;
@@ -74,6 +75,24 @@ public:
     }
 };
 
+class ActionRunner final : public CommandRunner
+{
+public:
+    std::function<void()> action;
+    QList<Command> commands;
+    QList<ProcessResult> responses;
+
+    ProcessResult run(const Command &command) override
+    {
+        commands.append(command);
+        if (action)
+            action();
+        if (responses.isEmpty())
+            return successResult();
+        return responses.takeFirst();
+    }
+};
+
 ProviderInfo availableVirtualBox(const QString &root, FakeRunner *runner = nullptr)
 {
     const QString manage = makeFile(QDir(root).filePath(QStringLiteral("VBoxManage.exe")));
@@ -116,6 +135,12 @@ Machine machineFor(const ProviderInfo &provider, const QString &id, const QStrin
     machine.configPath = configPath;
     machine.powerState = state;
     machine.ownership = ownership;
+    if (ownership == Ownership::Managed) {
+        machine.ownershipToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        makeFile(QDir(QFileInfo(configPath).absolutePath())
+                     .filePath(managedOwnershipMarkerFileName()),
+                 managedOwnershipMarkerContents(machine.ref, machine.ownershipToken));
+    }
     machine.inventoryComplete = true;
     if (provider.id == vmwareWorkstationProviderId()
         || provider.id == vmwarePlayerProviderId()) {
@@ -193,8 +218,122 @@ void testTypesAndCommandSafety(TestRun &test, const QString &root)
                QStringLiteral("provider stderr remains actionable in the primary result"));
 }
 
+void testManagedCreateDirectoryLease(TestRun &test, const QString &root)
+{
+    const QString managedRoot = QDir(root).filePath(QStringLiteral("managed"));
+    QDir().mkpath(managedRoot);
+    const QString provider = makeFile(
+        QDir(root).filePath(QStringLiteral("provider/provider.exe")));
+    const QString target = QDir(managedRoot).filePath(QStringLiteral("Reserved VM"));
+    const CreationGuard guard = PathPolicy::managedCreateGuard(managedRoot, target);
+    test.check(guard.allowed && !guard.rootIdentity.isEmpty(),
+               QStringLiteral("managed create review binds the canonical root identity"));
+
+    const QString token = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const VmRef reference{virtualBoxProviderId(),
+                          QStringLiteral("12121212-1212-1212-1212-121212121212"),
+                          QStringLiteral("Reserved VM")};
+    Plan plan;
+    plan.preview = makePreview(
+        QStringLiteral("create"), reference, Risk::Reversible,
+        {QStringLiteral("reserve managed target")}, {},
+        {Command{provider, {QStringLiteral("create")}, QFileInfo(provider).absolutePath(), 1000}},
+        QStringLiteral("create-revision"),
+        QDateTime::fromString(QStringLiteral("2026-07-10T12:00:00Z"), Qt::ISODate));
+    plan.managedOwnershipToken = token;
+    plan.managedCreateReservation = ManagedCreateReservation{
+        guard.canonicalRoot, guard.targetDirectory, guard.rootIdentity};
+    plan.atomicWritesAfterCommands.append(AtomicWrite{
+        QDir(target).filePath(managedOwnershipMarkerFileName()),
+        managedOwnershipMarkerContents(reference, token), {}});
+
+    bool renameSucceeded = false;
+    bool rootRenameSucceeded = false;
+    ActionRunner runner;
+    runner.action = [&] {
+        rootRenameSucceeded = QDir().rename(
+            managedRoot, managedRoot + QStringLiteral("-attacker-root"));
+        renameSucceeded = QDir().rename(
+            target, QDir(managedRoot).filePath(QStringLiteral("attacker replacement")));
+    };
+    const Result result = Executor::execute(
+        plan, QStringLiteral("create-revision"), {},
+        QDateTime::fromString(QStringLiteral("2026-07-10T12:00:00Z"), Qt::ISODate),
+        runner);
+#ifdef Q_OS_WIN
+    test.check(result.success && !rootRenameSucceeded && !renameSucceeded
+                   && QFileInfo::exists(target)
+                   && QFileInfo::exists(
+                       QDir(target).filePath(managedOwnershipMarkerFileName())),
+               QStringLiteral(
+                   "managed create retains no-delete root/target leases through provider execution"));
+#else
+    test.check((!rootRenameSucceeded && !renameSucceeded)
+                       ? result.success : !result.success,
+               QStringLiteral("managed create detects target substitution during execution"));
+#endif
+
+    const QString appearedTarget = QDir(managedRoot).filePath(QStringLiteral("Appeared VM"));
+    const CreationGuard appearedGuard = PathPolicy::managedCreateGuard(
+        managedRoot, appearedTarget);
+    Plan appeared = plan;
+    appeared.preview = makePreview(
+        QStringLiteral("create"),
+        VmRef{virtualBoxProviderId(),
+              QStringLiteral("34343434-3434-3434-3434-343434343434"),
+              QStringLiteral("Appeared VM")},
+        Risk::Reversible, {QStringLiteral("reserve appeared target")}, {},
+        plan.preview.commands, QStringLiteral("appeared-revision"),
+        QDateTime::fromString(QStringLiteral("2026-07-10T12:00:00Z"), Qt::ISODate));
+    appeared.managedCreateReservation = ManagedCreateReservation{
+        appearedGuard.canonicalRoot, appearedGuard.targetDirectory,
+        appearedGuard.rootIdentity};
+    appeared.atomicWritesAfterCommands.clear();
+    appeared.atomicWritesAfterCommands.append(AtomicWrite{
+        QDir(appearedTarget).filePath(managedOwnershipMarkerFileName()),
+        managedOwnershipMarkerContents(appeared.preview.target, token), {}});
+    QDir().mkdir(appearedTarget);
+    FakeRunner unused;
+    const Result refused = Executor::execute(
+        appeared, QStringLiteral("appeared-revision"), {},
+        QDateTime::fromString(QStringLiteral("2026-07-10T12:00:00Z"), Qt::ISODate),
+        unused);
+    test.check(!refused.success && unused.commands.isEmpty(),
+               QStringLiteral(
+                   "managed create refuses a target that appeared after review"));
+}
+
 void testDetectionAndCapabilityDegrade(TestRun &test, const QString &root)
 {
+    const QByteArray savedProgramFiles = qgetenv("ProgramFiles");
+    const QString poisonedRoot = QDir(root).filePath(QStringLiteral("attacker-program-files"));
+    qputenv("ProgramFiles", poisonedRoot.toUtf8());
+    const QList<ProviderProbePaths> automatic = ProviderDetector::defaultWindowsCandidates();
+    if (savedProgramFiles.isNull())
+        qunsetenv("ProgramFiles");
+    else
+        qputenv("ProgramFiles", savedProgramFiles);
+    test.check(!automatic.isEmpty()
+                   && std::none_of(automatic.cbegin(), automatic.cend(),
+                            [&poisonedRoot](const ProviderProbePaths &candidate) {
+        return candidate.executable.startsWith(poisonedRoot, Qt::CaseInsensitive)
+            || candidate.trustedRoot.isEmpty();
+    }), QStringLiteral("automatic elevated provider probes ignore caller-controlled ProgramFiles environment values"));
+
+    const QString trustedRoot = QDir(root).filePath(QStringLiteral("trusted"));
+    QDir().mkpath(trustedRoot);
+    const QString outsideProbe = makeFile(
+        QDir(root).filePath(QStringLiteral("attacker/Oracle/VirtualBox/VBoxManage.exe")));
+    FakeRunner rejectedRunner;
+    const QList<ProviderInfo> rejected = ProviderDetector::detect(
+        {ProviderProbePaths{virtualBoxProviderId(), outsideProbe, {}, {}, trustedRoot}},
+        rejectedRunner);
+    test.check(rejected.size() == 1 && !rejected.first().available
+                   && rejectedRunner.commands.isEmpty()
+                   && rejected.first().warnings.join(QLatin1Char(' ')).contains(
+                       QStringLiteral("rejected"), Qt::CaseInsensitive),
+               QStringLiteral("automatic provider probe refuses an executable outside its protected root without executing it"));
+
     FakeRunner vboxRunner;
     const ProviderInfo vbox = availableVirtualBox(QDir(root).filePath(QStringLiteral("vbox")),
                                                   &vboxRunner);
@@ -273,15 +412,36 @@ void testProviderParsers(TestRun &test, const QString &root)
 
     const QString cfg = QDir(root).filePath(QStringLiteral("VMs/test.vbox"));
     const QString storage = QDir(root).filePath(QStringLiteral("VMs/test.vdi"));
+    const QString optical = QDir(root).filePath(QStringLiteral("media/install.iso"));
     const QByteArray info = QStringLiteral(
         "name=\"Parser VM\"\r\nUUID=\"33333333-3333-3333-3333-333333333333\"\r\n"
-        "CfgFile=\"%1\"\r\nSATA-0-0=\"%2\"\r\nVMState=\"poweroff\"\r\n"
+        "CfgFile=\"%1\"\r\ncpus=\"4\"\r\nmemory=\"8192\"\r\nfirmware=\"EFI\"\r\n"
+        "SecureBoot=\"enabled\"\r\nTPMType=\"2.0\"\r\n"
+        "storagecontrollername0=\"Fast SATA\"\r\nstoragecontrollertype0=\"IntelAhci\"\r\n"
+        "Fast SATA-0-0=\"%2\"\r\nFast SATA-1-0=\"%3\"\r\n"
+        "nic1=\"bridged\"\r\nbridgeadapter1=\"Ethernet 2\"\r\n"
+        "nictype1=\"82540EM\"\r\nmacaddress1=\"080027ABCDEF\"\r\n"
+        "cableconnected1=\"on\"\r\nVMState=\"poweroff\"\r\n"
         "VMState=\"paused\"\r\naccessible=\"true\"\r\n")
-                                .arg(cfg, storage).toUtf8();
+                                .arg(cfg, storage, optical).toUtf8();
     const std::optional<Machine> parsed = VirtualBoxProvider::parseMachineInfo(info, &error);
-    test.check(parsed && parsed->powerState == PowerState::Paused && parsed->configPath == cfg
-                   && parsed->storagePaths == QStringList{storage},
-               QStringLiteral("machine-readable duplicate keys use last value and expose storage containment evidence"));
+    test.check(parsed && parsed->powerState == PowerState::Paused
+                   && parsed->configPath == cfg && parsed->hardwareInventoryComplete,
+               QStringLiteral("machine-readable base state and topology confidence parse"));
+    test.check(parsed && parsed->cpuCount == 4 && parsed->memoryMiB == 8192
+                   && parsed->firmware == Firmware::Efi
+                   && parsed->secureBoot == true && parsed->tpm == true,
+               QStringLiteral("machine-readable CPU, memory, firmware, and security parse"));
+    test.check(parsed && parsed->storagePaths == QStringList{storage}
+                   && parsed->storageDevices.size() == 2
+                   && parsed->storageDevices.first().controllerName == QStringLiteral("Fast SATA")
+                   && !parsed->storageDevices.first().optical
+                   && parsed->storageDevices.at(1).optical,
+               QStringLiteral("machine-readable custom-controller disk and optical topology parse"));
+    test.check(parsed && parsed->networkDevices.size() == 1
+                   && parsed->networkDevices.first().mode == NetworkMode::Bridged
+                   && parsed->networkDevices.first().interfaceName == QStringLiteral("Ethernet 2"),
+               QStringLiteral("machine-readable network topology parses provider interface"));
 
     const QByteArray inaccessible(
         "name=\"Broken\"\nUUID=\"44444444-4444-4444-4444-444444444444\"\n"
@@ -390,13 +550,90 @@ void testVirtualBoxPlansAndDeletion(TestRun &test, const QString &root)
                           == QStringList{QStringLiteral("unregistervm"), spec.id}
                    && deletion.managedDeletionAfterCommands.has_value(),
                QStringLiteral("managed VirtualBox delete unregisters first, then revalidates guarded local deletion"));
+
+    const QString leasedDirectory = QDir(managedRoot).filePath(QStringLiteral("leased-delete"));
+    Machine leased = machineFor(
+        info, QStringLiteral("56565656-5656-5656-5656-565656565656"),
+        QStringLiteral("Leased Delete"),
+        makeFile(QDir(leasedDirectory).filePath(QStringLiteral("leased.vbox"))),
+        PowerState::PoweredOff, Ownership::Managed);
+    const Plan leasedDeletion = provider.deleteMachine(
+        leased, managedRoot, {leased}, QStringLiteral("lease-revision"), now);
+    FakeRunner missingRefresh;
+    missingRefresh.responses = {successResult("fixture-state"), successResult()};
+    const Result missingRefreshResult = Executor::execute(
+        leasedDeletion, QStringLiteral("lease-revision"),
+        leasedDeletion.preview.confirmation, now, missingRefresh);
+    test.check(!missingRefreshResult.success
+                   && missingRefreshResult.error.contains(
+                       QStringLiteral("second complete provider inventory"))
+                   && QFileInfo::exists(leasedDirectory),
+               QStringLiteral(
+                   "post-unregister local deletion refuses to run without a second inventory"));
+
+    FakeRunner stillRegistered;
+    stillRegistered.responses = {successResult("fixture-state"), successResult()};
+    const auto reportsTarget = [leased](CommandRunner &, QList<Machine> *machines,
+                                        QString *error) {
+        if (machines)
+            *machines = {leased};
+        if (error)
+            error->clear();
+        return true;
+    };
+    const Result stillRegisteredResult = Executor::execute(
+        leasedDeletion, QStringLiteral("lease-revision"),
+        leasedDeletion.preview.confirmation, now, stillRegistered, reportsTarget);
+    test.check(!stillRegisteredResult.success
+                   && stillRegisteredResult.error.contains(QStringLiteral("still reports"))
+                   && QFileInfo::exists(leasedDirectory),
+               QStringLiteral(
+                   "post-unregister inventory must prove the target is absent"));
+
+    bool commandRenameSucceeded = false;
+    bool refreshRenameSucceeded = false;
+    ActionRunner guardedDelete;
+    guardedDelete.responses = {successResult("fixture-state"), successResult()};
+    guardedDelete.action = [&] {
+        if (guardedDelete.commands.size() == 2) {
+            commandRenameSucceeded = QDir().rename(
+                leasedDirectory, leasedDirectory + QStringLiteral("-during-command"));
+        }
+    };
+    const auto absentInventory = [&](CommandRunner &, QList<Machine> *machines,
+                                     QString *error) {
+        refreshRenameSucceeded = QDir().rename(
+            leasedDirectory, leasedDirectory + QStringLiteral("-during-refresh"));
+        if (machines)
+            machines->clear();
+        if (error)
+            error->clear();
+        return true;
+    };
+    const Result guardedDeleteResult = Executor::execute(
+        leasedDeletion, QStringLiteral("lease-revision"),
+        leasedDeletion.preview.confirmation, now, guardedDelete, absentInventory);
+#ifdef Q_OS_WIN
+    test.check(guardedDeleteResult.success && !commandRenameSucceeded
+                   && !refreshRenameSucceeded && !QFileInfo::exists(leasedDirectory),
+               QStringLiteral(
+                   "no-delete target lease survives unregister and post-command inventory through handle-bound removal"));
+#else
+    test.check((!commandRenameSucceeded && !refreshRenameSucceeded)
+                       ? guardedDeleteResult.success
+                       : !guardedDeleteResult.success,
+               QStringLiteral(
+                   "managed deletion detects path substitution during provider execution"));
+#endif
+
     Machine external = managed;
     external.ownership = Ownership::External;
-    test.check(!provider.deleteMachine(external, managedRoot, {external}, QStringLiteral("rev"), now).ok()
+    test.check(!provider.unregisterMachine(managed, QStringLiteral("rev"), now).ok()
+                   && !provider.deleteMachine(external, managedRoot, {external}, QStringLiteral("rev"), now).ok()
                    && provider.unregisterMachine(external, QStringLiteral("rev"), now)
                           .preview.commands.first().arguments
                           == QStringList{QStringLiteral("unregistervm"), spec.id},
-               QStringLiteral("external VirtualBox VM may unregister but never receives --delete"));
+               QStringLiteral("only external VirtualBox VMs may unregister, and never receive --delete"));
     Machine shared = managed;
     shared.ref.id = QStringLiteral("88888888-8888-8888-8888-888888888888");
     shared.ref.name = QStringLiteral("Shared");
@@ -439,7 +676,8 @@ void testVirtualBoxPlansAndDeletion(TestRun &test, const QString &root)
                QStringLiteral("VirtualBox register parses and previews the provider UUID"));
 
     const Snapshot hostileSnapshot{QStringLiteral("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-                                   QStringLiteral("snap & one"), {}, {}, false};
+                                   QStringLiteral("snap & one"), {}, {}, false,
+                                   QStringLiteral("snapshot-revision")};
     test.check(provider.restoreSnapshot(managed, hostileSnapshot, QStringLiteral("rev"), now)
                        .preview.commands.first().arguments.last() == hostileSnapshot.id
                    && provider.takeSnapshot(managed, hostileSnapshot.name, QStringLiteral("desc & x"),
@@ -516,7 +754,11 @@ void testVmxEditing(TestRun &test, const QString &root)
     tpm.tpm = true;
     test.check(document && !applyConfigPatch(*document, tpm, &error)
                    && error.contains(QStringLiteral("TPM")),
-               QStringLiteral("VMX editor refuses unproven encrypted-VM TPM mutation"));
+                QStringLiteral("VMX editor refuses unproven encrypted-VM TPM mutation"));
+    tpm.tpm = false;
+    test.check(document && !applyConfigPatch(*document, tpm, &error)
+                   && error.contains(QStringLiteral("TPM")),
+               QStringLiteral("VMX editor also refuses a false-success TPM removal"));
     const QString vmxPath = QDir(spec.directory).filePath(QStringLiteral("atomic.vmx"));
     test.check(document && document->saveAtomic(vmxPath, &error) && QFileInfo::exists(vmxPath),
                QStringLiteral("VMX saves atomically to an absolute path: %1").arg(error));
@@ -556,8 +798,27 @@ void testVmwarePlansAndExecutor(TestRun &test, const QString &root)
     createRunner.responses.append(successResult());
     const Result created = Executor::execute(create, QStringLiteral("catalog-rev"), {}, now, createRunner);
     test.check(created.success && QFileInfo::exists(vmxPath)
-                   && createRunner.commands.first().arguments.last() == diskPath,
-               QStringLiteral("preview executor revalidates and executes structured VMware create"));
+                   && createRunner.commands.first().arguments.last() == diskPath
+                   && created.verifiedFiles.size() == 1
+                   && created.verifiedFiles.first().path == iso
+                   && created.verifiedFiles.first().expectedSha256.size() == 64,
+                QStringLiteral("preview executor revalidates, hashes reviewed files, and executes structured VMware create"));
+
+    QFile topologyAppend(vmxPath);
+    topologyAppend.open(QIODevice::WriteOnly | QIODevice::Append);
+    topologyAppend.write("managedVM.autoAddVTPM = \"FALSE\"\n");
+    topologyAppend.close();
+    const Machine inspected = provider.inspectMachine(
+        vmxPath, {}, Ownership::External, nullptr);
+    test.check(inspected.inventoryComplete && inspected.hardwareInventoryComplete
+                   && inspected.cpuCount == spec.cpuCount
+                   && inspected.memoryMiB == spec.memoryMiB
+                   && inspected.firmware == Firmware::Efi
+                   && inspected.tpm == false
+                   && inspected.storageDevices.size() >= 2
+                   && inspected.networkDevices.size() == 1
+                   && inspected.networkDevices.first().mode == NetworkMode::Nat,
+               QStringLiteral("VMX inventory exposes typed topology and does not treat FALSE vTPM metadata as enabled"));
 
     Machine machine = machineFor(info, vmxPath, spec.name, vmxPath,
                                  PowerState::PoweredOff, Ownership::Managed);
@@ -572,9 +833,14 @@ void testVmwarePlansAndExecutor(TestRun &test, const QString &root)
     mutate.close();
     FakeRunner staleRunner;
     const Result stale = Executor::execute(attached, QStringLiteral("rev-2"), {}, now, staleRunner);
-    test.check(!stale.success && stale.error.contains(QStringLiteral("changed after preview"))
+    test.check(!stale.success
+                   && (stale.error.contains(QStringLiteral("changed after preview"))
+                       || stale.error.contains(QStringLiteral("content changed"))
+                       || stale.error.contains(QStringLiteral("file changed or disappeared"),
+                                               Qt::CaseInsensitive))
                    && staleRunner.commands.isEmpty(),
-               QStringLiteral("VMX file revision is revalidated before execution"));
+               QStringLiteral("VMX file revision is revalidated before execution: %1")
+                   .arg(stale.error));
 
     const Plan start = provider.start(machine, true, QStringLiteral("rev-3"), now);
     test.check(start.preview.commands.first().arguments
@@ -582,8 +848,9 @@ void testVmwarePlansAndExecutor(TestRun &test, const QString &root)
                                   QStringLiteral("start"), vmxPath, QStringLiteral("nogui")},
                QStringLiteral("VMware lifecycle targets the absolute VMX with exact vmrun vector"));
     const Plan open = provider.openConsole(machine, QStringLiteral("rev"), now);
-    test.check(open.ok() && open.preview.commands.first().arguments == QStringList{vmxPath},
-               QStringLiteral("provider console receives VMX as one argument"));
+    test.check(open.ok() && open.preview.commands.first().arguments == QStringList{vmxPath}
+                   && open.preview.commands.first().detached,
+                QStringLiteral("provider console receives VMX as one detached argument"));
 
     const Plan deletion = provider.deleteMachine(machine, managedRoot, {machine},
                                                   QStringLiteral("delete-rev"), now);
@@ -616,8 +883,27 @@ void testVmwarePlansAndExecutor(TestRun &test, const QString &root)
                    && QFileInfo::exists(vmDirectory),
                QStringLiteral("VM started after preview is never deleted from stale state"));
     deleteRunner.responses.append(successResult("Total running VMs: 0\n"));
+    const Result noPostInventory = Executor::execute(
+        deletion, QStringLiteral("delete-rev"), deletion.preview.confirmation,
+        now, deleteRunner);
+    test.check(!noPostInventory.success
+                   && noPostInventory.error.contains(
+                       QStringLiteral("second complete provider inventory"))
+                   && QFileInfo::exists(vmDirectory),
+               QStringLiteral(
+                   "managed deletion always requires a post-command full inventory"));
+    deleteRunner.responses.append(successResult("Total running VMs: 0\n"));
+    const auto stableInventory = [machine](CommandRunner &, QList<Machine> *machines,
+                                           QString *error) {
+        if (machines)
+            *machines = {machine};
+        if (error)
+            error->clear();
+        return true;
+    };
     const Result deleted = Executor::execute(deletion, QStringLiteral("delete-rev"),
-                                             deletion.preview.confirmation, now, deleteRunner);
+                                             deletion.preview.confirmation, now,
+                                             deleteRunner, stableInventory);
     test.check(deleted.success && deleted.processes.size() == 1
                    && !QFileInfo::exists(vmDirectory),
                QStringLiteral("fresh provider evidence permits confirmed managed VMware deletion"));
@@ -644,12 +930,16 @@ void testVmwarePlansAndExecutor(TestRun &test, const QString &root)
     const QString replacement = makeFile(
         QDir(swappedDirectory).filePath(QStringLiteral("replacement.txt")),
         QByteArray("must survive"));
+    makeFile(QDir(swappedDirectory).filePath(managedOwnershipMarkerFileName()),
+             managedOwnershipMarkerContents(swapped.ref, swapped.ownershipToken));
     const Result swappedResult = Executor::execute(
         swappedDeletion, QStringLiteral("swap-rev"),
         swappedDeletion.preview.confirmation, now, deleteRunner);
     test.check(!swappedResult.success
-                   && swappedResult.error.contains(QStringLiteral("identity changed"),
-                                                   Qt::CaseInsensitive)
+                   && (swappedResult.error.contains(QStringLiteral("identity changed"),
+                                                     Qt::CaseInsensitive)
+                       || swappedResult.error.contains(QStringLiteral("changed or disappeared"),
+                                                       Qt::CaseInsensitive))
                    && QFileInfo::exists(replacement),
                QStringLiteral("same-path directory replacement after preview is never deleted"));
 }
@@ -739,6 +1029,8 @@ int main(int argc, char **argv)
         return test.result();
 
     testTypesAndCommandSafety(test, QDir(temporary.path()).filePath(QStringLiteral("types")));
+    testManagedCreateDirectoryLease(
+        test, QDir(temporary.path()).filePath(QStringLiteral("create-lease")));
     testDetectionAndCapabilityDegrade(test, QDir(temporary.path()).filePath(QStringLiteral("detect")));
     testProviderParsers(test, QDir(temporary.path()).filePath(QStringLiteral("parse")));
     testVirtualBoxPlansAndDeletion(test, QDir(temporary.path()).filePath(QStringLiteral("vbox")));

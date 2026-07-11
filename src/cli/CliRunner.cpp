@@ -5,10 +5,14 @@
 #include "core/ActionHistory.h"
 #include "core/NotificationStore.h"
 #include "core/PackageStudio.h"
+#include "core/ProcessLaunch.h"
 #include "core/ProjectBundle.h"
 #include "core/ProjectConfig.h"
 #include "core/ServicingPlan.h"
 #include "core/UnattendBuilder.h"
+#include "core/VmLabCliService.h"
+#include "core/VmLabScope.h"
+#include "core/VmValidationStore.h"
 #include "core/WinForgeBridge.h"
 
 #include <QDir>
@@ -16,6 +20,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QCryptographicHash>
+#include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -25,8 +30,10 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSet>
+#include <QStandardPaths>
 
 #include <algorithm>
+#include <limits>
 #include <optional>
 #include <utility>
 
@@ -135,6 +142,7 @@ CliProcessResult runProcessDefault(const QString &executable,
                                    const QString &workingDirectory)
 {
     QProcess process;
+    configureProcessWithoutConsole(process);
     if (!workingDirectory.trimmed().isEmpty())
         process.setWorkingDirectory(workingDirectory);
     process.start(executable, arguments, QIODevice::ReadOnly);
@@ -2973,6 +2981,1157 @@ CliResult runWinForgeCommand(const CommandContext &context, QStringList argument
                          QStringLiteral("Unknown winforge action: %1").arg(action));
 }
 
+QString vmHelpText()
+{
+    return QStringLiteral(R"HELP(VM Lab (VMware Workstation/Player and VirtualBox)
+
+All mutating commands produce a review preview by default. To perform the
+freshly reviewed operation in the same invocation, add both --execute and
+--yes. Destructive operations also require --confirm "EXACT TOKEN" from the
+preview. Provider commands are launched directly; no shell is used.
+
+State and discovery:
+  vm paths [--catalog FILE] [--managed-root FOLDER]
+  vm catalog [--catalog FILE] [--managed-root FOLDER]
+  vm detect
+  vm inventory
+
+Validation runs (requires --project FOLDER):
+  vm validation start --iso FILE --image FILE --provider ID --vm ID
+            --vm-name NAME --vm-config FILE [--provider-version TEXT]
+            [--iso-sha256 HEX] [--image-sha256 HEX]
+            [--config-json JSON_OBJECT] [--started-at ISO_8601]
+            [--store-revision REV]
+  vm validation update RUN_ID --revision N
+            [--milestone-phase boot|install --milestone-name NAME
+             --milestone-status reached|failed|skipped
+             --milestone-note TEXT --milestone-data JSON_OBJECT]
+            [--log-message TEXT --log-channel NAME]
+            [--evidence-path FILE --evidence-label TEXT
+             --evidence-kind screenshot|log|report|other
+             --external --external-metadata JSON_OBJECT]
+            [--store-revision REV]
+  vm validation finish RUN_ID --revision N --status passed|failed|cancelled
+            [--note TEXT] [--ended-at ISO_8601] [--store-revision REV]
+  vm validation show RUN_ID
+  vm validation list|history [--provider ID] [--vm ID]
+            [--status running|passed|failed|cancelled] [--text QUERY]
+            [--limit N] [--oldest-first]
+
+Create or import:
+  vm create --provider ID --name NAME --iso FILE [--directory FOLDER]
+            [--guest-type ID] [--firmware bios|efi]
+            [--cpu N] [--memory-mib N] [--disk-mib N]
+            [--network-mode MODE] [--bridge NAME]
+            [--secure-boot|--no-secure-boot] [--tpm|--no-tpm]
+            [--hardware-version N] [--unattended-boot]
+  vm import --provider ID --config FILE [--name NAME]
+
+Lifecycle and configuration:
+  vm lifecycle open-console|start|shutdown|power-off|pause|resume|reset|save-state
+               --provider ID --vm ID [--headless]
+  vm configure --provider ID --vm ID
+               [--cpu N] [--memory-mib N] [--firmware bios|efi]
+               [--secure-boot|--no-secure-boot] [--tpm|--no-tpm]
+               [--network-mode MODE] [--bridge NAME] [--iso FILE]
+
+Devices (storage topology and network slots are explicit):
+  vm device attach-iso --provider ID --vm ID --iso FILE
+            --bus ide|sata|scsi|nvme --controller N --port N --device N
+            [--controller-name NAME]
+  vm device detach-iso --provider ID --vm ID
+            --bus ide|sata|scsi|nvme --controller N --port N --device N
+            [--controller-name NAME]
+  vm device attach-storage|detach-storage --provider ID --vm ID
+            --bus ide|sata|scsi|nvme --controller N --port N --device N
+            [--controller-name NAME] --optical|--disk [--path FILE]
+  vm device attach-network --provider ID --vm ID --slot N
+            --network-mode MODE [--interface NAME] --connected|--disconnected
+  vm device detach-network --provider ID --vm ID --slot N
+
+Snapshots and removal:
+  vm snapshot list --provider ID --vm ID
+  vm snapshot take --provider ID --vm ID --name NAME [--description TEXT]
+  vm snapshot restore|delete --provider ID --vm ID
+              [--snapshot-id ID] [--snapshot-name NAME]
+  vm forget|unregister --provider ID --vm ID
+  vm delete --provider ID --vm ID
+
+Provider IDs: virtualbox, vmware-workstation, vmware-player. MODE is nat,
+bridged, host-only, internal, or disconnected. Imports are always external;
+only VMs created inside the managed root can become WimForge-managed.
+
+Without explicit paths, multi-gigabyte VM state is stored in WimForge's local
+application-data directory. A selected project uses an isolated path-derived
+scope; the global scope is used when no project is selected.)HELP");
+}
+
+bool containsOption(const QStringList &arguments, const QString &name)
+{
+    const QString prefix = name + QLatin1Char('=');
+    return std::any_of(arguments.cbegin(), arguments.cend(),
+                       [&name, &prefix](const QString &argument) {
+        return argument == name || argument.startsWith(prefix);
+    });
+}
+
+bool takeVmString(QStringList *arguments,
+                  const QString &option,
+                  const QString &parameter,
+                  QJsonObject *parameters,
+                  QString *error,
+                  bool required = false)
+{
+    const bool present = containsOption(*arguments, option);
+    QString value;
+    if (!takeOption(arguments, option, &value, error, required))
+        return false;
+    if (required && value.trimmed().isEmpty()) {
+        setError(error, QStringLiteral("%1 cannot be empty.").arg(option));
+        return false;
+    }
+    if (present)
+        parameters->insert(parameter, value);
+    return true;
+}
+
+bool takeVmInteger(QStringList *arguments,
+                   const QString &option,
+                   const QString &parameter,
+                   int minimum,
+                   int maximum,
+                   QJsonObject *parameters,
+                   QString *error,
+                   bool required = false)
+{
+    const bool present = containsOption(*arguments, option);
+    QString value;
+    if (!takeOption(arguments, option, &value, error, required))
+        return false;
+    if (!present)
+        return true;
+    bool ok = false;
+    const qlonglong parsed = value.toLongLong(&ok);
+    if (!ok || parsed < minimum || parsed > maximum) {
+        setError(error, QStringLiteral("%1 must be an integer from %2 through %3.")
+                            .arg(option).arg(minimum).arg(maximum));
+        return false;
+    }
+    parameters->insert(parameter, static_cast<int>(parsed));
+    return true;
+}
+
+bool takeVmBoolean(QStringList *arguments,
+                   const QString &positive,
+                   const QString &negative,
+                   const QString &parameter,
+                   QJsonObject *parameters,
+                   QString *error,
+                   bool required = false)
+{
+    const bool enabled = takeFlag(arguments, positive);
+    const bool disabled = !negative.isEmpty() && takeFlag(arguments, negative);
+    if (enabled && disabled) {
+        setError(error, QStringLiteral("%1 and %2 cannot be combined.")
+                            .arg(positive, negative));
+        return false;
+    }
+    if (required && !enabled && !disabled) {
+        setError(error, QStringLiteral("Supply either %1 or %2.")
+                            .arg(positive, negative));
+        return false;
+    }
+    if (enabled || disabled)
+        parameters->insert(parameter, enabled);
+    return true;
+}
+
+QString normalizedVmProvider(QString provider)
+{
+    provider = provider.trimmed().toLower();
+    if (provider == QStringLiteral("vbox"))
+        return vmlab::virtualBoxProviderId();
+    if (provider == QStringLiteral("vmware")
+        || provider == QStringLiteral("workstation")) {
+        return vmlab::vmwareWorkstationProviderId();
+    }
+    if (provider == QStringLiteral("player"))
+        return vmlab::vmwarePlayerProviderId();
+    return provider;
+}
+
+QString resolveVmAction(QStringList *arguments, QString *error)
+{
+    if (arguments->isEmpty()) {
+        setError(error, QStringLiteral("A VM Lab action is required. Run 'WimForge vm help'."));
+        return {};
+    }
+
+    QString action = arguments->takeFirst().trimmed().toLower();
+    if (action == QStringLiteral("providers"))
+        action = QStringLiteral("detect");
+    if (action == QStringLiteral("import"))
+        action = QStringLiteral("register");
+
+    if (action == QStringLiteral("lifecycle")) {
+        if (arguments->isEmpty()) {
+            setError(error, QStringLiteral("vm lifecycle requires an action."));
+            return {};
+        }
+        action = arguments->takeFirst().trimmed().toLower();
+        if (action == QStringLiteral("shutdown"))
+            action = QStringLiteral("graceful-shutdown");
+        const QSet<QString> allowed{
+            QStringLiteral("open-console"), QStringLiteral("start"),
+            QStringLiteral("graceful-shutdown"), QStringLiteral("power-off"),
+            QStringLiteral("pause"), QStringLiteral("resume"),
+            QStringLiteral("reset"), QStringLiteral("save-state"),
+        };
+        if (!allowed.contains(action)) {
+            setError(error, QStringLiteral("Unknown VM lifecycle action '%1'.").arg(action));
+            return {};
+        }
+    } else if (action == QStringLiteral("device") || action == QStringLiteral("devices")) {
+        if (arguments->isEmpty()) {
+            setError(error, QStringLiteral("vm device requires an action."));
+            return {};
+        }
+        action = arguments->takeFirst().trimmed().toLower();
+        const QSet<QString> allowed{
+            QStringLiteral("attach-iso"), QStringLiteral("detach-iso"),
+            QStringLiteral("attach-storage"), QStringLiteral("detach-storage"),
+            QStringLiteral("attach-network"), QStringLiteral("detach-network"),
+        };
+        if (!allowed.contains(action)) {
+            setError(error, QStringLiteral("Unknown VM device action '%1'.").arg(action));
+            return {};
+        }
+    } else if (action == QStringLiteral("snapshot") || action == QStringLiteral("snapshots")) {
+        if (arguments->isEmpty()) {
+            setError(error, QStringLiteral("vm snapshot requires list, take, restore, or delete."));
+            return {};
+        }
+        const QString verb = arguments->takeFirst().trimmed().toLower();
+        if (verb == QStringLiteral("list")) action = QStringLiteral("list-snapshots");
+        else if (verb == QStringLiteral("take")) action = QStringLiteral("take-snapshot");
+        else if (verb == QStringLiteral("restore")) action = QStringLiteral("restore-snapshot");
+        else if (verb == QStringLiteral("delete")) action = QStringLiteral("delete-snapshot");
+        else {
+            setError(error, QStringLiteral("Unknown VM snapshot action '%1'.").arg(verb));
+            return {};
+        }
+    }
+
+    // ISO actions are exact optical-storage aliases. They deliberately share
+    // the same controller/port/device contract as the desktop manager so an
+    // imported VM can never fall back to a guessed provider-default slot.
+    if (action == QStringLiteral("attach-iso")
+        || action == QStringLiteral("detach-iso")) {
+        const bool attach = action == QStringLiteral("attach-iso");
+        for (QString &argument : *arguments) {
+            if (argument == QStringLiteral("--iso"))
+                argument = QStringLiteral("--path");
+        }
+        arguments->append(QStringLiteral("--optical"));
+        action = attach ? QStringLiteral("attach-storage")
+                        : QStringLiteral("detach-storage");
+    }
+
+    if (!vmlab::VmLabCliService::supportedActions().contains(action)) {
+        setError(error, QStringLiteral("Unknown VM Lab action '%1'.").arg(action));
+        return {};
+    }
+    setError(error, {});
+    return action;
+}
+
+void makeVmPathAbsolute(QJsonObject *parameters, const QString &key)
+{
+    if (!parameters->contains(key))
+        return;
+    const QString path = parameters->value(key).toString();
+    if (!path.isEmpty())
+        parameters->insert(key, QFileInfo(path).absoluteFilePath());
+}
+
+bool parseVmParameters(const QString &action,
+                       QStringList *arguments,
+                       QJsonObject *parameters,
+                       QString *error)
+{
+    const QSet<QString> inspectionActions{
+        QStringLiteral("paths"), QStringLiteral("catalog"),
+        QStringLiteral("detect"), QStringLiteral("inventory"),
+    };
+    if (inspectionActions.contains(action))
+        return true;
+
+    QString provider;
+    if (!takeVmString(arguments, QStringLiteral("--provider"),
+                      QStringLiteral("providerId"), parameters, error, true)) {
+        return false;
+    }
+    provider = normalizedVmProvider(parameters->value(QStringLiteral("providerId")).toString());
+    parameters->insert(QStringLiteral("providerId"), provider);
+
+    if (action == QStringLiteral("create")) {
+        if (!takeVmString(arguments, QStringLiteral("--name"), QStringLiteral("name"),
+                          parameters, error, true)
+            || !takeVmString(arguments, QStringLiteral("--id"), QStringLiteral("id"),
+                             parameters, error)
+            || !takeVmString(arguments, QStringLiteral("--directory"),
+                             QStringLiteral("directory"), parameters, error)
+            || !takeVmString(arguments, QStringLiteral("--guest-type"),
+                             QStringLiteral("guestType"), parameters, error)
+            || !takeVmString(arguments, QStringLiteral("--firmware"),
+                             QStringLiteral("firmware"), parameters, error)
+            || !takeVmInteger(arguments, QStringLiteral("--hardware-version"),
+                              QStringLiteral("virtualHardwareVersion"), 0, 100,
+                              parameters, error)
+            || !takeVmInteger(arguments, QStringLiteral("--cpu"),
+                              QStringLiteral("cpuCount"), 1, 256, parameters, error)
+            || !takeVmInteger(arguments, QStringLiteral("--memory-mib"),
+                              QStringLiteral("memoryMiB"), 128, 1'048'576,
+                              parameters, error)
+            || !takeVmInteger(arguments, QStringLiteral("--disk-mib"),
+                              QStringLiteral("diskMiB"), 1, 2'097'152,
+                              parameters, error)
+            || !takeVmString(arguments, QStringLiteral("--network-mode"),
+                             QStringLiteral("networkMode"), parameters, error)
+            || !takeVmString(arguments, QStringLiteral("--bridge"),
+                             QStringLiteral("bridgedInterface"), parameters, error)
+            || !takeVmString(arguments, QStringLiteral("--iso"),
+                             QStringLiteral("isoPath"), parameters, error, true)
+            || !takeVmBoolean(arguments, QStringLiteral("--secure-boot"),
+                              QStringLiteral("--no-secure-boot"),
+                              QStringLiteral("secureBoot"), parameters, error)
+            || !takeVmBoolean(arguments, QStringLiteral("--tpm"),
+                              QStringLiteral("--no-tpm"), QStringLiteral("tpm"),
+                              parameters, error)
+            || !takeVmBoolean(arguments, QStringLiteral("--unattended-boot"),
+                              QStringLiteral("--no-unattended-boot"),
+                              QStringLiteral("unattendedBoot"), parameters, error)) {
+            return false;
+        }
+        makeVmPathAbsolute(parameters, QStringLiteral("directory"));
+        makeVmPathAbsolute(parameters, QStringLiteral("isoPath"));
+        return true;
+    }
+
+    if (action == QStringLiteral("register")) {
+        if (!takeVmString(arguments, QStringLiteral("--config"),
+                          QStringLiteral("configPath"), parameters, error, true)
+            || !takeVmString(arguments, QStringLiteral("--name"),
+                             QStringLiteral("name"), parameters, error)) {
+            return false;
+        }
+        // Importing is deliberately cataloged as external. Managed ownership
+        // can only be established by WimForge's guarded create workflow.
+        parameters->insert(QStringLiteral("ownership"), QStringLiteral("external"));
+        makeVmPathAbsolute(parameters, QStringLiteral("configPath"));
+        return true;
+    }
+
+    if (!takeVmString(arguments, QStringLiteral("--vm"), QStringLiteral("vmId"),
+                      parameters, error, true)) {
+        return false;
+    }
+
+    if (action == QStringLiteral("start")) {
+        return takeVmBoolean(arguments, QStringLiteral("--headless"),
+                             QStringLiteral("--gui"), QStringLiteral("headless"),
+                             parameters, error);
+    }
+    if (action == QStringLiteral("configure")) {
+        if (!takeVmInteger(arguments, QStringLiteral("--cpu"),
+                           QStringLiteral("cpuCount"), 1, 256, parameters, error)
+            || !takeVmInteger(arguments, QStringLiteral("--memory-mib"),
+                              QStringLiteral("memoryMiB"), 128, 1'048'576,
+                              parameters, error)
+            || !takeVmString(arguments, QStringLiteral("--firmware"),
+                             QStringLiteral("firmware"), parameters, error)
+            || !takeVmBoolean(arguments, QStringLiteral("--secure-boot"),
+                              QStringLiteral("--no-secure-boot"),
+                              QStringLiteral("secureBoot"), parameters, error)
+            || !takeVmBoolean(arguments, QStringLiteral("--tpm"),
+                              QStringLiteral("--no-tpm"), QStringLiteral("tpm"),
+                              parameters, error)
+            || !takeVmString(arguments, QStringLiteral("--network-mode"),
+                             QStringLiteral("networkMode"), parameters, error)
+            || !takeVmString(arguments, QStringLiteral("--bridge"),
+                             QStringLiteral("bridgedInterface"), parameters, error)
+            || !takeVmString(arguments, QStringLiteral("--iso"),
+                             QStringLiteral("isoPath"), parameters, error)) {
+            return false;
+        }
+        makeVmPathAbsolute(parameters, QStringLiteral("isoPath"));
+        return true;
+    }
+    if (action == QStringLiteral("attach-iso")) {
+        if (!takeVmString(arguments, QStringLiteral("--iso"),
+                          QStringLiteral("isoPath"), parameters, error, true)) {
+            return false;
+        }
+        makeVmPathAbsolute(parameters, QStringLiteral("isoPath"));
+        return true;
+    }
+    if (action == QStringLiteral("attach-storage")
+        || action == QStringLiteral("detach-storage")) {
+        const bool attaching = action == QStringLiteral("attach-storage");
+        if (!takeVmString(arguments, QStringLiteral("--bus"), QStringLiteral("bus"),
+                          parameters, error, true)
+            || !takeVmInteger(arguments, QStringLiteral("--controller"),
+                              QStringLiteral("controller"), 0, 3, parameters, error, true)
+            || !takeVmInteger(arguments, QStringLiteral("--port"),
+                              QStringLiteral("port"), 0, 29, parameters, error, true)
+            || !takeVmInteger(arguments, QStringLiteral("--device"),
+                              QStringLiteral("device"), 0, 1, parameters, error, true)
+            || !takeVmString(arguments, QStringLiteral("--controller-name"),
+                             QStringLiteral("controllerName"), parameters, error)
+            || !takeVmBoolean(arguments, QStringLiteral("--optical"),
+                              QStringLiteral("--disk"), QStringLiteral("optical"),
+                              parameters, error, true)
+            || (attaching
+                && !takeVmString(arguments, QStringLiteral("--path"),
+                                 QStringLiteral("path"), parameters, error, true))) {
+            return false;
+        }
+        makeVmPathAbsolute(parameters, QStringLiteral("path"));
+        return true;
+    }
+    if (action == QStringLiteral("attach-network")) {
+        if (!takeVmInteger(arguments, QStringLiteral("--slot"),
+                           QStringLiteral("slot"), 1, 10, parameters, error, true)
+            || !takeVmString(arguments, QStringLiteral("--network-mode"),
+                             QStringLiteral("networkMode"), parameters, error, true)
+            || !takeVmString(arguments, QStringLiteral("--interface"),
+                             QStringLiteral("interfaceName"), parameters, error)
+            || !takeVmBoolean(arguments, QStringLiteral("--connected"),
+                              QStringLiteral("--disconnected"), QStringLiteral("connected"),
+                              parameters, error, true)) {
+            return false;
+        }
+        return true;
+    }
+    if (action == QStringLiteral("detach-network")) {
+        return takeVmInteger(arguments, QStringLiteral("--slot"),
+                             QStringLiteral("slot"), 1, 10, parameters, error, true);
+    }
+    if (action == QStringLiteral("take-snapshot")) {
+        return takeVmString(arguments, QStringLiteral("--name"), QStringLiteral("name"),
+                            parameters, error, true)
+            && takeVmString(arguments, QStringLiteral("--description"),
+                            QStringLiteral("description"), parameters, error);
+    }
+    if (action == QStringLiteral("restore-snapshot")
+        || action == QStringLiteral("delete-snapshot")) {
+        if (!takeVmString(arguments, QStringLiteral("--snapshot-id"),
+                          QStringLiteral("snapshotId"), parameters, error)
+            || !takeVmString(arguments, QStringLiteral("--snapshot-name"),
+                             QStringLiteral("snapshotName"), parameters, error)) {
+            return false;
+        }
+        if (!parameters->contains(QStringLiteral("snapshotId"))
+            && !parameters->contains(QStringLiteral("snapshotName"))) {
+            setError(error, QStringLiteral(
+                "Supply --snapshot-id or --snapshot-name from a fresh 'vm snapshot list'."));
+            return false;
+        }
+    }
+    return true;
+}
+
+CliExitCode vmExitCode(int code)
+{
+    switch (code) {
+    case vmlab::VmLabCliResult::Ok: return CliExitCode::Success;
+    case vmlab::VmLabCliResult::InvalidRequest: return CliExitCode::Validation;
+    case vmlab::VmLabCliResult::ConfirmationRequired:
+        return CliExitCode::ConfirmationRequired;
+    case vmlab::VmLabCliResult::ProviderFailure:
+        return CliExitCode::ExternalProcessFailed;
+    case vmlab::VmLabCliResult::CatalogFailure: return CliExitCode::IoError;
+    default: return CliExitCode::InternalError;
+    }
+}
+
+QString vmScopeRoot(const CommandContext &context, QString *error)
+{
+    return vmlab::resolveVmLabScope(context.projectDirectory, error).root;
+}
+
+QString vmValidationHelpText()
+{
+    return QStringLiteral(R"HELP(VM validation run tracking
+
+Every command requires --project FOLDER so validation evidence stays attached
+to the same project identity used by VM Lab. Commands never prompt.
+
+  vm validation start --iso FILE --image FILE --provider ID --vm ID
+            --vm-name NAME --vm-config FILE [--provider-version TEXT]
+            [--iso-sha256 HEX] [--image-sha256 HEX]
+            [--config-json JSON_OBJECT] [--started-at ISO_8601]
+            [--store-revision REV]
+  vm validation update RUN_ID --revision N
+            [--milestone-phase boot|install --milestone-name NAME
+             --milestone-status reached|failed|skipped
+             --milestone-note TEXT --milestone-data JSON_OBJECT
+             --milestone-at ISO_8601]
+            [--log-message TEXT --log-channel NAME --log-at ISO_8601]
+            [--evidence-path FILE --evidence-label TEXT
+             --evidence-kind screenshot|log|report|other
+             --evidence-at ISO_8601
+             --external --external-metadata JSON_OBJECT]
+            [--store-revision REV]
+  vm validation finish RUN_ID --revision N --status passed|failed|cancelled
+            [--note TEXT] [--ended-at ISO_8601] [--store-revision REV]
+  vm validation show RUN_ID
+  vm validation list|history [--provider ID] [--vm ID]
+            [--status running|passed|failed|cancelled] [--text QUERY]
+            [--started-after ISO_8601] [--started-before ISO_8601]
+            [--limit N] [--oldest-first]
+
+Run revisions are mandatory for update and finish. --store-revision adds a
+second compare-and-swap guard. To pass, --config-json must select one of the
+installation, first-boot, upgrade, customization, or full-smoke profiles; every
+exact milestone required by that profile must be reached, no milestone may
+have failed, and hashed evidence is required.)HELP");
+}
+
+std::optional<QDateTime> parseVmValidationTimestamp(const QString &text,
+                                                     const QString &option,
+                                                     QString *error)
+{
+    if (text.trimmed().isEmpty())
+        return QDateTime{};
+    QDateTime value = QDateTime::fromString(text, Qt::ISODateWithMs);
+    if (!value.isValid())
+        value = QDateTime::fromString(text, Qt::ISODate);
+    if (!value.isValid()) {
+        setError(error, QStringLiteral("%1 must be an ISO-8601 timestamp.").arg(option));
+        return std::nullopt;
+    }
+    return value.toUTC();
+}
+
+std::optional<QJsonObject> parseVmValidationObject(const QString &text,
+                                                   const QString &option,
+                                                   QString *error)
+{
+    if (text.trimmed().isEmpty())
+        return QJsonObject{};
+    const QJsonValue value = parseCliValue(text);
+    if (!value.isObject()) {
+        setError(error, QStringLiteral("%1 must be a JSON object.").arg(option));
+        return std::nullopt;
+    }
+    return value.toObject();
+}
+
+std::optional<vmvalidation::RunStatus> vmValidationRunStatus(const QString &text,
+                                                             bool completionOnly)
+{
+    const QString value = text.trimmed().toLower();
+    if (!completionOnly && value == QStringLiteral("running"))
+        return vmvalidation::RunStatus::Running;
+    if (value == QStringLiteral("passed"))
+        return vmvalidation::RunStatus::Passed;
+    if (value == QStringLiteral("failed"))
+        return vmvalidation::RunStatus::Failed;
+    if (value == QStringLiteral("cancelled") || value == QStringLiteral("canceled"))
+        return vmvalidation::RunStatus::Cancelled;
+    return std::nullopt;
+}
+
+std::optional<vmvalidation::MilestonePhase> vmValidationMilestonePhase(const QString &text)
+{
+    const QString value = text.trimmed().toLower();
+    if (value == QStringLiteral("boot"))
+        return vmvalidation::MilestonePhase::Boot;
+    if (value == QStringLiteral("install") || value == QStringLiteral("installation"))
+        return vmvalidation::MilestonePhase::Install;
+    return std::nullopt;
+}
+
+std::optional<vmvalidation::MilestoneStatus> vmValidationMilestoneStatus(const QString &text)
+{
+    const QString value = text.trimmed().toLower();
+    if (value == QStringLiteral("reached"))
+        return vmvalidation::MilestoneStatus::Reached;
+    if (value == QStringLiteral("failed"))
+        return vmvalidation::MilestoneStatus::Failed;
+    if (value == QStringLiteral("skipped"))
+        return vmvalidation::MilestoneStatus::Skipped;
+    return std::nullopt;
+}
+
+std::optional<vmvalidation::EvidenceKind> vmValidationEvidenceKind(const QString &text)
+{
+    const QString value = text.trimmed().toLower();
+    if (value == QStringLiteral("screenshot"))
+        return vmvalidation::EvidenceKind::Screenshot;
+    if (value == QStringLiteral("log"))
+        return vmvalidation::EvidenceKind::Log;
+    if (value == QStringLiteral("report"))
+        return vmvalidation::EvidenceKind::Report;
+    if (value == QStringLiteral("other"))
+        return vmvalidation::EvidenceKind::Other;
+    return std::nullopt;
+}
+
+CliExitCode vmValidationExitCode(const QString &error)
+{
+    if (error.contains(QStringLiteral("not found"), Qt::CaseInsensitive))
+        return CliExitCode::NotFound;
+    if (error.contains(QStringLiteral("changed"), Qt::CaseInsensitive)
+        || error.contains(QStringLiteral("busy"), Qt::CaseInsensitive)
+        || error.contains(QStringLiteral("revision"), Qt::CaseInsensitive)) {
+        return CliExitCode::Conflict;
+    }
+    if (error.contains(QStringLiteral("could not create"), Qt::CaseInsensitive)
+        || error.contains(QStringLiteral("could not open"), Qt::CaseInsensitive)
+        || error.contains(QStringLiteral("could not write"), Qt::CaseInsensitive)) {
+        return CliExitCode::IoError;
+    }
+    return CliExitCode::Validation;
+}
+
+QJsonObject vmValidationMutationJson(const vmvalidation::MutationResult &mutation)
+{
+    return QJsonObject{
+        {QStringLiteral("run"), mutation.run.toJson()},
+        {QStringLiteral("schema"), QStringLiteral("wimforge.vm-validation-cli")},
+        {QStringLiteral("storeRevision"), mutation.storeRevision},
+    };
+}
+
+QString vmValidationMutationText(const vmvalidation::MutationResult &mutation)
+{
+    return QStringLiteral("Validation run %1 is %2 at revision %3 (store %4).")
+        .arg(mutation.run.id, vmvalidation::runStatusName(mutation.run.status))
+        .arg(mutation.run.revision)
+        .arg(mutation.storeRevision);
+}
+
+CliResult runVmValidationCommand(const CommandContext &context, QStringList arguments)
+{
+    const QString command = QStringLiteral("vm validation");
+    if (!arguments.isEmpty()
+        && (arguments.first().compare(QStringLiteral("help"), Qt::CaseInsensitive) == 0
+            || arguments.first() == QStringLiteral("--help")
+            || arguments.first() == QStringLiteral("-h"))) {
+        return successResult(context, command,
+                             QJsonObject{{QStringLiteral("text"), vmValidationHelpText()}},
+                             vmValidationHelpText());
+    }
+    if (context.projectDirectory.trimmed().isEmpty()) {
+        return failureResult(context, CliExitCode::Usage, command,
+                             QStringLiteral("VM validation requires --project <folder>."));
+    }
+    if (arguments.isEmpty()) {
+        return failureResult(context, CliExitCode::Usage, command,
+                             QStringLiteral("A validation action is required. Run 'WimForge vm validation help'."));
+    }
+
+    QString error;
+    const vmlab::VmLabScope scope = vmlab::resolveVmLabScope(context.projectDirectory, &error);
+    if (scope.root.isEmpty())
+        return failureResult(context, CliExitCode::IoError, command, error);
+    const QFileInfo projectInfo(context.projectDirectory);
+    const QString projectRoot = projectInfo.canonicalFilePath();
+    if (projectRoot.isEmpty()) {
+        return failureResult(context, CliExitCode::NotFound, command,
+                             QStringLiteral("The selected project folder does not exist."));
+    }
+
+    vmvalidation::VmValidationStore store(projectRoot);
+    const QString action = arguments.takeFirst().trimmed().toLower();
+    const QString routedCommand = command + QLatin1Char(' ') + action;
+
+    if (action == QStringLiteral("start")) {
+        QString isoPath;
+        QString isoSha256;
+        QString imagePath;
+        QString imageSha256;
+        QString providerId;
+        QString providerVersion;
+        QString vmId;
+        QString vmName;
+        QString vmConfigPath;
+        QString configText;
+        QString startedText;
+        QString expectedStoreRevision;
+        if (!takeOption(&arguments, QStringLiteral("--iso"), &isoPath, &error, true)
+            || !takeOption(&arguments, QStringLiteral("--iso-sha256"), &isoSha256, &error)
+            || !takeOption(&arguments, QStringLiteral("--image"), &imagePath, &error, true)
+            || !takeOption(&arguments, QStringLiteral("--image-sha256"), &imageSha256, &error)
+            || !takeOption(&arguments, QStringLiteral("--provider"), &providerId, &error, true)
+            || !takeOption(&arguments, QStringLiteral("--provider-version"), &providerVersion, &error)
+            || !takeOption(&arguments, QStringLiteral("--vm"), &vmId, &error, true)
+            || !takeOption(&arguments, QStringLiteral("--vm-name"), &vmName, &error, true)
+            || !takeOption(&arguments, QStringLiteral("--vm-config"), &vmConfigPath, &error, true)
+            || !takeOption(&arguments, QStringLiteral("--config-json"), &configText, &error)
+            || !takeOption(&arguments, QStringLiteral("--started-at"), &startedText, &error)
+            || !takeOption(&arguments, QStringLiteral("--store-revision"),
+                           &expectedStoreRevision, &error)) {
+            return failureResult(context, CliExitCode::Usage, routedCommand, error);
+        }
+        if (!arguments.isEmpty()) {
+            return failureResult(context, CliExitCode::Usage, routedCommand,
+                                 QStringLiteral("Unexpected validation start argument: %1")
+                                     .arg(arguments.first()));
+        }
+        const auto config = parseVmValidationObject(configText, QStringLiteral("--config-json"), &error);
+        const auto startedAt = parseVmValidationTimestamp(
+            startedText, QStringLiteral("--started-at"), &error);
+        if (!config || !startedAt)
+            return failureResult(context, CliExitCode::Usage, routedCommand, error);
+
+        vmvalidation::RunStart start;
+        start.isoPath = isoPath;
+        start.isoSha256 = isoSha256;
+        start.imagePath = imagePath;
+        start.imageSha256 = imageSha256;
+        start.providerId = normalizedVmProvider(providerId);
+        start.providerVersion = providerVersion;
+        start.vmId = vmId;
+        start.vmName = vmName;
+        start.vmConfigPath = vmConfigPath;
+        start.configSnapshot = *config;
+        start.startedAt = *startedAt;
+        vmvalidation::MutationResult mutation;
+        if (!store.appendRun(start, &mutation, &error, expectedStoreRevision)) {
+            return failureResult(context, vmValidationExitCode(error), routedCommand, error);
+        }
+        return successResult(context, routedCommand, vmValidationMutationJson(mutation),
+                             vmValidationMutationText(mutation));
+    }
+
+    if (action == QStringLiteral("update")) {
+        if (arguments.isEmpty()) {
+            return failureResult(context, CliExitCode::Usage, routedCommand,
+                                 QStringLiteral("validation update requires RUN_ID."));
+        }
+        const QString runId = arguments.takeFirst();
+        QString revisionText;
+        QString expectedStoreRevision;
+        QString milestonePhaseText;
+        QString milestoneStatusText;
+        QString milestoneName;
+        QString milestoneNote;
+        QString milestoneDataText;
+        QString milestoneAtText;
+        QString logMessage;
+        QString logChannel;
+        QString logAtText;
+        QString evidencePath;
+        QString evidenceLabel;
+        QString evidenceKindText;
+        QString evidenceAtText;
+        QString externalMetadataText;
+        const bool external = takeFlag(&arguments, QStringLiteral("--external"));
+        if (!takeOption(&arguments, QStringLiteral("--revision"), &revisionText, &error, true)
+            || !takeOption(&arguments, QStringLiteral("--store-revision"),
+                           &expectedStoreRevision, &error)
+            || !takeOption(&arguments, QStringLiteral("--milestone-phase"),
+                           &milestonePhaseText, &error)
+            || !takeOption(&arguments, QStringLiteral("--milestone-status"),
+                           &milestoneStatusText, &error)
+            || !takeOption(&arguments, QStringLiteral("--milestone-name"),
+                           &milestoneName, &error)
+            || !takeOption(&arguments, QStringLiteral("--milestone-note"),
+                           &milestoneNote, &error)
+            || !takeOption(&arguments, QStringLiteral("--milestone-data"),
+                           &milestoneDataText, &error)
+            || !takeOption(&arguments, QStringLiteral("--milestone-at"),
+                           &milestoneAtText, &error)
+            || !takeOption(&arguments, QStringLiteral("--log-message"), &logMessage, &error)
+            || !takeOption(&arguments, QStringLiteral("--log-channel"), &logChannel, &error)
+            || !takeOption(&arguments, QStringLiteral("--log-at"), &logAtText, &error)
+            || !takeOption(&arguments, QStringLiteral("--evidence-path"), &evidencePath, &error)
+            || !takeOption(&arguments, QStringLiteral("--evidence-label"), &evidenceLabel, &error)
+            || !takeOption(&arguments, QStringLiteral("--evidence-kind"), &evidenceKindText, &error)
+            || !takeOption(&arguments, QStringLiteral("--evidence-at"), &evidenceAtText, &error)
+            || !takeOption(&arguments, QStringLiteral("--external-metadata"),
+                           &externalMetadataText, &error)) {
+            return failureResult(context, CliExitCode::Usage, routedCommand, error);
+        }
+        if (!arguments.isEmpty()) {
+            return failureResult(context, CliExitCode::Usage, routedCommand,
+                                 QStringLiteral("Unexpected validation update argument: %1")
+                                     .arg(arguments.first()));
+        }
+        const auto revision = positiveInteger(revisionText, 1,
+                                              std::numeric_limits<int>::max(), &error);
+        if (!revision)
+            return failureResult(context, CliExitCode::Usage, routedCommand, error);
+
+        vmvalidation::RunUpdate update;
+        const bool hasMilestone = !milestonePhaseText.isEmpty() || !milestoneStatusText.isEmpty()
+            || !milestoneName.isEmpty() || !milestoneNote.isEmpty()
+            || !milestoneDataText.isEmpty() || !milestoneAtText.isEmpty();
+        if (hasMilestone) {
+            const auto phase = vmValidationMilestonePhase(milestonePhaseText);
+            const QString statusText = milestoneStatusText.isEmpty()
+                ? QStringLiteral("reached") : milestoneStatusText;
+            const auto status = vmValidationMilestoneStatus(statusText);
+            const auto data = parseVmValidationObject(
+                milestoneDataText, QStringLiteral("--milestone-data"), &error);
+            const auto occurredAt = parseVmValidationTimestamp(
+                milestoneAtText, QStringLiteral("--milestone-at"), &error);
+            if (!phase || !status || milestoneName.trimmed().isEmpty() || !data || !occurredAt) {
+                if (error.isEmpty()) {
+                    error = QStringLiteral("A milestone requires --milestone-phase boot|install, "
+                                           "--milestone-name, and a valid milestone status.");
+                }
+                return failureResult(context, CliExitCode::Usage, routedCommand, error);
+            }
+            vmvalidation::MilestoneDraft draft;
+            draft.phase = *phase;
+            draft.name = milestoneName;
+            draft.status = *status;
+            draft.occurredAt = *occurredAt;
+            draft.note = milestoneNote;
+            draft.data = *data;
+            update.milestones.append(std::move(draft));
+        }
+
+        const bool hasLog = !logMessage.isEmpty() || !logChannel.isEmpty() || !logAtText.isEmpty();
+        if (hasLog) {
+            const auto occurredAt = parseVmValidationTimestamp(
+                logAtText, QStringLiteral("--log-at"), &error);
+            if (logMessage.isEmpty() || !occurredAt) {
+                if (error.isEmpty())
+                    error = QStringLiteral("A log update requires --log-message.");
+                return failureResult(context, CliExitCode::Usage, routedCommand, error);
+            }
+            vmvalidation::LogDraft draft;
+            draft.occurredAt = *occurredAt;
+            draft.channel = logChannel.isEmpty() ? QStringLiteral("vm") : logChannel;
+            draft.message = logMessage;
+            update.logs.append(std::move(draft));
+        }
+
+        const bool hasEvidence = !evidencePath.isEmpty() || !evidenceLabel.isEmpty()
+            || !evidenceKindText.isEmpty() || !evidenceAtText.isEmpty()
+            || external || !externalMetadataText.isEmpty();
+        if (hasEvidence) {
+            const QString kindText = evidenceKindText.isEmpty()
+                ? QStringLiteral("other") : evidenceKindText;
+            const auto kind = vmValidationEvidenceKind(kindText);
+            const auto capturedAt = parseVmValidationTimestamp(
+                evidenceAtText, QStringLiteral("--evidence-at"), &error);
+            const auto metadata = parseVmValidationObject(
+                externalMetadataText, QStringLiteral("--external-metadata"), &error);
+            if (!kind || evidencePath.trimmed().isEmpty()
+                || evidenceLabel.trimmed().isEmpty() || !capturedAt || !metadata
+                || (external && metadata->isEmpty())
+                || (!external && !metadata->isEmpty())) {
+                if (error.isEmpty()) {
+                    error = QStringLiteral(
+                        "Evidence requires --evidence-path, --evidence-label, and a valid kind. "
+                        "Outside-project evidence also requires --external and non-empty "
+                        "--external-metadata; metadata is invalid without --external.");
+                }
+                return failureResult(context, CliExitCode::Usage, routedCommand, error);
+            }
+            vmvalidation::EvidenceDraft draft;
+            draft.kind = *kind;
+            draft.label = evidenceLabel;
+            draft.path = evidencePath;
+            draft.capturedAt = *capturedAt;
+            draft.external = external;
+            draft.externalMetadata = *metadata;
+            update.evidence.append(std::move(draft));
+        }
+
+        if (update.milestones.isEmpty() && update.logs.isEmpty() && update.evidence.isEmpty()) {
+            return failureResult(context, CliExitCode::Usage, routedCommand,
+                                 QStringLiteral("validation update requires a milestone, log, or evidence group."));
+        }
+        vmvalidation::MutationResult mutation;
+        if (!store.updateRun(runId, *revision, update, &mutation, &error,
+                             expectedStoreRevision)) {
+            return failureResult(context, vmValidationExitCode(error), routedCommand, error);
+        }
+        return successResult(context, routedCommand, vmValidationMutationJson(mutation),
+                             vmValidationMutationText(mutation));
+    }
+
+    if (action == QStringLiteral("finish") || action == QStringLiteral("complete")) {
+        if (arguments.isEmpty()) {
+            return failureResult(context, CliExitCode::Usage, routedCommand,
+                                 QStringLiteral("validation finish requires RUN_ID."));
+        }
+        const QString runId = arguments.takeFirst();
+        QString revisionText;
+        QString statusText;
+        QString note;
+        QString endedAtText;
+        QString expectedStoreRevision;
+        if (!takeOption(&arguments, QStringLiteral("--revision"), &revisionText, &error, true)
+            || !takeOption(&arguments, QStringLiteral("--status"), &statusText, &error, true)
+            || !takeOption(&arguments, QStringLiteral("--note"), &note, &error)
+            || !takeOption(&arguments, QStringLiteral("--ended-at"), &endedAtText, &error)
+            || !takeOption(&arguments, QStringLiteral("--store-revision"),
+                           &expectedStoreRevision, &error)) {
+            return failureResult(context, CliExitCode::Usage, routedCommand, error);
+        }
+        if (!arguments.isEmpty()) {
+            return failureResult(context, CliExitCode::Usage, routedCommand,
+                                 QStringLiteral("Unexpected validation finish argument: %1")
+                                     .arg(arguments.first()));
+        }
+        const auto revision = positiveInteger(revisionText, 1,
+                                              std::numeric_limits<int>::max(), &error);
+        const auto status = vmValidationRunStatus(statusText, true);
+        const auto endedAt = parseVmValidationTimestamp(
+            endedAtText, QStringLiteral("--ended-at"), &error);
+        if (!revision || !status || !endedAt) {
+            if (error.isEmpty())
+                error = QStringLiteral("--status must be passed, failed, or cancelled.");
+            return failureResult(context, CliExitCode::Usage, routedCommand, error);
+        }
+        vmvalidation::MutationResult mutation;
+        if (!store.completeRun(runId, *revision, *status, note, *endedAt,
+                               &mutation, &error, expectedStoreRevision)) {
+            return failureResult(context, vmValidationExitCode(error), routedCommand, error);
+        }
+        return successResult(context, routedCommand, vmValidationMutationJson(mutation),
+                             vmValidationMutationText(mutation));
+    }
+
+    if (action == QStringLiteral("show")) {
+        if (arguments.size() != 1) {
+            return failureResult(context, CliExitCode::Usage, routedCommand,
+                                 QStringLiteral("validation show requires exactly one RUN_ID."));
+        }
+        vmvalidation::StoreSnapshot snapshot;
+        if (!store.load(&snapshot, &error))
+            return failureResult(context, vmValidationExitCode(error), routedCommand, error);
+        const QString runId = arguments.first();
+        const auto found = std::find_if(snapshot.runs.cbegin(), snapshot.runs.cend(),
+                                        [&runId](const vmvalidation::ValidationRun &run) {
+                                            return run.id == runId;
+                                        });
+        if (found == snapshot.runs.cend()) {
+            return failureResult(context, CliExitCode::NotFound, routedCommand,
+                                 QStringLiteral("VM validation run '%1' was not found.").arg(runId));
+        }
+        const QJsonObject result{
+            {QStringLiteral("run"), found->toJson()},
+            {QStringLiteral("schema"), QStringLiteral("wimforge.vm-validation-cli")},
+            {QStringLiteral("storeRevision"), snapshot.revision},
+        };
+        return successResult(context, routedCommand, result,
+                             QString::fromUtf8(QJsonDocument(found->toJson())
+                                                   .toJson(QJsonDocument::Indented)).trimmed());
+    }
+
+    if (action == QStringLiteral("list") || action == QStringLiteral("history")) {
+        QString providerId;
+        QString vmId;
+        QString statusText;
+        QString text;
+        QString startedAfterText;
+        QString startedBeforeText;
+        QString limitText;
+        const bool oldestFirst = takeFlag(&arguments, QStringLiteral("--oldest-first"));
+        if (!takeOption(&arguments, QStringLiteral("--provider"), &providerId, &error)
+            || !takeOption(&arguments, QStringLiteral("--vm"), &vmId, &error)
+            || !takeOption(&arguments, QStringLiteral("--status"), &statusText, &error)
+            || !takeOption(&arguments, QStringLiteral("--text"), &text, &error)
+            || !takeOption(&arguments, QStringLiteral("--started-after"),
+                           &startedAfterText, &error)
+            || !takeOption(&arguments, QStringLiteral("--started-before"),
+                           &startedBeforeText, &error)
+            || !takeOption(&arguments, QStringLiteral("--limit"), &limitText, &error)) {
+            return failureResult(context, CliExitCode::Usage, routedCommand, error);
+        }
+        if (!arguments.isEmpty()) {
+            return failureResult(context, CliExitCode::Usage, routedCommand,
+                                 QStringLiteral("Unexpected validation history argument: %1")
+                                     .arg(arguments.first()));
+        }
+        const auto limit = positiveInteger(limitText.isEmpty() ? QStringLiteral("100") : limitText,
+                                           1, vmvalidation::VmValidationStore::MaxRuns, &error);
+        const auto startedAfter = parseVmValidationTimestamp(
+            startedAfterText, QStringLiteral("--started-after"), &error);
+        const auto startedBefore = parseVmValidationTimestamp(
+            startedBeforeText, QStringLiteral("--started-before"), &error);
+        std::optional<vmvalidation::RunStatus> status;
+        if (!statusText.isEmpty())
+            status = vmValidationRunStatus(statusText, false);
+        if (!limit || !startedAfter || !startedBefore
+            || (!statusText.isEmpty() && !status)) {
+            if (error.isEmpty())
+                error = QStringLiteral("--status must be running, passed, failed, or cancelled.");
+            return failureResult(context, CliExitCode::Usage, routedCommand, error);
+        }
+        vmvalidation::StoreSnapshot snapshot;
+        if (!store.load(&snapshot, &error))
+            return failureResult(context, vmValidationExitCode(error), routedCommand, error);
+        QList<vmvalidation::ValidationRun> runs;
+        const QString normalizedProvider = providerId.isEmpty()
+            ? QString() : normalizedVmProvider(providerId);
+        for (const vmvalidation::ValidationRun &run : snapshot.runs) {
+            if (!normalizedProvider.isEmpty() && run.vm.providerId != normalizedProvider)
+                continue;
+            if (!vmId.isEmpty() && run.vm.vmId != vmId)
+                continue;
+            if (status && run.status != *status)
+                continue;
+            if (startedAfter->isValid() && run.startedAt < *startedAfter)
+                continue;
+            if (startedBefore->isValid() && run.startedAt >= *startedBefore)
+                continue;
+            if (!text.trimmed().isEmpty()) {
+                const QString haystack = QStringLiteral("%1\n%2\n%3\n%4\n%5\n%6")
+                    .arg(run.id, run.vm.providerId, run.vm.providerVersion,
+                         run.vm.vmId, run.vm.vmName, run.completionNote);
+                if (!haystack.contains(text.trimmed(), Qt::CaseInsensitive))
+                    continue;
+            }
+            runs.append(run);
+        }
+        if (!oldestFirst)
+            std::reverse(runs.begin(), runs.end());
+        if (runs.size() > *limit)
+            runs.resize(*limit);
+        QJsonArray array;
+        for (const vmvalidation::ValidationRun &run : runs)
+            array.append(run.toJson());
+        const QJsonObject result{
+            {QStringLiteral("count"), array.size()},
+            {QStringLiteral("runs"), array},
+            {QStringLiteral("schema"), QStringLiteral("wimforge.vm-validation-cli")},
+            {QStringLiteral("storeRevision"), snapshot.revision},
+        };
+        return successResult(context, routedCommand, result,
+                             QString::fromUtf8(QJsonDocument(array)
+                                                   .toJson(QJsonDocument::Indented)).trimmed());
+    }
+
+    return failureResult(context, CliExitCode::Usage, routedCommand,
+                         QStringLiteral("Unknown VM validation action '%1'. Run "
+                                        "'WimForge vm validation help'.").arg(action));
+}
+
+CliResult runVmCommand(const CommandContext &context,
+                       QStringList arguments,
+                       const CliDependencies &dependencies)
+{
+    const QString command = QStringLiteral("vm");
+    if (!arguments.isEmpty()
+        && (arguments.first().compare(QStringLiteral("help"), Qt::CaseInsensitive) == 0
+            || arguments.first() == QStringLiteral("--help")
+            || arguments.first() == QStringLiteral("-h"))) {
+        return successResult(context, command,
+                             QJsonObject{{QStringLiteral("text"), vmHelpText()}},
+                             vmHelpText());
+    }
+
+    if (!arguments.isEmpty()
+        && (arguments.first().compare(QStringLiteral("validation"), Qt::CaseInsensitive) == 0
+            || arguments.first().compare(QStringLiteral("validate"), Qt::CaseInsensitive) == 0)) {
+        arguments.removeFirst();
+        return runVmValidationCommand(context, arguments);
+    }
+
+    QString error;
+    QString catalogPath;
+    QString managedRoot;
+    if (!takeOption(&arguments, QStringLiteral("--catalog"), &catalogPath, &error)
+        || !takeOption(&arguments, QStringLiteral("--managed-root"), &managedRoot, &error)) {
+        return failureResult(context, CliExitCode::Usage, command, error);
+    }
+
+    const bool execute = takeFlag(&arguments, QStringLiteral("--execute"));
+    const bool explicitPreview = takeFlag(&arguments, QStringLiteral("--preview"));
+    const bool yes = takeFlag(&arguments, QStringLiteral("--yes"));
+    const bool confirmationSupplied = containsOption(arguments, QStringLiteral("--confirm"));
+    QString confirmation;
+    if (!takeOption(&arguments, QStringLiteral("--confirm"), &confirmation, &error))
+        return failureResult(context, CliExitCode::Usage, command, error);
+    if (execute && explicitPreview) {
+        return failureResult(context, CliExitCode::Usage, command,
+                             QStringLiteral("--preview and --execute cannot be combined."));
+    }
+    if (!execute && yes) {
+        return failureResult(context, CliExitCode::Usage, command,
+                             QStringLiteral("--yes is only valid with --execute."));
+    }
+    if (!execute && confirmationSupplied) {
+        return failureResult(context, CliExitCode::Usage, command,
+                             QStringLiteral("--confirm is only valid with --execute."));
+    }
+
+    const QString action = resolveVmAction(&arguments, &error);
+    if (action.isEmpty())
+        return failureResult(context, CliExitCode::Usage, command, error);
+
+    const QSet<QString> inspectionActions{
+        QStringLiteral("paths"), QStringLiteral("catalog"),
+        QStringLiteral("detect"), QStringLiteral("inventory"),
+    };
+    if (inspectionActions.contains(action)
+        && (execute || yes || !confirmation.isEmpty())) {
+        return failureResult(context, CliExitCode::Usage, command,
+                             QStringLiteral("Read-only VM inspection does not accept execution options."));
+    }
+
+    QJsonObject parameters;
+    if (!parseVmParameters(action, &arguments, &parameters, &error))
+        return failureResult(context, CliExitCode::Usage, command, error);
+    if (!arguments.isEmpty()) {
+        return failureResult(context, CliExitCode::Usage, command,
+                             QStringLiteral("Unexpected VM Lab argument: %1")
+                                 .arg(arguments.first()));
+    }
+
+    const QString stateRoot = vmScopeRoot(context, &error);
+    if (stateRoot.isEmpty())
+        return failureResult(context, CliExitCode::IoError, command, error);
+    if (catalogPath.trimmed().isEmpty())
+        catalogPath = QDir(stateRoot).filePath(QStringLiteral("catalog.json"));
+    else
+        catalogPath = QFileInfo(catalogPath).absoluteFilePath();
+    if (managedRoot.trimmed().isEmpty())
+        managedRoot = QDir(stateRoot).filePath(QStringLiteral("machines"));
+    else
+        managedRoot = QFileInfo(managedRoot).absoluteFilePath();
+
+    vmlab::VmLabCliRequest request;
+    request.action = action;
+    request.parameters = parameters;
+    request.execute = execute;
+    request.yes = yes;
+    request.typedConfirmation = confirmation;
+
+    vmlab::ProcessCommandRunner nativeRunner;
+    vmlab::CommandRunner &processRunner = dependencies.vmCommandRunner
+        ? *dependencies.vmCommandRunner : static_cast<vmlab::CommandRunner &>(nativeRunner);
+    vmlab::VmLabCliService service(catalogPath, managedRoot,
+                                   dependencies.vmProviderAdapter);
+    const vmlab::VmLabCliResult vmResult = service.handle(request, processRunner);
+    const QString routedCommand = command + QLatin1Char(' ') + action;
+    if (vmResult.success) {
+        const QString human = QString::fromUtf8(
+            QJsonDocument(vmResult.output).toJson(QJsonDocument::Indented)).trimmed();
+        return successResult(context, routedCommand, vmResult.output, human);
+    }
+
+    QString message = vmResult.error;
+    const QString token = vmResult.output.value(QStringLiteral("preview"))
+                              .toObject().value(QStringLiteral("confirmation"))
+                              .toObject().value(QStringLiteral("typedToken")).toString();
+    if (!token.isEmpty()) {
+        message += QStringLiteral("\nExact confirmation token: %1").arg(token);
+    }
+    return failureResult(context, vmExitCode(vmResult.exitCode), routedCommand,
+                         message, vmResult.output);
+}
+
 } // namespace
 
 CliRunner::CliRunner(CliDependencies dependencies)
@@ -3050,6 +4209,19 @@ Package Studio and Group Policy:
   gpo search QUERY [--regex] [--path PolicyDefinitions] [--locale NAME ...]
   gpo export FILE.md [--path PolicyDefinitions] [--primary LOCALE]
              [--secondary LOCALE]
+
+VM Lab (VMware and VirtualBox):
+  vm help
+  vm paths | vm catalog | vm detect | vm inventory
+  vm create --provider ID --name NAME --iso FILE [hardware options]
+  vm import --provider ID --config FILE [--name NAME]
+  vm lifecycle ACTION --provider ID --vm ID
+  vm configure --provider ID --vm ID [configuration options]
+  vm device ACTION --provider ID --vm ID [device topology]
+  vm snapshot ACTION --provider ID --vm ID [snapshot selector]
+  vm forget|unregister|delete --provider ID --vm ID
+  Add --execute --yes to a reviewed mutation; destructive actions also need
+  --confirm "EXACT TOKEN". Run 'WimForge vm help' for the complete contract.
 
 WinForge Bridge:
   winforge detect RUNTIME-FOLDER
@@ -3156,6 +4328,8 @@ CliResult CliRunner::run(const QStringList &arguments) const
         return runActionHistoryCommand(context, commandArguments);
     if (command == QStringLiteral("winforge"))
         return runWinForgeCommand(context, commandArguments);
+    if (command == QStringLiteral("vm") || command == QStringLiteral("vm-lab"))
+        return runVmCommand(context, commandArguments, m_dependencies);
     return failureResult(context,
                          CliExitCode::Usage,
                          command,

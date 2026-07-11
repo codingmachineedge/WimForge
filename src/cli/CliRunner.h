@@ -5,6 +5,12 @@
 #include <QStringList>
 
 #include <functional>
+#include <memory>
+
+namespace wimforge::vmlab {
+class CommandRunner;
+class VmLabProviderAdapter;
+}
 
 namespace wimforge {
 
@@ -57,6 +63,12 @@ struct CliDependencies
         const QString &workingDirectory)>;
 
     ProcessInvoker processInvoker;
+
+    // Optional VM Lab seams keep command-line parsing independently testable.
+    // Production callers leave both empty and use the native provider adapter
+    // plus the structured, no-shell process runner.
+    std::shared_ptr<vmlab::VmLabProviderAdapter> vmProviderAdapter;
+    std::shared_ptr<vmlab::CommandRunner> vmCommandRunner;
 };
 
 class CliRunner
