@@ -142,6 +142,11 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+N"; onActivated: newProjectSheet.open() }
     Shortcut { sequence: "Ctrl+O"; onActivated: openProjectSheet.open() }
     Shortcut {
+        sequence: "Ctrl+K"
+        context: Qt.ApplicationShortcut
+        onActivated: { globalSearch.forceActiveFocus(); globalSearch.selectAll() }
+    }
+    Shortcut {
         sequence: "Ctrl+Z"
         context: Qt.ApplicationShortcut
         enabled: !root.isTextEditor(root.activeFocusItem)
@@ -406,7 +411,7 @@ ApplicationWindow {
                                 id: globalSearch
                                 anchors.fill: parent
                                 leftPadding: 36
-                                rightPadding: 12
+                                rightPadding: 58
                                 topPadding: 0
                                 bottomPadding: 0
                                 placeholderText: root.tr2("Search features, commands and settings", "搜尋功能、指令同設定")
@@ -417,6 +422,29 @@ ApplicationWindow {
                                 Accessible.name: placeholderText
                                 background: Item { }
                                 onAccepted: app.search(text)
+                            }
+                            Rectangle {
+                                anchors.right: parent.right
+                                anchors.rightMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: shortcutHint.implicitWidth + 14
+                                height: 20
+                                radius: DesignTokens.radiusControl - 2
+                                visible: !globalSearch.activeFocus && globalSearch.text.length === 0
+                                color: DesignTokens.surfaceHigh(root.darkTheme)
+                                border.width: 1
+                                border.color: DesignTokens.outlineVariant(root.darkTheme)
+                                Label {
+                                    id: shortcutHint
+                                    anchors.centerIn: parent
+                                    text: "Ctrl K"
+                                    font.family: DesignTokens.fontBody
+                                    font.pixelSize: 10
+                                    font.weight: Font.DemiBold
+                                    font.letterSpacing: 0.4
+                                    color: DesignTokens.onSurfaceVariant(root.darkTheme)
+                                    Accessible.ignored: true
+                                }
                             }
                         }
                         Item { Layout.fillWidth: true }
@@ -474,6 +502,59 @@ ApplicationWindow {
                                 color: DesignTokens.onSurfaceVariant(root.darkTheme)
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+                        Row {
+                            id: languageSegmented
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 0
+                            Accessible.role: Accessible.Grouping
+                            Accessible.name: root.tr2("Display language", "顯示語言")
+                            Repeater {
+                                model: [
+                                    { mode: 0, label: "EN", en: "English", zh: "英文" },
+                                    { mode: 1, label: "粵", en: "Cantonese", zh: "粵語" },
+                                    { mode: 2, label: "雙", en: "Bilingual", zh: "雙語" }
+                                ]
+                                delegate: AbstractButton {
+                                    id: languageSegment
+                                    required property var modelData
+                                    required property int index
+                                    readonly property bool active: app.languageMode === modelData.mode
+                                    implicitHeight: 32
+                                    implicitWidth: 40
+                                    focusPolicy: Qt.StrongFocus
+                                    Accessible.name: root.tr2(modelData.en, modelData.zh)
+                                    Accessible.checkable: true
+                                    Accessible.checked: active
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: root.tr2(modelData.en, modelData.zh)
+                                    onClicked: app.languageMode = modelData.mode
+                                    background: Rectangle {
+                                        color: languageSegment.active ? DesignTokens.secondaryContainer(root.darkTheme)
+                                               : languageSegment.hovered ? DesignTokens.surfaceHigh(root.darkTheme)
+                                               : DesignTokens.surfaceContainer(root.darkTheme)
+                                        border.width: languageSegment.visualFocus ? 2 : 1
+                                        border.color: languageSegment.visualFocus
+                                                      ? DesignTokens.primary(root.darkTheme)
+                                                      : DesignTokens.outlineVariant(root.darkTheme)
+                                        topLeftRadius: languageSegment.index === 0 ? DesignTokens.radiusPill : 0
+                                        bottomLeftRadius: languageSegment.index === 0 ? DesignTokens.radiusPill : 0
+                                        topRightRadius: languageSegment.index === 2 ? DesignTokens.radiusPill : 0
+                                        bottomRightRadius: languageSegment.index === 2 ? DesignTokens.radiusPill : 0
+                                    }
+                                    contentItem: Label {
+                                        text: languageSegment.modelData.label
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        font.family: DesignTokens.fontBody
+                                        font.pixelSize: 12
+                                        font.weight: languageSegment.active ? Font.DemiBold : Font.Medium
+                                        color: languageSegment.active
+                                               ? DesignTokens.onSecondaryContainer(root.darkTheme)
+                                               : DesignTokens.onSurfaceVariant(root.darkTheme)
+                                    }
+                                }
                             }
                         }
                         AbstractButton {

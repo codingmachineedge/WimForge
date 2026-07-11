@@ -139,10 +139,12 @@ ScrollView {
                         contentItem: RowLayout {
                             spacing: 12
                             Rectangle {
-                                Layout.preferredWidth: 34
-                                Layout.preferredHeight: 34
-                                radius: DesignTokens.radiusControl
-                                color: DesignTokens.surfaceHigh(root.dark)
+                                Layout.preferredWidth: 30
+                                Layout.preferredHeight: 30
+                                radius: width / 2
+                                color: "transparent"
+                                border.width: 1
+                                border.color: DesignTokens.outline(root.dark)
                                 Label {
                                     anchors.centerIn: parent
                                     text: workflowStep.modelData.icon
@@ -173,10 +175,24 @@ ScrollView {
                                     elide: Text.ElideRight
                                 }
                             }
-                            Label {
-                                text: "›"
-                                font.pixelSize: 20
-                                color: DesignTokens.onSurfaceVariant(root.dark)
+                            Rectangle {
+                                Layout.preferredWidth: 30
+                                Layout.preferredHeight: 30
+                                radius: width / 2
+                                color: workflowStep.hovered
+                                       ? DesignTokens.secondaryContainer(root.dark)
+                                       : "transparent"
+                                border.width: workflowStep.hovered ? 0 : 1
+                                border.color: DesignTokens.outlineVariant(root.dark)
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: "→"
+                                    font.pixelSize: 15
+                                    color: workflowStep.hovered
+                                           ? DesignTokens.onSecondaryContainer(root.dark)
+                                           : DesignTokens.onSurfaceVariant(root.dark)
+                                    Accessible.ignored: true
+                                }
                             }
                         }
                     }
