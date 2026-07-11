@@ -78,12 +78,14 @@ cmake -S . -B build-capture -G "Visual Studio 17 2022" -A x64 `
   -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64 `
   -DWIMFORGE_DOCUMENTATION_CAPTURE=ON -DBUILD_TESTING=OFF
 cmake --build build-capture --config Debug --target WimForge --parallel
-./scripts/capture-documentation-screenshots.ps1
+./scripts/capture-documentation-screenshots.ps1 -Language bilingual -Theme dark
+./scripts/verify-documentation-screenshots.ps1
 ```
 
-That build embeds `asInvoker` and exits unless it receives both `--demo` and
-`--screenshot`. It is not a servicing build. The default, bootstrap, package,
-and release configurations keep the audited `requireAdministrator` manifest.
+That build embeds `asInvoker` and exits unless it receives `--screenshot` with
+exactly one of `--demo` or `--project-start`. It is not a servicing build. The
+default, bootstrap, package, and release configurations keep the audited
+`requireAdministrator` manifest.
 
 ## Bootstrap a release build
 
@@ -132,6 +134,8 @@ dist/WimForge-portable-x64-0.1.0.zip
 ## GitHub release trigger
 
 The workflow runs for every push to `main`. It also supports `workflow_dispatch`, but the release job is explicitly restricted to the `main` branch. Each run gets version/tag `0.1.<run_number>` / `v0.1.<run_number>`.
+
+A task is complete only after its English / Hong Kong Cantonese bilingual commit is pushed and landed on `main`, and the exact resulting SHA is verified through every applicable Release, Wiki, Pages, and container workflow. Task 只可以喺 English / 香港粵語雙語 commit 已 push 同落到 `main`，而且相應 SHA 嘅 Release、Wiki、Pages 同 container workflows 全部適用關卡都核對完成之後，先算完成。
 
 Different main pushes are not coalesced. The concurrency group is based on `run_id`, so it only prevents attempts of the same run from racing over one release tag.
 

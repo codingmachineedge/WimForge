@@ -272,6 +272,8 @@ Read the expanded [NTLite Feature Comparison](docs/wiki/NTLite-Feature-Compariso
 
 Issues and focused pull requests are welcome. Keep destructive operations explicit, retain the no-shell structured-command model, preserve both Git history contracts, add tests for non-UI logic, and do not turn a failed safety gate into a warning-only path.
 
+Every completed task must keep this README and the canonical Wiki synchronized, refresh and visually verify all thirteen application captures plus both documentation-site screenshots, then land on `main` through an English / Hong Kong Cantonese bilingual commit and verified push. 每個完成嘅 task 都要同步 README 同 canonical Wiki、重新產生兼逐張核對十三張 app 截圖同兩張文件網站截圖，之後用 English / 香港粵語雙語 commit 推上去並落到 `main`，再確認相應 workflow。
+
 ## License
 
 WimForge is provided under the [MIT License](LICENSE), without warranty. ISO authors remain responsible for Windows licensing, third-party redistribution rights, activation, deployment security, and testing.

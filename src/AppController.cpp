@@ -825,7 +825,8 @@ AppController::AppController(QObject *parent)
     : QObject(parent),
       m_notificationStore(NotificationStore::defaultStoreDirectory()),
       m_jobEngine(this),
-      m_settings(QStringLiteral("WimForge"), QStringLiteral("WimForge"))
+      m_settings(QSettings::defaultFormat(), QSettings::UserScope,
+                 QStringLiteral("WimForge"), QStringLiteral("WimForge"))
 {
     StructuredLogger::instance().log(
         LogSeverity::Info, QStringLiteral("controller"),

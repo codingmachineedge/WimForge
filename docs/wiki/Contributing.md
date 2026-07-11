@@ -62,19 +62,29 @@ If a design intentionally changes an invariant, document the new threat model an
 
 ## Documentation changes
 
-`docs/wiki` is the checked-in Wiki source. When behavior changes:
+`docs/wiki` is the checked-in Wiki source. Every completed task must keep the README and canonical Wiki synchronized with the delivered behavior, even when the primary change is code or process:
 
 1. Update the relevant Wiki page and any detailed `docs/*.md` reference.
-2. Update README claims and comparisons if their status changed.
+2. Update README claims, comparisons, and completion evidence.
 3. Use live links for GitHub resources and Wiki-style page links inside `docs/wiki`.
 4. Keep limitations and external validation requirements next to feature claims.
-5. Verify the local Wiki and live Wiki remain content-equivalent.
+5. Run canonical Wiki validation and verify the applicable live synchronization workflow after the task reaches `main`.
 
-Safe automatic Wiki synchronization is a desired repository gate, but it must not be described as active until the corresponding workflow and drift check are committed and verified. Until then, publishing the Wiki is a separate reviewed repository push.
+The active **Synchronize GitHub Wiki** workflow publishes `docs/wiki` changes from `main`, validates the canonical page set, checks the published Wiki, and performs scheduled drift checks. A completed task verifies the applicable run instead of assuming that a successful Git push also proves Wiki equivalence.
+
+`docs/wiki` 係已簽入版本嘅 Wiki 來源。每個完成嘅 task 都要同步 README 同所有需要改嘅 canonical Wiki 頁面，唔可以程式已經改咗但文件仲講舊行為。推上 `main` 之後，要睇埋相應嘅 **Synchronize GitHub Wiki** workflow，同核對 live Wiki 冇 drift。
 
 ## Screenshot changes
 
-Use `WimForge.exe --demo --language <mode> --page <id>` and follow [Screenshots](Screenshots). Captures must use neutral project paths, one documented resolution/DPI/theme convention, descriptive alt text, and no secrets or usernames. Replace—not supplement—an obsolete screenshot when the page contract changes.
+Before every task handoff, run the committed full capture process described in [Screenshots](Screenshots). Regenerate and visually inspect Project Start, all twelve application routes, and both documentation-site viewport captures as one commit-consistent set. Captures must use neutral project paths, the documented viewport/theme contract, descriptive alt text, true PNG encoding, and no secrets or usernames. Never land a partial refresh.
+
+每個 task 交付之前，都要跟 [Screenshots](Screenshots) 重拍兼逐張核對工程起始頁、十二個 app 頁面，同 desktop/mobile 兩張文件網站圖。全套要用同一個 commit、指定 viewport/theme、真正 PNG 編碼同中性資料；唔可以只更新部分截圖就交付。
+
+## Repository completion gate / Repo 完成關卡
+
+The task is complete only after its README/Wiki claims and all fifteen tracked screenshots are current, relevant tests pass, its commit message is bilingual, the work is pushed and landed on `main`, and the exact resulting SHA has passed every applicable Release, Wiki, Pages, and container workflow.
+
+Task 只可以喺 README/Wiki 同十五張已追蹤截圖全部更新、相關測試通過、commit message 用雙語、工作已 push 同落到 `main`，而且呢個 SHA 嘅 Release、Wiki、Pages 同 container workflow 全部適用關卡都過咗，先算完成。
 
 ## Pull-request checklist
 
@@ -82,7 +92,9 @@ Use `WimForge.exe --demo --language <mode> --page <id>` and follow [Screenshots]
 - [ ] Failure, cancellation, recovery, and threat boundaries are covered.
 - [ ] Core/CLI tests pass and new rules have tests.
 - [ ] Relevant desktop routes were exercised at minimum and normal sizes.
-- [ ] Documentation and current/planned status are accurate.
+- [ ] `README.md` and every affected canonical `docs/wiki` page match the delivered behavior; Wiki validation passes.
+- [ ] All thirteen application captures and both site viewport screenshots were refreshed and visually inspected; none is missing, stale, cropped, mislabeled, or private.
+- [ ] The commit message is bilingual, the work was pushed and landed on `main`, and the resulting workflows were verified.
 - [ ] No generated build output, payloads, credentials, or personal paths were added.
 - [ ] Packaging/release behavior was tested when dependencies or deployment changed.
 

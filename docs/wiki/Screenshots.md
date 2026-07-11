@@ -1,12 +1,12 @@
 # Screenshots / 截圖
 
 The canonical gallery covers Project Start plus all twelve desktop routes. Every image comes from the
-same build, populated non-production demo, bilingual English/Hong Kong Cantonese UI mode, 1,440×900 Qt Quick
-client area, and 96-DPI PNG output. A route-specific public fixture keeps paths,
+same build, a route-specific non-production demo or intentionally idle safe state, bilingual English/Hong Kong Cantonese UI mode, and a 1,440×900
+PNG client area with one logical pixel mapped to one output pixel. Physical DPI metadata is not part of the capture contract. A route-specific public fixture keeps paths,
 Git history, settings, and notification state deterministic without exposing a
 real Windows image, private project, account name, or secret.
 
-標準畫廊包括工程起始頁同全部十二個桌面功能頁。每幅圖都由同一個 build、同一套無害 demo 資料、English / 香港粵語雙語模式、1,440×900 client area 同 96 DPI 產生。公開 fixture 只用中性路徑同虛構資料，唔會露出真實映像、帳戶、秘密或私人工程。
+標準畫廊包括工程起始頁同全部十二個桌面功能頁。每幅圖都由同一個 build、按頁面安排嘅無害 demo 或刻意 idle 安全狀態、English / 香港粵語雙語模式，同已正規化嘅 1,440×900 PNG client area 產生；一個 logical pixel 對一個輸出 pixel，檔案入面嘅實體 DPI metadata 唔屬於截圖合約。公開 fixture 只用中性路徑同虛構資料，唔會露出真實映像、帳戶、秘密或私人工程。
 
 ## Complete application gallery
 
@@ -46,7 +46,7 @@ real Windows image, private project, account name, or secret.
 
 ### Virtual Machine Lab
 
-![Virtual Machine Lab showing installed VMware and VirtualBox provider discovery, managed and external inventory, lifecycle controls, exact-operation review, and validation evidence](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/virtual-machine-lab.png)
+![Virtual Machine Lab in its safe empty state, showing unavailable provider discovery, inventory filters, workflow tabs, and no selected machine](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/virtual-machine-lab.png)
 
 ### Review and run
 
@@ -62,29 +62,31 @@ real Windows image, private project, account name, or secret.
 
 ### Embedded terminal
 
-![Embedded Terminal showing a trusted administrator shell selector, project working directory, bounded in-app ConPTY output, command input, and process-tree stop actions](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/embedded-terminal.png)
+![Embedded Terminal ready state showing a trusted administrator shell selector, neutral working directory, empty bounded ConPTY viewport, command input, and inactive stop controls](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/embedded-terminal.png)
 
 ## Reproduce the gallery
 
 Build the restricted documentation harness, then run the committed capture
 script from the repository root. The harness uses an `asInvoker` manifest so a
-12-route automation run does not display 12 UAC prompts, and it refuses to run
-unless both `--demo` and `--screenshot` are present. Normal and release builds
-still embed `requireAdministrator`.
+13-route automation run does not display 13 UAC prompts, and it refuses to run
+unless `--screenshot` is present with exactly one of `--demo` or
+`--project-start`. Normal and release builds still embed
+`requireAdministrator`.
 
 ```powershell
 cmake -S . -B build-capture -G "Visual Studio 17 2022" -A x64 `
   -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64 `
   -DWIMFORGE_DOCUMENTATION_CAPTURE=ON -DBUILD_TESTING=OFF
 cmake --build build-capture --config Debug --target WimForge --parallel
-./scripts/capture-documentation-screenshots.ps1
+./scripts/capture-documentation-screenshots.ps1 -Language bilingual -Theme dark
 ```
 
-The script launches each route with `--demo --language bilingual --page <id>`, gives
-every route a clean public fixture and notification ledger, waits for the window
-to settle, and uses WimForge's `--screenshot` option to save the normalized Qt
-Quick client area. It fails if a route exits unsuccessfully, omits its image, or
-produces dimensions inconsistent with the rest of the set.
+The script launches Project Start with `--project-start` and every workspace
+route with `--demo --language bilingual --page <id>`, gives every route a clean
+public fixture and notification ledger, waits for the window to settle, and uses
+WimForge's `--screenshot` option to save the normalized Qt Quick client area. It
+fails if a route exits unsuccessfully, omits its image, or produces anything
+other than the complete thirteen-file, true-PNG, 1,440×900 set.
 
 | Page | Page ID | Image |
 | --- | --- | --- |
@@ -102,9 +104,32 @@ produces dimensions inconsistent with the rest of the set.
 | Settings | `settings` | `settings.png` |
 | Embedded terminal | `terminal` | `embedded-terminal.png` |
 
+## Documentation-site viewport captures / 文件網站 viewport 截圖
+
+Refresh the application gallery first because the documentation-site hero embeds `overview.png`. Build the current documentation with `python -m mkdocs build --strict`, serve it locally with `python -m mkdocs serve --dev-addr 127.0.0.1:8000`, then capture `http://127.0.0.1:8000/WimForge/` as viewport-only, explicitly PNG-encoded images at device scale factor 1:
+
+| View | Browser metrics | Image |
+| --- | --- | --- |
+| Desktop | 1,280×720, non-mobile | `site-home-desktop.png` |
+| Mobile | 390×844, mobile emulation | `site-home-mobile.png` |
+
+![WimForge documentation home at the desktop viewport](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/site-home-desktop.png)
+
+![WimForge documentation home at the mobile viewport](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/site-home-mobile.png)
+
+先重拍 app 畫廊，因為文件網站 hero 會直接用 `overview.png`。之後用本機嚴格 MkDocs build 開 `http://127.0.0.1:8000/WimForge/`，desktop 用 1,280×720／非 mobile，mobile 用 390×844／mobile emulation，device scale factor 固定做 1，而且一定要明確輸出真正 PNG，唔可以用 JPEG 資料扮 `.png`。
+
+After both capture stages, enforce the complete tracked-file contract:
+
+```powershell
+./scripts/verify-documentation-screenshots.ps1
+```
+
+呢個 verifier 會拒絕缺漏、多餘檔案、假 PNG，或者任何一張尺寸唔啱嘅截圖；通過後仍然要逐張做視覺核對。
+
 ## Capture contract
 
-- Use one application commit, theme, bilingual language mode, viewport, and DPI for the
+- Use one application commit, theme, bilingual language mode, viewport, and output dimensions for the
   primary set.
 - Keep source, project, output, profile, notification, and application-data
   paths under the public screenshot fixture.
@@ -112,8 +137,9 @@ produces dimensions inconsistent with the rest of the set.
   organization data, or proprietary payload names.
 - Capture the client area directly; do not include desktop clutter, another
   window, cursor effects, capture gutters, or post-capture rescaling.
-- Regenerate every route when the shared shell, primary data fixture, capture
-  normalization, or screenshot contract changes.
+- Before every completed-task handoff, regenerate and visually verify the complete
+  thirteen-route gallery and both documentation-site viewports as one commit-consistent
+  set; never land only a partial screenshot refresh.
 - Use descriptive alt text that names the route and the meaningful visible
   state.
 
@@ -121,7 +147,7 @@ Secondary dark-theme, single-language English/Cantonese, density, minimum-viewpo
 overlay matrices are useful visual-regression work, but they should remain
 clearly named QA sets rather than replacing this stable primary tour.
 
-截圖合約重點：主畫廊一定要用 `--language bilingual`，全套保持同 commit、theme、viewport 同 DPI。路徑、通知、工程名同 payload 都要用公開 fixture；唔好放客戶名、私人 hostname、credential、product key 或專有 payload 入鏡。如果 shared shell、主 fixture 或 capture normalization 有改，就要重拍工程起始頁同全部十二個功能頁。
+截圖合約重點：主畫廊一定要用 `--language bilingual`，全套保持同 commit、theme 同 viewport。路徑、通知、工程名同 payload 都要用公開 fixture；唔好放客戶名、私人 hostname、credential、product key 或專有 payload 入鏡。每個 task 完成之前都要重拍兼逐張核對工程起始頁、全部十二個功能頁，同 desktop/mobile 兩張文件網站圖，唔可以只更新部分頁面。
 
 ## What a screenshot does not prove
 

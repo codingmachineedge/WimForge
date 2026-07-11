@@ -5,7 +5,7 @@ into an installed VMware or VirtualBox environment, controlling the machine,
 and retaining structured smoke-test evidence. It is the eighth desktop route
 and uses page ID `vmlab` (`vm-lab` is accepted as a startup alias).
 
-![Virtual Machine Lab showing provider discovery, managed inventory, exact-operation review, and validation evidence](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/virtual-machine-lab.png)
+![Virtual Machine Lab in its safe empty state, showing unavailable provider discovery, inventory filters, workflow tabs, and no selected machine](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/virtual-machine-lab.png)
 
 !!! important "Bring your own hypervisor"
     WimForge detects and drives a supported hypervisor that is already

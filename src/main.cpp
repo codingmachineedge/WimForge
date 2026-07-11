@@ -15,6 +15,7 @@
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QSettings>
 #include <QTextStream>
 #include <QTimer>
 
@@ -280,6 +281,11 @@ int main(int argc, char *argv[])
         QStringLiteral(
             "Open a Customize workbench for visual QA: updates, drivers, features, apps, components, settings, unattended, or post-setup. / 開指定調校工作台做畫面檢查。"),
         QStringLiteral("id")});
+    parser.addOption({
+        QStringLiteral("theme"),
+        QStringLiteral(
+            "Pin the documentation capture theme to light or dark. / 將文件截圖 theme 鎖定做 light 或 dark。"),
+        QStringLiteral("mode"), QStringLiteral("dark")});
 #endif
     parser.process(application);
 
@@ -313,9 +319,36 @@ int main(int argc, char *argv[])
             return 6;
         }
     }
+    const QString captureTheme = parser.value(QStringLiteral("theme")).trimmed().toLower();
+    if (captureTheme != QStringLiteral("light")
+        && captureTheme != QStringLiteral("dark")) {
+        qCritical().noquote() << QStringLiteral(
+            "Unknown documentation capture theme; use light or dark. / 文件截圖 theme 未知；請用 light 或 dark。");
+        logSession.setExitCode(7);
+        return 7;
+    }
+#endif
+
+#ifdef WIMFORGE_DOCUMENTATION_CAPTURE
+    const QString captureSettingsPath =
+        qEnvironmentVariable("WIMFORGE_CAPTURE_SETTINGS").trimmed();
+    const QFileInfo captureSettingsDirectory(captureSettingsPath);
+    if (captureSettingsPath.isEmpty() || !captureSettingsDirectory.isAbsolute()
+        || !captureSettingsDirectory.isDir()) {
+        qCritical().noquote() << QStringLiteral(
+            "Documentation capture requires an existing isolated settings directory. / 文件截圖需要現有嘅隔離 settings 資料夾。");
+        logSession.setExitCode(8);
+        return 8;
+    }
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope,
+                       captureSettingsDirectory.absoluteFilePath());
 #endif
 
     AppController controller;
+#ifdef WIMFORGE_DOCUMENTATION_CAPTURE
+    controller.setThemeMode(captureTheme == QStringLiteral("light") ? 1 : 2);
+#endif
     wimforge::EmbeddedTerminalSession terminalSession;
     if (parser.isSet(QStringLiteral("demo"))) {
         QString error;

@@ -3,7 +3,9 @@ param(
     [string] $BuildDirectory = 'build-capture/Debug',
     [string] $OutputDirectory = 'docs/screenshots',
     [ValidateSet('en', 'zh-HK', 'bilingual')]
-    [string] $Language = 'bilingual'
+    [string] $Language = 'bilingual',
+    [ValidateSet('light', 'dark')]
+    [string] $Theme = 'dark'
 )
 
 Set-StrictMode -Version Latest
@@ -54,6 +56,7 @@ $originalEnvironment = @{
     QT_AUTO_SCREEN_SCALE_FACTOR = $env:QT_AUTO_SCREEN_SCALE_FACTOR
     LOCALAPPDATA = $env:LOCALAPPDATA; APPDATA = $env:APPDATA
     WIMFORGE_NOTIFICATION_STORE = $env:WIMFORGE_NOTIFICATION_STORE
+    WIMFORGE_CAPTURE_SETTINGS = $env:WIMFORGE_CAPTURE_SETTINGS
     PATH = $env:PATH
 }
 
@@ -87,17 +90,20 @@ try {
         $routeTemp = Join-Path $routeRoot 'Temp'
         $routeLocal = Join-Path $routeRoot 'LocalAppData'
         $routeRoaming = Join-Path $routeRoot 'AppData'
-        New-Item -ItemType Directory -Path $routeTemp, $routeLocal, $routeRoaming -Force | Out-Null
+        $routeSettings = Join-Path $routeRoot 'Settings'
+        New-Item -ItemType Directory -Path $routeTemp, $routeLocal, $routeRoaming, $routeSettings -Force | Out-Null
         $env:TEMP = $routeTemp; $env:TMP = $routeTemp
         $env:LOCALAPPDATA = $routeLocal; $env:APPDATA = $routeRoaming
         $env:WIMFORGE_NOTIFICATION_STORE = Join-Path $routeRoot 'NotificationStore'
+        $env:WIMFORGE_CAPTURE_SETTINGS = $routeSettings
 
         $destination = Join-Path $outputPath $entry.Value
         $arguments = if ($entry.Key -eq 'project-start') {
-            @('--project-start', '--language', $Language, '--screenshot', $destination)
+            @('--project-start', '--language', $Language, '--theme', $Theme,
+              '--screenshot', $destination)
         } else {
             @('--demo', '--language', $Language, '--page', $entry.Key,
-              '--screenshot', $destination)
+              '--theme', $Theme, '--screenshot', $destination)
         }
         $process = Start-Process -FilePath $executable `
             -ArgumentList $arguments `
@@ -119,14 +125,20 @@ finally {
 Add-Type -AssemblyName System.Drawing
 $captures = foreach ($entry in $pages.GetEnumerator()) {
     $path = Join-Path $outputPath $entry.Value
+    $bytes = [System.IO.File]::ReadAllBytes($path)
+    $pngSignature = '137,80,78,71,13,10,26,10'
+    if ($bytes.Length -lt 8 -or (($bytes[0..7] -join ',') -ne $pngSignature)) {
+        throw "Documentation capture is not a true PNG: $path"
+    }
     $image = [System.Drawing.Image]::FromFile($path)
     try {
         [pscustomobject] @{ Route = $entry.Key; File = $entry.Value; Width = $image.Width
             Height = $image.Height; Bytes = (Get-Item -LiteralPath $path).Length }
     } finally { $image.Dispose() }
 }
-$dimensions = @($captures | ForEach-Object { "$($_.Width)x$($_.Height)" } | Sort-Object -Unique)
-if ($dimensions.Count -ne 1) {
-    throw "Documentation screenshots have inconsistent dimensions: $($dimensions -join ', ')"
+$invalidDimensions = @($captures | Where-Object { $_.Width -ne 1440 -or $_.Height -ne 900 })
+if ($captures.Count -ne $pages.Count -or $invalidDimensions.Count -ne 0) {
+    $dimensions = @($captures | ForEach-Object { "$($_.File)=$($_.Width)x$($_.Height)" })
+    throw "Documentation screenshots must contain all $($pages.Count) routes at 1440x900: $($dimensions -join ', ')"
 }
 $captures | Format-Table -AutoSize
