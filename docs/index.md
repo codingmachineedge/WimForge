@@ -136,6 +136,7 @@ including the Git history needed for recovery and inspection.
 - New to WimForge? Start with [Getting Started](wiki/Getting-Started.md).
 - Preparing an image? Read [Projects and Sources](wiki/Projects-and-Sources.md) and [Review and Run](wiki/Review-and-Run.md).
 - Automating builds? Use the [CLI](wiki/CLI.md) and [detailed command reference](cli.md).
+- Provisioning known devices? Use [Docker Provisioning](wiki/Docker-Provisioning.md) for fixed pre-OOBE names and typed unattended settings.
 - Auditing the design? Read [Architecture and Data Layout](wiki/Architecture-and-Data-Layout.md).
 - Ready to contribute? See [Building and Releases](wiki/Building-and-Releases.md) and [Contributing](wiki/Contributing.md).
 </div>

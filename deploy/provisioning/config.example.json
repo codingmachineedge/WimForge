@@ -1,0 +1,38 @@
+{
+  "schema": "wimforge.provisioning",
+  "version": 1,
+  "requireKnownDevice": true,
+  "defaults": {
+    "profile": "builtin:full",
+    "computerName": "*",
+    "settings": {
+      "registeredOwner": "WimForge User",
+      "registeredOrganization": "Example Lab",
+      "timeZone": "Eastern Standard Time",
+      "inputLocale": "0409:00000409",
+      "systemLocale": "en-US",
+      "uiLanguage": "en-US",
+      "userLocale": "en-CA",
+      "dynamicUpdate": true,
+      "hideEulaPage": false,
+      "hideWirelessSetupInOobe": true,
+      "protectYourPC": 3
+    }
+  },
+  "devices": [
+    {
+      "id": "lab-node-001",
+      "match": {
+        "uuid": "4c4c4544-0042-4710-8058-cac04f564d31",
+        "serial": "EXAMPLE-SERIAL-001",
+        "mac": [
+          "02:00:00:00:00:01"
+        ]
+      },
+      "computerName": "LAB-NODE-001",
+      "settings": {
+        "registeredOwner": "Lab Operations"
+      }
+    }
+  ]
+}

@@ -18,6 +18,7 @@ WimForge is an independent alternative to NTLite, not an NTLite product. It is e
 | [Package Studio](Package-Studio) | Software profiles, Full AI Development, OpenCode, trust, and first-logon staging |
 | [Group Policy Studio](Group-Policy-Studio) | Installed ADMX/ADML catalog, search, schema controls, application, and documentation |
 | [Unattended Studio](Unattended-Studio) | JSON profiles, Windows answer-file XML, templates, names, product keys, and validation |
+| [Docker Provisioning](Docker-Provisioning) | Container-hosted device inventory, fixed pre-OOBE names, typed settings, and WinPE/PXE handoff |
 | [Review and Run](Review-and-Run) | Exact command review, dependencies, risk flags, checkpoints, concurrency, and cancellation |
 | [History Time Machine](History-Time-Machine) | Contextual undo, selective compensation, redo-of-undo, bookmarks, lanes, and diffs |
 | [Notification Center](Notification-Center) | The separate Git ledger for read, dismiss, delete, restore, and undo events |

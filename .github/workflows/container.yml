@@ -1,0 +1,128 @@
+name: Build and publish provisioning container
+
+on:
+  pull_request:
+    paths:
+      - .dockerignore
+      - .github/workflows/container.yml
+      - CMakeLists.txt
+      - Dockerfile
+      - LICENSE
+      - compose.yaml
+      - deploy/**
+      - server/**
+      - src/**
+      - templates/**
+      - tests/**
+  push:
+    branches:
+      - main
+    paths:
+      - .dockerignore
+      - .github/workflows/container.yml
+      - CMakeLists.txt
+      - Dockerfile
+      - LICENSE
+      - compose.yaml
+      - deploy/**
+      - server/**
+      - src/**
+      - templates/**
+      - tests/**
+  workflow_dispatch:
+
+concurrency:
+  group: wimforge-provisioning-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/codingmachineedge/wimforge-provisioning
+
+jobs:
+  container:
+    name: Test and publish Linux amd64 image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Validate Compose deployment security
+        run: python3 tests/compose_contract.py
+
+      - name: Build CLI and run the Linux-compatible CTest suite
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: Dockerfile
+          target: test
+          platforms: linux/amd64
+          push: false
+          build-args: |
+            WIMFORGE_VERSION=0.1.${{ github.run_number }}
+          cache-from: type=gha,scope=wimforge-provisioning
+
+      - name: Load runtime image for an isolated service smoke test
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          load: true
+          push: false
+          build-args: |
+            WIMFORGE_VERSION=0.1.${{ github.run_number }}
+          tags: wimforge-provisioning:smoke
+          cache-from: type=gha,scope=wimforge-provisioning
+
+      - name: Exercise health, authentication, rendering, and isolation
+        run: python3 tests/container_smoke.py --image wimforge-provisioning:smoke
+
+      - name: Log in to the GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image tags and labels
+        id: metadata
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=long
+          labels: |
+            org.opencontainers.image.title=WimForge Provisioning Service
+            org.opencontainers.image.description=Headless WimForge unattended-installation provisioning service
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and publish runtime image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            WIMFORGE_VERSION=0.1.${{ github.run_number }}
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=gha,scope=wimforge-provisioning
+          cache-to: type=gha,mode=max,scope=wimforge-provisioning
+          provenance: mode=max
+          sbom: true

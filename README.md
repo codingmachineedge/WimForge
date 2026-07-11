@@ -31,6 +31,7 @@ The desktop interface is available in English, Hong Kong Cantonese, or a bilingu
 - Automatic OpenCode setup — shortly after startup, WimForge live-verifies an existing `opencode --version`. If OpenCode is missing, setup runs asynchronously: Node.js LTS is installed through WinGet when npm is absent, followed by `npm install -g opencode-ai@latest`. WimForge reports success only after the executable is found and that live verification exits successfully with nonempty output; progress and failure stay non-modal.
 - Group Policy Studio — reads all ADMX definitions and installed ADML languages from the selected PolicyDefinitions store, retains schema constraints and registry actions, creates schema-driven Material editors, supports text/validated-regex search, exports bilingual documentation, and can ask OpenCode to propose a search.
 - Unattended Studio — portable JSON profiles, Windows answer-file XML import/export, the seven setup passes, Full Automation and AI Development templates, Random/Fixed/Prompt/Serial computer-name modes, Microsoft-published GVLK selection with licensing warnings, and OpenCode-assisted fills that are validated before commit.
+- Docker provisioning — a non-root Linux service and one-shot renderer that maps UUID/serial/MAC inventory to a validated fixed pre-OOBE computer name, an operator profile, and typed locale/time-zone/OOBE overrides; an included fail-closed WinPE client supplies the result to `setup.exe /unattend` before installation.
 - WinForge Bridge — records approved typed actions, can include a complete self-contained WinForge runtime, and stages a verified, resumable OEM bundle into installation media. Runtime capabilities are contract-checked; WimForge never guesses unsupported WinForge command-line switches.
 - Complete CLI — project/config editing, plan/dry-run/apply, Git and contextual history, notification events, `.wimforge` bundles, unattended profiles, Package Studio, installed GPO catalogs, WinForge recipe validation/staging, deterministic JSON output, response files, and stable exit codes.
 
@@ -84,6 +85,8 @@ Unattended Studio separates editable WimForge JSON from exported Windows answer-
 
 See [Group Policy Studio](docs/wiki/Group-Policy-Studio.md) and [Unattended Studio](docs/wiki/Unattended-Studio.md).
 
+For central per-device assignment, [Docker Provisioning](docs/docker-provisioning.md) documents the container, inventory/API, token/TLS boundary, one-shot rendering, and WinPE/PXE handoff. A remote service alone is not an answer-file discovery path: the included bootstrap downloads the rendered file before launching Windows Setup. The built-in baseline does not choose a disk, edition, or account, so a genuinely no-touch deployment still needs an exact-image operator profile plus Windows SIM and clean-VM validation.
+
 ## WinForge family integration
 
 The bridge converts approved intent into a declarative recipe whose actions are typed as page, module, tweak, direct command, registry, or verified copy operations. Recipes have stable IDs, idempotency keys, canonical digests, machine/user phases, and strict runtime capability checks. Staging writes the recipe, manifest, bootstrap, payloads, optional runtime, and SetupComplete integration beneath the conventional `sources/$OEM$` media tree. A missing SetupComplete file is created; an existing ordinary text file is atomically hooked while preserving its prior bytes. Unsupported oversized or NUL/UTF-16 content fails staging instead of reporting an unreachable hook as success.
@@ -127,7 +130,7 @@ The portable zip includes deployed Qt and MSVC runtime files. The installer is p
 
 ## Build from source
 
-Build prerequisites are Visual Studio 2022 Build Tools with Desktop development with C++, CMake 3.24+, Qt 6.8 for MSVC 2022 x64 (Core, Gui, Qml, Quick, Quick Controls 2), Git, and PowerShell. Ninja is needed by the release script.
+Build prerequisites are Visual Studio 2022 Build Tools with Desktop development with C++, CMake 3.24+, Qt 6.8 for MSVC 2022 x64 (Core, Gui, Qml, Quick, Quick Controls 2), Python 3.10+ for the provisioning tests, Git, and PowerShell. Ninja is needed by the release script.
 
 Using the Visual Studio generator:
 
@@ -209,6 +212,7 @@ Read the expanded [NTLite Feature Comparison](docs/wiki/NTLite-Feature-Compariso
 - [Package Studio](docs/wiki/Package-Studio.md)
 - [Group Policy Studio](docs/wiki/Group-Policy-Studio.md)
 - [Unattended Studio](docs/wiki/Unattended-Studio.md)
+- [Docker Provisioning](docs/docker-provisioning.md)
 - [Review and Run](docs/wiki/Review-and-Run.md)
 - [History Time Machine](docs/wiki/History-Time-Machine.md)
 - [Notification Center](docs/wiki/Notification-Center.md)

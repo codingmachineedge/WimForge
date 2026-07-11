@@ -44,6 +44,10 @@ build/
 Build/
 build-*/
 dist/
+deploy/provisioning/config.local.json
+deploy/provisioning/*.token
+.env
+.env.*
 site/
 
 # CMake generated files

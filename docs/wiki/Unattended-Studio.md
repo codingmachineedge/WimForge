@@ -42,6 +42,8 @@ Fixed names use a conservative subset: 1–15 ASCII bytes, letters/digits/hyphen
 
 Prompt/Serial happen after setup has already used a generated temporary name. Domain join, audit mode, UAC, S mode, firmware serial quality, and first-logon availability all need environment-specific testing. 粵語速讀：方括號唔係魔法；真係要問人，就清清楚楚喺首次登入先問。
 
+For centrally assigned names that must exist before OOBE, use [Docker Provisioning](Docker-Provisioning). The service resolves hardware inventory before Setup and renders the assignment as ordinary **Fixed** mode; it is not a fifth computer-name mode. Domain-join settings can run in more than one pass, so validate the exact join ordering. The WinPE client must fetch the answer file before launching `setup.exe /unattend`.
+
 ## Import and export
 
 Portable schema `wimforge.unattend`, version 1, preserves:
@@ -98,4 +100,4 @@ Implementation detail lives in [`docs/unattended-studio.md`](https://github.com/
 
 ---
 
-[← Group Policy Studio](Group-Policy-Studio) · [History Time Machine →](History-Time-Machine)
+[← Group Policy Studio](Group-Policy-Studio) · [Docker Provisioning →](Docker-Provisioning)

@@ -113,6 +113,7 @@ nav:
       - Package Studio: wiki/Package-Studio.md
       - Group Policy Studio: wiki/Group-Policy-Studio.md
       - Unattended Studio: wiki/Unattended-Studio.md
+      - Docker provisioning: wiki/Docker-Provisioning.md
       - Review and run: wiki/Review-and-Run.md
       - History Time Machine: wiki/History-Time-Machine.md
       - Notification Center: wiki/Notification-Center.md
@@ -127,6 +128,7 @@ nav:
       - Package Studio internals: package-studio.md
       - Group Policy internals: gpo-studio.md
       - Unattended internals: unattended-studio.md
+      - Docker provisioning internals: docker-provisioning.md
       - Project bundle format: project-bundles.md
       - WinForge bridge format: winforge-bridge.md
   - Safety:
