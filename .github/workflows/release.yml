@@ -108,6 +108,36 @@ jobs:
             return $matches[0]
           }
 
+          function Wait-ReleaseForState {
+            param(
+              [Parameter(Mandatory)] [bool] $Draft,
+              [int] $Attempts = 15,
+              [int] $DelaySeconds = 2
+            )
+
+            for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+              $release = Get-ReleaseForTag
+              if ($release) {
+                $isDraft = [bool] $release.draft
+                if ($isDraft -eq $Draft) { return $release }
+
+                # A supposedly private draft becoming public before validation
+                # is unsafe, not eventual consistency. Fail immediately so the
+                # caller's cleanup path removes it.
+                if ($Draft -and -not $isDraft) {
+                  throw "Release $tag became public before draft validation"
+                }
+              }
+
+              if ($attempt -lt $Attempts) {
+                Start-Sleep -Seconds $DelaySeconds
+              }
+            }
+
+            $expectedState = if ($Draft) { 'draft' } else { 'published' }
+            throw "Timed out waiting for $tag to become visible as $expectedState"
+          }
+
           function Get-TagCommit {
             $json = (& gh api "repos/$repository/git/ref/tags/$tag" 2>$null) -join "`n"
             if ($LASTEXITCODE -ne 0) { return $null }
@@ -191,7 +221,7 @@ jobs:
                 & gh release edit $tag --repo $repository --draft=false
                 if ($LASTEXITCODE -ne 0) { throw "Unable to publish recovered draft $tag" }
               }
-              $published = Get-ReleaseForTag
+              $published = Wait-ReleaseForState -Draft $false
               Assert-ReleaseContract -Release $published -RequirePublished $true -VerifyLocalDigests $true
               if ((Get-TagCommit) -ne $commit) {
                 throw "Release tag $tag does not point to the triggering commit"
@@ -225,10 +255,9 @@ jobs:
               --draft
             if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }
 
-            $draft = Get-ReleaseForTag
-            if (-not $draft -or -not $draft.draft) {
-              throw "Expected $tag to remain a draft during validation"
-            }
+            # Draft creation and release-list visibility are eventually
+            # consistent. Poll a bounded interval instead of racing the API.
+            $draft = Wait-ReleaseForState -Draft $true
             Assert-ReleaseContract -Release $draft -RequirePublished $false -VerifyLocalDigests $true
             # GitHub may defer creation of a new Git ref until a draft is
             # published, so validate target_commitish while it is still a
@@ -241,7 +270,7 @@ jobs:
             & gh release edit $tag --repo $repository --draft=false
             if ($LASTEXITCODE -ne 0) { throw "Unable to publish $tag" }
 
-            $release = Get-ReleaseForTag
+            $release = Wait-ReleaseForState -Draft $false
             Assert-ReleaseContract -Release $release -RequirePublished $true -VerifyLocalDigests $true
             if ((Get-TagCommit) -ne $commit) {
               throw "Published tag $tag does not point to the triggering commit"
