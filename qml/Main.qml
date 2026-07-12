@@ -666,8 +666,8 @@ ApplicationWindow {
                         id: recoveryRow
                         width: parent.width
                         Rectangle {
-                            width: 24
-                            height: 24
+                            Layout.preferredWidth: 24
+                            Layout.preferredHeight: 24
                             radius: 12
                             color: DesignTokens.tertiary(root.darkTheme)
                             Label { anchors.centerIn: parent; text: "!"; font.family: DesignTokens.fontBody; font.weight: Font.Bold; color: DesignTokens.onTertiary(root.darkTheme) }

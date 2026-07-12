@@ -120,22 +120,13 @@ Item {
             }
         }
 
-        TabBar {
+        WfTabBar {
             id: tabs
             Layout.fillWidth: true
-            background: Rectangle {
-                color: "transparent"
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: 1
-                    color: root.outlineVariant
-                }
-            }
-            TabButton { text: root.tr("Action timeline", "動作時間線"); font.family: DesignTokens.fontBody }
-            TabButton { text: root.tr("Git commits", "Git commit"); font.family: DesignTokens.fontBody }
-            TabButton { text: root.tr("Recovery & notifications", "復原同通知"); font.family: DesignTokens.fontBody }
+            dark: root.dark
+            model: [root.tr("Action timeline", "動作時間線"),
+                    root.tr("Git commits", "Git commit"),
+                    root.tr("Recovery & notifications", "復原同通知")]
         }
 
         StackLayout {

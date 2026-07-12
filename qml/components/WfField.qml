@@ -9,7 +9,10 @@ Control {
     property bool dark: Material.theme === Material.Dark
     property string label: ""
     property alias text: input.text
-    property alias placeholderText: input.placeholderText
+    // Rendered by an inline overlay below instead of TextField.placeholderText:
+    // the Material style floats a non-empty field's placeholder onto the top
+    // border, striking through it, and WfField already draws its own label.
+    property string placeholderText: ""
     property alias readOnly: input.readOnly
     property alias validator: input.validator
     property alias echoMode: input.echoMode
@@ -95,6 +98,19 @@ Control {
                                                               root.motionEnabled)
                     }
                 }
+            }
+
+            Label {
+                anchors.fill: parent
+                leftPadding: input.leftPadding
+                rightPadding: input.rightPadding
+                visible: root.placeholderText.length > 0 && input.displayText.length === 0
+                text: root.placeholderText
+                color: DesignTokens.onSurfaceVariant(root.dark)
+                font: input.font
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+                Accessible.ignored: true
             }
         }
 

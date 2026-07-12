@@ -233,8 +233,8 @@ ScrollView {
                             Layout.fillWidth: true
                             spacing: 9
                             Rectangle {
-                                width: 18
-                                height: 18
+                                Layout.preferredWidth: 18
+                                Layout.preferredHeight: 18
                                 radius: 9
                                 color: DesignTokens.successContainer(root.dark)
                                 Label {
@@ -415,10 +415,11 @@ ScrollView {
                     font.weight: Font.DemiBold
                     font.letterSpacing: 1
                     color: DesignTokens.onSurfaceVariant(root.dark)
+                    elide: Text.ElideRight
                 }
                 Rectangle {
-                    width: 28
-                    height: 28
+                    Layout.preferredWidth: 28
+                    Layout.preferredHeight: 28
                     radius: DesignTokens.radiusControl
                     color: root.toneContainer(metric.tone)
                     WfIcon {

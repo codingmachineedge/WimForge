@@ -49,31 +49,14 @@ Item {
             }
         }
 
-        TabBar {
+        WfTabBar {
             id: compactCategories
             visible: !root.railMode
             Layout.fillWidth: true
+            dark: root.dark
             currentIndex: root.categoryIndex
             onCurrentIndexChanged: root.categoryIndex = currentIndex
-            background: Rectangle {
-                color: "transparent"
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: 1
-                    color: root.outlineVariant
-                }
-            }
-            Repeater {
-                model: root.categories
-                TabButton {
-                    required property var modelData
-                    text: root.tr(modelData.en, modelData.zh)
-                    font.family: DesignTokens.fontBody
-                    font.pixelSize: 12
-                }
-            }
+            model: root.categories.map(category => root.tr(category.en, category.zh))
         }
 
         GridLayout {
@@ -110,6 +93,7 @@ Item {
                     Repeater {
                         model: root.categories
                         delegate: ItemDelegate {
+                            id: categoryDelegate
                             required property var modelData
                             required property int index
                             Layout.fillWidth: true
@@ -120,17 +104,17 @@ Item {
                             onClicked: root.categoryIndex = index
                             background: Rectangle {
                                 radius: DesignTokens.radiusControl
-                                color: parent.highlighted
+                                color: categoryDelegate.highlighted
                                        ? DesignTokens.primaryContainer(root.dark)
-                                       : parent.hovered
+                                       : categoryDelegate.hovered
                                          ? DesignTokens.surfaceHigh(root.dark) : "transparent"
                             }
                             contentItem: RowLayout {
                                 spacing: DesignTokens.spacing8
                                 Label {
                                     Layout.preferredWidth: 24
-                                    text: parent.parent.modelData.code
-                                    color: parent.parent.highlighted
+                                    text: categoryDelegate.modelData.code
+                                    color: categoryDelegate.highlighted
                                            ? DesignTokens.onPrimaryContainer(root.dark)
                                            : root.surfaceVariantForeground
                                     font.family: DesignTokens.fontMono
@@ -139,12 +123,12 @@ Item {
                                 }
                                 Label {
                                     Layout.fillWidth: true
-                                    text: root.tr(parent.parent.modelData.en, parent.parent.modelData.zh)
-                                    color: parent.parent.highlighted
+                                    text: root.tr(categoryDelegate.modelData.en, categoryDelegate.modelData.zh)
+                                    color: categoryDelegate.highlighted
                                            ? DesignTokens.onPrimaryContainer(root.dark) : root.surfaceForeground
                                     font.family: DesignTokens.fontBody
                                     font.pixelSize: 12
-                                    font.weight: parent.parent.highlighted ? Font.DemiBold : Font.Normal
+                                    font.weight: categoryDelegate.highlighted ? Font.DemiBold : Font.Normal
                                     elide: Text.ElideRight
                                 }
                             }

@@ -435,49 +435,16 @@ Item {
             }
         }
 
-        TabBar {
+        WfTabBar {
             id: sectionTabs
             Layout.fillWidth: true
-            currentIndex: 0
-
-            background: Rectangle { color: "transparent" }
-
-            TabButton {
-                width: sectionTabs.width / 5
-                text: root.tr("Inventory", "清單")
-                font.family: DesignTokens.fontBody
-                font.pixelSize: 12
-                implicitHeight: DesignTokens.rowHeight
-            }
-            TabButton {
-                width: sectionTabs.width / 5
-                text: root.compact ? root.tr("Create", "建立／載入")
-                                   : root.tr("Create / load", "建立／載入")
-                font.family: DesignTokens.fontBody
-                font.pixelSize: 12
-                implicitHeight: DesignTokens.rowHeight
-            }
-            TabButton {
-                width: sectionTabs.width / 5
-                text: root.tr("Hardware", "硬件")
-                font.family: DesignTokens.fontBody
-                font.pixelSize: 12
-                implicitHeight: DesignTokens.rowHeight
-            }
-            TabButton {
-                width: sectionTabs.width / 5
-                text: root.tr("Snapshots", "快照")
-                font.family: DesignTokens.fontBody
-                font.pixelSize: 12
-                implicitHeight: DesignTokens.rowHeight
-            }
-            TabButton {
-                width: sectionTabs.width / 5
-                text: root.tr("Validation", "驗證")
-                font.family: DesignTokens.fontBody
-                font.pixelSize: 12
-                implicitHeight: DesignTokens.rowHeight
-            }
+            dark: root.dark
+            model: [root.tr("Inventory", "清單"),
+                    root.compact ? root.tr("Create", "建立／載入")
+                                 : root.tr("Create / load", "建立／載入"),
+                    root.tr("Hardware", "硬件"),
+                    root.tr("Snapshots", "快照"),
+                    root.tr("Validation", "驗證")]
         }
 
         StackLayout {
@@ -518,65 +485,66 @@ Item {
                                 font.weight: Font.Bold
                             }
 
-                            ListView {
-                                id: providerList
+                            Flow {
+                                id: providerFlow
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 46
-                                orientation: ListView.Horizontal
                                 spacing: DesignTokens.spacing8
-                                clip: true
-                                model: root.app.vmProviders || []
-                                ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                                delegate: Rectangle {
-                                    id: providerCard
-                                    required property var modelData
-                                    width: Math.max(142, providerNameLabel.implicitWidth + 38)
-                                    height: DesignTokens.rowHeight
-                                    radius: DesignTokens.radiusControl
-                                    color: DesignTokens.surfaceLow(root.dark)
-                                    border.width: 1
-                                    border.color: root.outlineColor
-                                    Accessible.name: root.tr("Provider %1", "供應器 %1").arg(root.value(providerCard.modelData, "displayName", ""))
+                                Repeater {
+                                    id: providerList
+                                    model: root.app.vmProviders || []
+                                    delegate: Rectangle {
+                                        id: providerCard
+                                        required property var modelData
+                                        width: Math.min(Math.max(120, providerNameLabel.implicitWidth + 38),
+                                                        providerFlow.width)
+                                        height: DesignTokens.rowHeight
+                                        radius: DesignTokens.radiusControl
+                                        color: DesignTokens.surfaceLow(root.dark)
+                                        border.width: 1
+                                        border.color: root.outlineColor
+                                        Accessible.name: root.tr("Provider %1", "供應器 %1").arg(root.value(providerCard.modelData, "displayName", ""))
 
-                                    RowLayout {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: 10
-                                        anchors.rightMargin: 10
-                                        spacing: DesignTokens.spacing8
-                                        Rectangle {
-                                            Layout.preferredWidth: 8
-                                            Layout.preferredHeight: 8
-                                            radius: 4
-                                            color: root.value(providerCard.modelData, "available", false)
-                                                   ? root.successText : root.errorText
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 10
+                                            anchors.rightMargin: 10
+                                            spacing: DesignTokens.spacing8
+                                            Rectangle {
+                                                Layout.preferredWidth: 8
+                                                Layout.preferredHeight: 8
+                                                radius: 4
+                                                color: root.value(providerCard.modelData, "available", false)
+                                                       ? root.successText : root.errorText
+                                            }
+                                            Label {
+                                                id: providerNameLabel
+                                                Layout.fillWidth: true
+                                                text: root.value(providerCard.modelData, "displayName",
+                                                                 root.value(providerCard.modelData, "id", ""))
+                                                color: root.surfaceForeground
+                                                font.family: DesignTokens.fontBody
+                                                font.pixelSize: 11
+                                                font.weight: Font.DemiBold
+                                                elide: Text.ElideRight
+                                                ToolTip.visible: providerHover.containsMouse
+                                                ToolTip.text: root.value(providerCard.modelData, "version", root.tr("Version not reported", "未回報版本"))
+                                                              + "\n" + root.capabilitySummary(providerCard.modelData)
+                                            }
                                         }
-                                        Label {
-                                            id: providerNameLabel
-                                            Layout.fillWidth: true
-                                            text: root.value(providerCard.modelData, "displayName",
-                                                             root.value(providerCard.modelData, "id", ""))
-                                            color: root.surfaceForeground
-                                            font.family: DesignTokens.fontBody
-                                            font.pixelSize: 11
-                                            font.weight: Font.DemiBold
-                                            elide: Text.ElideRight
-                                            ToolTip.visible: providerHover.containsMouse
-                                            ToolTip.text: root.value(providerCard.modelData, "version", root.tr("Version not reported", "未回報版本"))
-                                                          + "\n" + root.capabilitySummary(providerCard.modelData)
-                                        }
+                                        MouseArea { id: providerHover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
                                     }
-                                    MouseArea { id: providerHover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
                                 }
+                            }
 
-                                Label {
-                                    anchors.centerIn: parent
-                                    visible: providerList.count === 0
-                                    text: root.tr("No providers detected", "未偵測到供應器")
-                                    color: root.secondaryText
-                                    font.family: DesignTokens.fontBody
-                                    font.pixelSize: 11
-                                }
+                            Label {
+                                Layout.fillWidth: true
+                                visible: providerList.count === 0
+                                horizontalAlignment: Text.AlignHCenter
+                                text: root.tr("No providers detected", "未偵測到供應器")
+                                color: root.secondaryText
+                                font.family: DesignTokens.fontBody
+                                font.pixelSize: 11
                             }
 
                             TextField {
@@ -592,8 +560,10 @@ Item {
 
                             GridLayout {
                                 Layout.fillWidth: true
-                                columns: 2
-                                columnSpacing: DesignTokens.spacing8
+                                // One combo per row: the bilingual filter labels
+                                // need the panel's full width to stay readable.
+                                columns: 1
+                                rowSpacing: DesignTokens.spacing8
                                 ComboBox {
                                     id: providerFilter
                                     Layout.fillWidth: true
@@ -601,6 +571,15 @@ Item {
                                     model: ["all"].concat(root.providerIds(false))
                                     displayText: currentText === "all" ? root.tr("All providers", "全部供應器") : root.providerName(currentText)
                                     Accessible.name: root.tr("Filter by provider", "按供應器篩選")
+                                    contentItem: Label {
+                                        leftPadding: 12
+                                        rightPadding: providerFilter.indicator.width + 4
+                                        text: providerFilter.displayText
+                                        font: providerFilter.font
+                                        color: root.surfaceForeground
+                                        verticalAlignment: Text.AlignVCenter
+                                        elide: Text.ElideRight
+                                    }
                                     delegate: ItemDelegate {
                                         required property var modelData
                                         width: providerFilter.width
@@ -614,6 +593,15 @@ Item {
                                     model: ["all", "running", "paused", "suspended", "saved", "powered-off", "inaccessible"]
                                     displayText: root.stateLabel(currentText)
                                     Accessible.name: root.tr("Filter by power state", "按電源狀態篩選")
+                                    contentItem: Label {
+                                        leftPadding: 12
+                                        rightPadding: stateFilter.indicator.width + 4
+                                        text: stateFilter.displayText
+                                        font: stateFilter.font
+                                        color: root.surfaceForeground
+                                        verticalAlignment: Text.AlignVCenter
+                                        elide: Text.ElideRight
+                                    }
                                     delegate: ItemDelegate {
                                         required property var modelData
                                         width: stateFilter.width

@@ -90,8 +90,8 @@ ScrollView {
                 width: parent.width
                 spacing: 12
                 Rectangle {
-                    width: 30
-                    height: 30
+                    Layout.preferredWidth: 30
+                    Layout.preferredHeight: 30
                     radius: DesignTokens.radiusControl
                     color: DesignTokens.primary(root.dark)
                     Label {

@@ -685,14 +685,16 @@ Item {
                                             color: root.secondaryTextColor
                                             wrapMode: Text.Wrap
                                         }
-                                        TabBar {
+                                        WfTabBar {
                                             id: stateTabs
                                             Layout.fillWidth: true
+                                            dark: root.dark
                                             currentIndex: 1
+                                            showBaseline: false
                                             onCurrentIndexChanged: root.draftState = currentIndex
-                                            TabButton { text: root.tr("Not configured", "未設定") }
-                                            TabButton { text: root.tr("Enabled", "啟用") }
-                                            TabButton { text: root.tr("Disabled", "停用") }
+                                            model: [root.tr("Not configured", "未設定"),
+                                                    root.tr("Enabled", "啟用"),
+                                                    root.tr("Disabled", "停用")]
                                         }
                                     }
                                 }

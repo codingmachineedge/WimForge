@@ -51,24 +51,33 @@ AbstractButton {
     Accessible.role: Accessible.Button
     Accessible.name: text
 
-    contentItem: Row {
-        spacing: root.spacing
-        anchors.centerIn: parent
+    // The control resizes its contentItem to the full available area, and a
+    // plain Row top-aligns children — so wrap the Row in an Item and center
+    // it explicitly to keep the label optically centered in the pill.
+    contentItem: Item {
+        implicitWidth: buttonRow.implicitWidth
+        implicitHeight: buttonRow.implicitHeight
 
-        Label {
-            visible: root.glyph.length > 0
-            text: root.glyph
-            color: root.foregroundColor
-            font.family: DesignTokens.fontBody
-            font.pixelSize: 15
-            verticalAlignment: Text.AlignVCenter
-            Accessible.ignored: true
-        }
-        Label {
-            text: root.text
-            color: root.foregroundColor
-            font: root.font
-            verticalAlignment: Text.AlignVCenter
+        Row {
+            id: buttonRow
+            anchors.centerIn: parent
+            spacing: root.spacing
+
+            Label {
+                visible: root.glyph.length > 0
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.glyph
+                color: root.foregroundColor
+                font.family: DesignTokens.fontBody
+                font.pixelSize: 15
+                Accessible.ignored: true
+            }
+            Label {
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.text
+                color: root.foregroundColor
+                font: root.font
+            }
         }
     }
 
