@@ -405,15 +405,15 @@ int main(int argc, char *argv[])
          QStringLiteral("\"Segoe UI Variable Text\"")},
         {QStringLiteral("string"), QStringLiteral("fontMono"),
          QStringLiteral("\"Cascadia Mono\"")},
-        {QStringLiteral("int"), QStringLiteral("radiusControl"), QStringLiteral("8")},
-        {QStringLiteral("int"), QStringLiteral("radiusCard"), QStringLiteral("12")},
-        {QStringLiteral("int"), QStringLiteral("radiusPill"), QStringLiteral("20")},
+        {QStringLiteral("int"), QStringLiteral("radiusControl"), QStringLiteral("12")},
+        {QStringLiteral("int"), QStringLiteral("radiusCard"), QStringLiteral("18")},
+        {QStringLiteral("int"), QStringLiteral("radiusPill"), QStringLiteral("22")},
         {QStringLiteral("int"), QStringLiteral("navWidth"), QStringLiteral("260")},
         {QStringLiteral("int"), QStringLiteral("navCompactWidth"), QStringLiteral("76")},
-        {QStringLiteral("int"), QStringLiteral("topBarHeight"), QStringLiteral("56")},
-        {QStringLiteral("int"), QStringLiteral("controlHeight"), QStringLiteral("38")},
-        {QStringLiteral("int"), QStringLiteral("fieldHeight"), QStringLiteral("38")},
-        {QStringLiteral("int"), QStringLiteral("rowHeight"), QStringLiteral("40")},
+        {QStringLiteral("int"), QStringLiteral("topBarHeight"), QStringLiteral("64")},
+        {QStringLiteral("int"), QStringLiteral("controlHeight"), QStringLiteral("40")},
+        {QStringLiteral("int"), QStringLiteral("fieldHeight"), QStringLiteral("44")},
+        {QStringLiteral("int"), QStringLiteral("rowHeight"), QStringLiteral("44")},
         {QStringLiteral("int"), QStringLiteral("spacing4"), QStringLiteral("4")},
         {QStringLiteral("int"), QStringLiteral("spacing8"), QStringLiteral("8")},
         {QStringLiteral("int"), QStringLiteral("spacing12"), QStringLiteral("12")},
@@ -503,7 +503,7 @@ int main(int argc, char *argv[])
                           .match(mainPolicyText).hasMatch()
                    && QRegularExpression(QStringLiteral(R"(\bDesignTokens\s*\.\s*topBarHeight\b)"))
                           .match(mainPolicyText).hasMatch(),
-               QStringLiteral("The application shell must consume the exact 260/76/56 navigation and top-bar tokens"));
+               QStringLiteral("The application shell must consume the exact 260/76/64 navigation and top-bar tokens"));
 
     const QString navigationModel = arrayPropertyBlock(mainPolicyText,
                                                        QStringLiteral("navigationItems"));
