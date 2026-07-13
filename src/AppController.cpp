@@ -917,17 +917,24 @@ AppController::AppController(QObject *parent)
                 : WinForgeBridge::detectRuntimeContract(runtimePath, &bridgeError);
             if (!guard)
                 return;
-            QMetaObject::invokeMethod(guard, [guard, runtimePath, contract, bridgeError] {
-                if (!guard)
+            QMetaObject::invokeMethod(guard, [guard, configuredPath, runtimePath,
+                                              contract, bridgeError] {
+                if (!guard || guard->m_winForgeRuntimePath != configuredPath)
                     return;
                 guard->m_winForgeRuntimePath = runtimePath;
                 guard->m_winForgeRuntimeContract = contract;
                 guard->m_winForgeRuntimeStatus = contract.runtimeFound
-                    ? QStringLiteral("Detected %1 runtime; capabilities: %2")
-                          .arg(contract.declaredContract
-                                   ? QStringLiteral("declared-contract")
-                                   : QStringLiteral("legacy"),
-                               contract.capabilities.join(QStringLiteral(", ")))
+                    ? guard->localized(
+                          QStringLiteral("Detected %1 runtime; capabilities: %2")
+                              .arg(contract.declaredContract
+                                       ? QStringLiteral("declared-contract")
+                                       : QStringLiteral("legacy"),
+                                   contract.capabilities.join(QStringLiteral(", "))),
+                          QStringLiteral("偵測到 %1 runtime；功能：%2")
+                              .arg(contract.declaredContract
+                                       ? QStringLiteral("已宣告合約")
+                                       : QStringLiteral("舊版"),
+                                   contract.capabilities.join(QStringLiteral(", "))))
                     : bridgeError;
                 emit guard->studioChanged();
             }, Qt::QueuedConnection);
@@ -1145,7 +1152,10 @@ int AppController::notificationUnreadCount() const
 }
 
 QString AppController::notificationRepoPath() const { return m_notificationStore.storeDirectory(); }
-bool AppController::busy() const { return m_jobEngine.isRunning() || m_inspecting; }
+bool AppController::busy() const
+{
+    return m_jobEngine.isRunning() || m_inspecting || m_projectTransitionBusy;
+}
 bool AppController::backgroundBusy() const
 {
     return m_projectTransitionBusy
@@ -1156,6 +1166,7 @@ bool AppController::backgroundBusy() const
         || m_planRefreshBusy || m_historyRefreshBusy
         || m_gpoLoading;
 }
+bool AppController::projectTransitionBusy() const { return m_projectTransitionBusy; }
 QString AppController::backgroundStatus() const
 {
     return m_backgroundStatus;
@@ -1616,6 +1627,9 @@ bool AppController::createProject(const QString &directory, const QString &name)
         QStringLiteral("project: create %1").arg(project.projectName),
         QStringLiteral("工程：建立 %1").arg(project.projectName));
     m_projectTransitionBusy = true;
+    ++m_projectScopeGeneration;
+    ++m_payloadDiscoveryGeneration;
+    m_payloadDiscoveryBusy = false;
     m_backgroundStatus = localized(
         QStringLiteral("Creating the project and Git history in the background…"),
         QStringLiteral("正喺後台建立工程同 Git 歷史……"));
@@ -1635,6 +1649,7 @@ bool AppController::createProject(const QString &directory, const QString &name)
                     QStringLiteral("Project creation failed."),
                     QStringLiteral("建立工程失敗。"));
                 guard->showError(error);
+                emit guard->projectTransitionFinished(false);
                 return;
             }
             guard->m_project = std::move(project);
@@ -1651,6 +1666,7 @@ bool AppController::createProject(const QString &directory, const QString &name)
             guard->showSuccess(guard->localized(
                 QStringLiteral("Project created — Git history is active."),
                 QStringLiteral("工程開好 — Git 歷史已經開工。")));
+            emit guard->projectTransitionFinished(true);
         }, Qt::QueuedConnection);
     });
     return true;
@@ -1665,6 +1681,9 @@ bool AppController::openProject(const QString &directory)
     }
     const QString projectDirectory = cleanPath(directory);
     m_projectTransitionBusy = true;
+    ++m_projectScopeGeneration;
+    ++m_payloadDiscoveryGeneration;
+    m_payloadDiscoveryBusy = false;
     m_backgroundStatus = localized(
         QStringLiteral("Opening the project in the background…"),
         QStringLiteral("正喺後台開工程……"));
@@ -1684,6 +1703,7 @@ bool AppController::openProject(const QString &directory)
                     QStringLiteral("Project opening failed."),
                     QStringLiteral("開工程失敗。"));
                 guard->showError(error);
+                emit guard->projectTransitionFinished(false);
                 return;
             }
             guard->m_project = *project;
@@ -1695,6 +1715,7 @@ bool AppController::openProject(const QString &directory)
                 QStringLiteral("工程已開；目錄正喺後台載入。"));
             guard->showSuccess(guard->localized(QStringLiteral("Project opened."),
                                                 QStringLiteral("工程開咗。")));
+            emit guard->projectTransitionFinished(true);
         }, Qt::QueuedConnection);
     });
     return true;
@@ -1715,6 +1736,9 @@ bool AppController::importProject(const QString &sourceFile, const QString &dest
         QStringLiteral("bundle: reconnect notification history"),
         QStringLiteral("Bundle：重新連接通知歷史"));
     m_projectTransitionBusy = true;
+    ++m_projectScopeGeneration;
+    ++m_payloadDiscoveryGeneration;
+    m_payloadDiscoveryBusy = false;
     m_backgroundStatus = localized(
         QStringLiteral("Importing the project in the background…"),
         QStringLiteral("正喺後台匯入工程……"));
@@ -1766,6 +1790,7 @@ bool AppController::importProject(const QString &sourceFile, const QString &dest
                     QStringLiteral("Project import failed."),
                     QStringLiteral("匯入工程失敗。"));
                 guard->showError(error);
+                emit guard->projectTransitionFinished(false);
                 return;
             }
             guard->m_project = std::move(*project);
@@ -1793,6 +1818,7 @@ bool AppController::importProject(const QString &sourceFile, const QString &dest
                                   QStringLiteral("匯入咗嘅設定而家有自己一份本機 Git 歷史。")),
                               QStringLiteral("success"));
             }
+            emit guard->projectTransitionFinished(true);
         }, Qt::QueuedConnection);
     });
     return true;
@@ -1809,6 +1835,7 @@ bool AppController::exportProject(const QString &destinationFile)
     const QString destination = cleanPath(destinationFile);
     const ProjectConfig project = *m_project;
     const QString notificationDirectory = m_notificationStore.storeDirectory();
+    const auto notificationMutex = m_notificationRepositoryMutex;
     m_projectTransitionBusy = true;
     m_backgroundStatus = localized(
         QStringLiteral("Exporting the project in the background…"),
@@ -1816,12 +1843,14 @@ bool AppController::exportProject(const QString &destinationFile)
     emit stateChanged();
     const QPointer<AppController> guard(this);
     QThreadPool::globalInstance()->start(
-        [guard, project, notificationDirectory, destination, destinationFile] {
+        [guard, project, notificationDirectory, notificationMutex,
+         destination, destinationFile] {
         QString error;
         bool exported = false;
         if (QFileInfo(destination).suffix().compare(QStringLiteral("json"), Qt::CaseInsensitive) == 0) {
             exported = project.exportJson(destination, &error);
         } else {
+            QMutexLocker locker(notificationMutex.get());
             const QList<ProjectBundleRepository> repositories{
                 {ProjectBundle::ProjectRepositoryRole, project.projectDirectory,
                  QStringLiteral("project")},
@@ -1872,6 +1901,12 @@ void AppController::requestExportScript() { emit exportScriptRequested(); }
 bool AppController::mutateProject(const QString &message, const ProjectMutation &mutation)
 {
     if (!m_project) { showError(QStringLiteral("Open a project first.")); return false; }
+    if (m_projectTransitionBusy) {
+        showError(localized(
+            QStringLiteral("Wait for the project operation to finish before changing this project."),
+            QStringLiteral("等工程操作完成，先再改呢個工程。")));
+        return false;
+    }
     StructuredLogger::instance().log(
         LogSeverity::Info, QStringLiteral("controller.action"),
         QStringLiteral("project.mutation_started"),
@@ -1908,9 +1943,10 @@ void AppController::beginNextProjectMutation()
 
     const PendingProjectMutation pending = m_projectMutationQueue.head();
     const QString notificationRepository = m_notificationStore.storeDirectory();
+    const auto notificationMutex = m_notificationRepositoryMutex;
     const QPointer<AppController> guard(this);
     QThreadPool::globalInstance()->start(
-        [guard, pending, notificationRepository]() mutable {
+        [guard, pending, notificationRepository, notificationMutex]() mutable {
         QString error;
         QString historyError;
         QString bundleError;
@@ -1945,6 +1981,7 @@ void AppController::beginNextProjectMutation()
             if (pending.project.autoExport
                 && QFileInfo(pending.project.autoExportPath).suffix().compare(
                        QStringLiteral("wimforge"), Qt::CaseInsensitive) == 0) {
+                QMutexLocker locker(notificationMutex.get());
                 const QList<ProjectBundleRepository> repositories{
                     {ProjectBundle::ProjectRepositoryRole,
                      pending.project.projectDirectory, QStringLiteral("project")},
@@ -2015,7 +2052,8 @@ void AppController::finishProjectMutation(bool saved, const QString &error,
                         QStringLiteral("工程變更已喺後台儲存。"))
             : localized(QStringLiteral("Saving the next project change…"),
                         QStringLiteral("正喺後台儲存下一項工程變更……"));
-        refreshHistory();
+        if (m_projectMutationQueue.isEmpty())
+            refreshHistory();
     }
     emit stateChanged();
     beginNextProjectMutation();
@@ -2300,6 +2338,9 @@ bool AppController::addPayloadDirectory(const QString &category, const QUrl &dir
         return false;
     }
     const QString absoluteFolder = info.absoluteFilePath();
+    const QString projectDirectory = cleanPath(m_project->projectDirectory);
+    const quint64 projectGeneration = m_projectScopeGeneration;
+    const quint64 discoveryGeneration = ++m_payloadDiscoveryGeneration;
     const ServicingPayloadKind kind = driversCategory
         ? ServicingPayloadKind::Driver : ServicingPayloadKind::Update;
     m_payloadDiscoveryBusy = true;
@@ -2311,14 +2352,22 @@ bool AppController::addPayloadDirectory(const QString &category, const QUrl &dir
 
     const QPointer<AppController> guard(this);
     QThreadPool::globalInstance()->start(
-        [guard, absoluteFolder, kind, category, driversCategory] {
+        [guard, absoluteFolder, kind, category, driversCategory,
+         projectDirectory, projectGeneration, discoveryGeneration] {
         const QStringList discovered = PayloadCatalog::discoverFiles(absoluteFolder, kind);
         if (!guard)
             return;
         QMetaObject::invokeMethod(
-            guard, [guard, absoluteFolder, category, driversCategory, discovered] {
+            guard, [guard, absoluteFolder, category, driversCategory, discovered,
+                    projectDirectory, projectGeneration, discoveryGeneration] {
             if (!guard)
                 return;
+            if (discoveryGeneration != guard->m_payloadDiscoveryGeneration
+                || projectGeneration != guard->m_projectScopeGeneration
+                || !guard->m_project
+                || cleanPath(guard->m_project->projectDirectory) != projectDirectory) {
+                return;
+            }
             guard->m_payloadDiscoveryBusy = false;
             if (discovered.isEmpty()) {
                 guard->showError(guard->localized(
@@ -2455,8 +2504,13 @@ void AppController::cancelUpdateCatalog()
 void AppController::searchUpdateCatalog(const QString &query)
 {
     const QString trimmed = query.trimmed();
+    const quint64 operationGeneration = ++m_catalogOperationGeneration;
+    const quint64 projectGeneration = m_projectScopeGeneration;
+    const QString projectDirectory = m_project
+        ? cleanPath(m_project->projectDirectory) : QString();
+    m_updateCatalogQuery = trimmed;
+    m_updateCatalogResults.clear();
     if (trimmed.isEmpty()) {
-        m_updateCatalogResults.clear();
         m_updateCatalogBusy = false;
         m_updateCatalogDownloadProgress = 0.0;
         m_updateCatalogStatus = localized(
@@ -2483,7 +2537,18 @@ void AppController::searchUpdateCatalog(const QString &query)
     request.setTransferTimeout(30000);
     QNetworkReply *reply = m_catalogNetwork->get(request);
     m_catalogReply = reply;
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+    connect(reply, &QNetworkReply::finished, this,
+            [this, reply, operationGeneration, projectGeneration,
+             projectDirectory]() {
+        const bool currentRequest = operationGeneration == m_catalogOperationGeneration
+            && projectGeneration == m_projectScopeGeneration
+            && ((!m_project && projectDirectory.isEmpty())
+                || (m_project
+                    && cleanPath(m_project->projectDirectory) == projectDirectory));
+        if (!currentRequest) {
+            reply->deleteLater();
+            return;
+        }
         if (reply->error() == QNetworkReply::OperationCanceledError) {
             // A user cancel nulls m_catalogReply before abort(); a transfer
             // timeout aborts with the same error but leaves it pointing here, so
@@ -2504,6 +2569,7 @@ void AppController::searchUpdateCatalog(const QString &query)
             m_catalogReply = nullptr;
         m_updateCatalogBusy = false;
         if (reply->error() != QNetworkReply::NoError) {
+            m_updateCatalogResults.clear();
             m_updateCatalogStatus = localized(
                 QStringLiteral("Could not reach the Microsoft Update Catalog: %1").arg(reply->errorString()),
                 QStringLiteral("連唔到 Microsoft Update Catalog：%1").arg(reply->errorString()));
@@ -2514,7 +2580,6 @@ void AppController::searchUpdateCatalog(const QString &query)
         const QString html = QString::fromUtf8(reply->readAll());
         reply->deleteLater();
         const QList<UpdateCatalogEntry> entries = UpdateCatalog::parseSearchResults(html);
-        m_updateCatalogResults.clear();
         for (const UpdateCatalogEntry &entry : entries) {
             m_updateCatalogResults.append(QVariantMap{
                 {QStringLiteral("updateId"), entry.updateId},
@@ -2558,6 +2623,9 @@ void AppController::downloadUpdateCatalogItem(const QString &updateId, const QSt
     if (!m_catalogNetwork)
         m_catalogNetwork = new QNetworkAccessManager(this);
     cancelUpdateCatalog();
+    const quint64 operationGeneration = ++m_catalogOperationGeneration;
+    const quint64 projectGeneration = m_projectScopeGeneration;
+    const QString projectDirectory = cleanPath(m_project->projectDirectory);
     m_updateCatalogBusy = true;
     m_updateCatalogDownloadProgress = 0.0;
     m_updateCatalogStatus = localized(QStringLiteral("Resolving the download link…"),
@@ -2583,7 +2651,16 @@ void AppController::downloadUpdateCatalogItem(const QString &updateId, const QSt
     QNetworkReply *dialog = m_catalogNetwork->post(request, UpdateCatalog::downloadDialogBody(updateId));
     m_catalogReply = dialog;
     connect(dialog, &QNetworkReply::finished, this,
-            [this, dialog, safeCategory, destinationDir, perFileByteCap]() {
+            [this, dialog, safeCategory, destinationDir, perFileByteCap,
+             operationGeneration, projectGeneration, projectDirectory]() {
+        const bool currentRequest = operationGeneration == m_catalogOperationGeneration
+            && projectGeneration == m_projectScopeGeneration
+            && m_project
+            && cleanPath(m_project->projectDirectory) == projectDirectory;
+        if (!currentRequest) {
+            dialog->deleteLater();
+            return;
+        }
         if (dialog->error() == QNetworkReply::OperationCanceledError) {
             if (m_catalogReply == dialog) {  // transfer timeout, not a user cancel
                 m_catalogReply = nullptr;
@@ -2627,12 +2704,17 @@ void AppController::downloadUpdateCatalogItem(const QString &updateId, const QSt
             emit updateCatalogChanged();
             return;
         }
-        beginCatalogFileDownloads(urls, safeCategory, destinationDir, perFileByteCap);
+        beginCatalogFileDownloads(urls, safeCategory, destinationDir, perFileByteCap,
+                                  operationGeneration, projectGeneration,
+                                  projectDirectory);
     });
 }
 
 void AppController::beginCatalogFileDownloads(const QStringList &urls, const QString &category,
-                                              const QString &destinationDir, qint64 perFileByteCap)
+                                              const QString &destinationDir, qint64 perFileByteCap,
+                                              quint64 operationGeneration,
+                                              quint64 projectGeneration,
+                                              const QString &projectDirectory)
 {
     struct DownloadState
     {
@@ -2643,12 +2725,18 @@ void AppController::beginCatalogFileDownloads(const QStringList &urls, const QSt
         qint64 cap = 0;
         int imported = 0;
         QStringList usedPaths;
+        quint64 operationGeneration = 0;
+        quint64 projectGeneration = 0;
+        QString projectDirectory;
     };
     auto state = std::make_shared<DownloadState>();
     state->urls = urls;
     state->category = category;
     state->destinationDir = destinationDir;
     state->cap = perFileByteCap;
+    state->operationGeneration = operationGeneration;
+    state->projectGeneration = projectGeneration;
+    state->projectDirectory = projectDirectory;
 
     // The sequential driver recurses through this function object. It captures a
     // weak_ptr to itself (never a strong one) so there is no reference cycle;
@@ -2660,6 +2748,12 @@ void AppController::beginCatalogFileDownloads(const QStringList &urls, const QSt
     *step = [this, state, weakStep]() {
         const auto self = weakStep.lock();
         if (!self)
+            return;
+        const bool currentRequest = state->operationGeneration == m_catalogOperationGeneration
+            && state->projectGeneration == m_projectScopeGeneration
+            && m_project
+            && cleanPath(m_project->projectDirectory) == state->projectDirectory;
+        if (!currentRequest)
             return;
         if (state->index >= state->urls.size()) {
             m_updateCatalogBusy = false;
@@ -2751,7 +2845,11 @@ void AppController::beginCatalogFileDownloads(const QStringList &urls, const QSt
             file->write(chunk);
         });
         connect(download, &QNetworkReply::downloadProgress, this,
-                [this](qint64 received, qint64 total) {
+                [this, state](qint64 received, qint64 total) {
+            if (state->operationGeneration != m_catalogOperationGeneration
+                || state->projectGeneration != m_projectScopeGeneration) {
+                return;
+            }
             m_updateCatalogDownloadProgress = total > 0 ? double(received) / double(total) : 0.0;
             emit updateCatalogChanged();
         });
@@ -2771,8 +2869,12 @@ void AppController::beginCatalogFileDownloads(const QStringList &urls, const QSt
             const bool trustedFinalHost = UpdateCatalog::isTrustedDownloadUrl(download->url());
             const bool ok = download->error() == QNetworkReply::NoError
                 && trustedFinalHost && !*safetyAborted;
+            const bool currentRequest = state->operationGeneration == m_catalogOperationGeneration
+                && state->projectGeneration == m_projectScopeGeneration
+                && m_project
+                && cleanPath(m_project->projectDirectory) == state->projectDirectory;
             bool replaced = false;
-            if (ok) {
+            if (ok && currentRequest) {
                 QFile::remove(destinationPath);  // clear any prior copy of this payload
                 replaced = QFile::rename(partPath, destinationPath);
             }
@@ -2780,7 +2882,7 @@ void AppController::beginCatalogFileDownloads(const QStringList &urls, const QSt
                 // The path may already be queued (a re-download); that is success,
                 // not a reason to delete the file the project still points at.
                 bool referenced = false;
-                if (m_project) {
+                if (currentRequest) {
                     const QString absolute = QFileInfo(destinationPath).absoluteFilePath();
                     const QStringList &queue = state->category == QStringLiteral("drivers")
                         ? m_project->drivers : m_project->updates;
@@ -2800,6 +2902,8 @@ void AppController::beginCatalogFileDownloads(const QStringList &urls, const QSt
             }
             download->deleteLater();  // also destroys the parented QFile
 
+            if (!currentRequest)
+                return;
             if (userCanceled) {
                 m_updateCatalogBusy = false;
                 m_updateCatalogDownloadProgress = 0.0;
@@ -3091,8 +3195,16 @@ void AppController::inspectSource()
                             QStringLiteral("來源點貨已經進行緊。")));
         return;
     }
+    if (m_projectTransitionBusy) {
+        showError(localized(QStringLiteral("Wait for the project operation before inspecting its source."),
+                            QStringLiteral("等工程操作完成，先再檢查來源。")));
+        return;
+    }
 
     const QString sourceAtLaunch = m_project->sourcePath;
+    const QString projectDirectoryAtLaunch = cleanPath(m_project->projectDirectory);
+    const quint64 projectGeneration = m_projectScopeGeneration;
+    const quint64 inspectionGeneration = ++m_sourceInspectionGeneration;
     const ImageInspectionCommand command = ImageSourceInspector::commandFor(
         sourceAtLaunch, m_project->imagePath);
     if (!command.error.isEmpty()) {
@@ -3118,8 +3230,40 @@ void AppController::inspectSource()
         QStringLiteral("Starting Windows image-source inspection."),
         QJsonObject{{QStringLiteral("argumentCount"), command.arguments.size()},
                     {QStringLiteral("isoSource"), command.isoSource}});
+    auto *inspectionTimeout = new QTimer(process);
+    inspectionTimeout->setSingleShot(true);
+    inspectionTimeout->setInterval(180000);
+    connect(inspectionTimeout, &QTimer::timeout, this,
+            [this, process, command, sourceAtLaunch, inspectionGeneration] {
+        if (inspectionGeneration != m_sourceInspectionGeneration
+            || process->state() == QProcess::NotRunning) {
+            return;
+        }
+        process->setProperty("wimforgeInspectionTimedOut", true);
+        process->terminate();
+        QTimer::singleShot(3000, process, [process] {
+            if (process->state() != QProcess::NotRunning)
+                process->kill();
+        });
+        if (command.isoSource) {
+            auto *cleanup = new QProcess(this);
+            cleanup->setProgram(resolveExecutableForLaunch(QStringLiteral("powershell.exe")));
+            cleanup->setArguments({
+                QStringLiteral("-NoLogo"), QStringLiteral("-NoProfile"),
+                QStringLiteral("-NonInteractive"), QStringLiteral("-Command"),
+                QStringLiteral("Dismount-DiskImage -ImagePath $args[0] -ErrorAction SilentlyContinue"),
+                sourceAtLaunch,
+            });
+            configureProcessWithoutConsole(*cleanup);
+            connect(cleanup, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+                    cleanup, &QObject::deleteLater);
+            cleanup->start();
+        }
+    });
+    inspectionTimeout->start();
     connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
-            [this, process, command, sourceAtLaunch](int exitCode, QProcess::ExitStatus status) {
+            [this, process, command, sourceAtLaunch, projectDirectoryAtLaunch,
+             projectGeneration, inspectionGeneration](int exitCode, QProcess::ExitStatus status) {
         const QByteArray rawOutput = process->readAll();
         const ImageInspectionResult result = ImageSourceInspector::parseOutput(
             rawOutput, command.isoSource, command.utf8Output);
@@ -3134,7 +3278,26 @@ void AppController::inspectSource()
                         {QStringLiteral("normalExit"), status == QProcess::NormalExit},
                         {QStringLiteral("isoSource"), command.isoSource},
                         {QStringLiteral("outputBytes"), rawOutput.size()}});
-        process->deleteLater(); m_inspecting = false;
+        const bool timedOut = process->property("wimforgeInspectionTimedOut").toBool();
+        process->deleteLater();
+        if (inspectionGeneration == m_sourceInspectionGeneration)
+            m_inspecting = false;
+        if (inspectionGeneration != m_sourceInspectionGeneration
+            || projectGeneration != m_projectScopeGeneration
+            || !m_project
+            || cleanPath(m_project->projectDirectory) != projectDirectoryAtLaunch) {
+            emit stateChanged();
+            return;
+        }
+        if (timedOut) {
+            m_statusText = localized(QStringLiteral("Image inspection timed out"),
+                                     QStringLiteral("映像檢查逾時"));
+            showError(localized(
+                QStringLiteral("Image inspection exceeded three minutes and was stopped. Any ISO mount is being cleaned up in the background."),
+                QStringLiteral("映像檢查超過三分鐘，已經停止。任何 ISO 掛載都會喺後台清理。")));
+            emit stateChanged();
+            return;
+        }
         if (status != QProcess::NormalExit || exitCode != 0) {
             m_statusText = localized(QStringLiteral("Image inspection failed"),
                                      QStringLiteral("映像檢查失敗"));
@@ -3145,7 +3308,7 @@ void AppController::inspectSource()
             emit stateChanged();
             return;
         }
-        if (!m_project || cleanPath(m_project->sourcePath) != cleanPath(sourceAtLaunch)) {
+        if (cleanPath(m_project->sourcePath) != cleanPath(sourceAtLaunch)) {
             m_statusText = localized(QStringLiteral("Source changed; inspection result was ignored"),
                                      QStringLiteral("來源已經改咗；今次結果唔採用"));
             emit stateChanged();
@@ -3226,8 +3389,17 @@ void AppController::inspectSource()
             emit updateCatalogChanged();
         }
     });
-    connect(process, &QProcess::errorOccurred, this, [this, process, command](QProcess::ProcessError error) {
+    connect(process, &QProcess::errorOccurred, this,
+            [this, process, command, projectGeneration,
+             projectDirectoryAtLaunch, inspectionGeneration](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
+            if (inspectionGeneration != m_sourceInspectionGeneration
+                || projectGeneration != m_projectScopeGeneration
+                || !m_project
+                || cleanPath(m_project->projectDirectory) != projectDirectoryAtLaunch) {
+                process->deleteLater();
+                return;
+            }
             m_inspecting = false;
             StructuredLogger::instance().log(
                 LogSeverity::Error, QStringLiteral("process.source_inspection"),
@@ -3316,6 +3488,10 @@ void AppController::importHostDrivers()
 
 void AppController::refreshPlan()
 {
+    if (m_planRefreshBusy) {
+        m_planRefreshPending = true;
+        return;
+    }
     const quint64 generation = ++m_planGeneration;
     m_plan.clear();
     if (!m_project) {
@@ -3369,29 +3545,36 @@ void AppController::refreshPlan()
         QMetaObject::invokeMethod(
             guard, [guard, generation, projectDirectory = project.projectDirectory,
                     result, plan = std::move(plan)]() mutable {
-            if (!guard || generation != guard->m_planGeneration
-                || !guard->m_project
-                || guard->m_project->projectDirectory != projectDirectory) {
+            if (!guard || generation != guard->m_planGeneration)
                 return;
-            }
-            guard->m_plan = std::move(plan);
             guard->m_planRefreshBusy = false;
-            guard->m_statusText = !result.errors.isEmpty()
-                ? result.errors.constFirst()
-                : guard->localized(
-                      QStringLiteral("Plan ready — %1 operations").arg(guard->m_plan.size()),
-                      QStringLiteral("計劃準備好 — %1 項工序").arg(guard->m_plan.size()));
-            guard->m_backgroundStatus = guard->localized(
-                QStringLiteral("Servicing plan is ready."),
-                QStringLiteral("維護計劃準備好。"));
+            if (guard->m_project
+                && guard->m_project->projectDirectory == projectDirectory) {
+                guard->m_plan = std::move(plan);
+                guard->m_statusText = !result.errors.isEmpty()
+                    ? result.errors.constFirst()
+                    : guard->localized(
+                          QStringLiteral("Plan ready — %1 operations").arg(guard->m_plan.size()),
+                          QStringLiteral("計劃準備好 — %1 項工序").arg(guard->m_plan.size()));
+                guard->m_backgroundStatus = guard->localized(
+                    QStringLiteral("Servicing plan is ready."),
+                    QStringLiteral("維護計劃準備好。"));
+            }
             emit guard->stateChanged();
+            if (guard->m_planRefreshPending) {
+                guard->m_planRefreshPending = false;
+                QTimer::singleShot(0, guard, [guard] {
+                    if (guard)
+                        guard->refreshPlan();
+                });
+            }
         }, Qt::QueuedConnection);
     });
 }
 
 void AppController::requestRunPlan()
 {
-    if (m_projectMutationBusy || !m_projectMutationQueue.isEmpty()
+    if (m_projectTransitionBusy || m_projectMutationBusy || !m_projectMutationQueue.isEmpty()
         || m_planRefreshBusy) {
         showError(localized(QStringLiteral("Wait for background saving and plan refresh before running."),
                             QStringLiteral("等後台儲存同計劃更新完成，先再執行。")));
@@ -3406,7 +3589,7 @@ void AppController::requestRunPlan()
 
 void AppController::runPlan()
 {
-    if (m_projectMutationBusy || !m_projectMutationQueue.isEmpty()
+    if (m_projectTransitionBusy || m_projectMutationBusy || !m_projectMutationQueue.isEmpty()
         || m_planRefreshBusy) {
         showError(localized(QStringLiteral("The project is still saving or rebuilding its plan."),
                             QStringLiteral("工程仲儲存緊，或者重建緊計劃。")));
@@ -3464,6 +3647,10 @@ void AppController::skipOperation(int index)
 
 void AppController::refreshHistory()
 {
+    if (m_historyRefreshBusy) {
+        m_historyRefreshPending = true;
+        return;
+    }
     const quint64 generation = ++m_historyGeneration;
     m_history.clear();
     m_actionHistoryCache.clear();
@@ -3512,27 +3699,36 @@ void AppController::refreshHistory()
             guard, [guard, generation, projectDirectory = project.projectDirectory,
                     commits, actionItems, branch, branches,
                     error, actionError, branchError] {
-            if (!guard || generation != guard->m_historyGeneration
-                || !guard->m_project
-                || guard->m_project->projectDirectory != projectDirectory) {
+            if (!guard || generation != guard->m_historyGeneration)
                 return;
-            }
             guard->m_historyRefreshBusy = false;
-            guard->m_history = commits;
-            guard->m_actionHistoryCache = actionItems;
-            guard->m_historyBranch = branch;
-            guard->m_historyBranchCache = branches;
-            const QString combinedError = !error.isEmpty() ? error
-                : !actionError.isEmpty() ? actionError : branchError;
-            if (!combinedError.isEmpty())
-                guard->showError(combinedError);
+            if (guard->m_project
+                && guard->m_project->projectDirectory == projectDirectory) {
+                guard->m_history = commits;
+                guard->m_actionHistoryCache = actionItems;
+                guard->m_historyBranch = branch;
+                guard->m_historyBranchCache = branches;
+                const QString combinedError = !error.isEmpty() ? error
+                    : !actionError.isEmpty() ? actionError : branchError;
+                if (!combinedError.isEmpty())
+                    guard->showError(combinedError);
+            }
             emit guard->stateChanged();
+            if (guard->m_historyRefreshPending) {
+                guard->m_historyRefreshPending = false;
+                QTimer::singleShot(0, guard, [guard] {
+                    if (guard)
+                        guard->refreshHistory();
+                });
+            }
         }, Qt::QueuedConnection);
     });
 }
 
 void AppController::undoLatestProjectChange()
 {
+    if (!requireIdleProjectHistory())
+        return;
     if (!m_project) return;
     ActionHistory actionHistory(m_project->projectDirectory);
     QString actionError;
@@ -3590,6 +3786,8 @@ QVariantList AppController::contextualHistory(const QString &contextKey,
 
 void AppController::undoContext(const QString &contextKey, const QString &elementId)
 {
+    if (!requireIdleProjectHistory())
+        return;
     if (!m_project)
         return;
     ActionHistory history(m_project->projectDirectory);
@@ -3685,8 +3883,24 @@ bool AppController::applyHistoryState(const ActionEvent &event, const QString &m
     return true;
 }
 
+bool AppController::requireIdleProjectHistory()
+{
+    if (!m_project)
+        return false;
+    if (!m_projectTransitionBusy && !m_projectMutationBusy
+        && m_projectMutationQueue.isEmpty()) {
+        return true;
+    }
+    showError(localized(
+        QStringLiteral("Wait for background project saving before changing history."),
+        QStringLiteral("等後台儲存完工程，先再改歷史。")));
+    return false;
+}
+
 bool AppController::undoHistoryEvent(const QString &eventId)
 {
+    if (!requireIdleProjectHistory())
+        return false;
     if (!m_project)
         return false;
     ActionHistory history(m_project->projectDirectory);
@@ -3709,6 +3923,8 @@ bool AppController::undoHistoryEvent(const QString &eventId)
 
 bool AppController::redoHistoryEvent(const QString &eventId)
 {
+    if (!requireIdleProjectHistory())
+        return false;
     if (!m_project)
         return false;
     ActionHistory history(m_project->projectDirectory);
@@ -3731,6 +3947,8 @@ bool AppController::redoHistoryEvent(const QString &eventId)
 
 bool AppController::restoreHistoryEvent(const QString &eventId)
 {
+    if (!requireIdleProjectHistory())
+        return false;
     if (!m_project)
         return false;
     ActionHistory history(m_project->projectDirectory);
@@ -3783,6 +4001,8 @@ bool AppController::restoreHistoryEvent(const QString &eventId)
 
 bool AppController::bookmarkHistoryEvent(const QString &eventId, const QString &name)
 {
+    if (!requireIdleProjectHistory())
+        return false;
     if (!m_project)
         return false;
     QString error;
@@ -3796,6 +4016,8 @@ bool AppController::bookmarkHistoryEvent(const QString &eventId, const QString &
 
 bool AppController::branchHistoryEvent(const QString &eventId, const QString &name)
 {
+    if (!requireIdleProjectHistory())
+        return false;
     if (!m_project)
         return false;
     QString error;
@@ -3809,6 +4031,8 @@ bool AppController::branchHistoryEvent(const QString &eventId, const QString &na
 
 bool AppController::switchHistoryBranch(const QString &name)
 {
+    if (!requireIdleProjectHistory())
+        return false;
     if (!m_project)
         return false;
     QString error;
@@ -6391,7 +6615,18 @@ void AppController::queueWorkspacePersistence()
     PendingWorkspacePersistence pending{
         m_workspaceTabs, m_workspaceTabs.pendingCommitMessage()};
     m_workspaceTabs.takePendingCommitMessage();
-    m_workspacePersistenceQueue.enqueue(std::move(pending));
+    const auto isNavigation = [](const QString &message) {
+        return message.startsWith(QStringLiteral("tabs: activate "))
+            || message.startsWith(QStringLiteral("tabs: navigate to "));
+    };
+    const qsizetype replaceableStart = m_workspacePersistenceBusy ? 1 : 0;
+    if (isNavigation(pending.message)
+        && m_workspacePersistenceQueue.size() > replaceableStart
+        && isNavigation(m_workspacePersistenceQueue.constLast().message)) {
+        m_workspacePersistenceQueue.last() = std::move(pending);
+    } else {
+        m_workspacePersistenceQueue.enqueue(std::move(pending));
+    }
     m_backgroundStatus = localized(
         QStringLiteral("Saving workspace navigation in the background…"),
         QStringLiteral("正喺後台儲存工作區導覽……"));
@@ -6788,43 +7023,104 @@ void AppController::reloadPayloadCatalog(bool force)
 
 void AppController::loadProjectState()
 {
+    const quint64 projectGeneration = ++m_projectScopeGeneration;
+    ++m_payloadDiscoveryGeneration;
+    m_payloadDiscoveryBusy = false;
     refreshImageInventoryState();
-    if (m_project) {
-        const QString notificationPath = m_project->settings
-            .value(QStringLiteral("_notificationRepoPath")).toString();
-        if (!notificationPath.isEmpty()
-            && QDir::cleanPath(notificationPath) != QDir::cleanPath(m_notificationStore.storeDirectory())) {
-            m_notificationStore = NotificationStore(notificationPath);
-            queueNotificationOperation(PendingNotificationOperation{
-                NotificationOperationKind::Initialize,
-                m_notificationStore.storeDirectory(),
-            });
-        }
+    cancelUpdateCatalog();
+    ++m_catalogOperationGeneration;
+    m_updateCatalogResults.clear();
+    m_updateCatalogQuery.clear();
+    m_updateCatalogBusy = false;
+    m_updateCatalogDownloadProgress = 0.0;
+    emit updateCatalogChanged();
+
+    const QString notificationOverride = m_project
+        ? m_project->settings.value(QStringLiteral("_notificationRepoPath"))
+              .toString().trimmed()
+        : QString();
+    const QString notificationPath = notificationOverride.isEmpty()
+        ? NotificationStore::defaultStoreDirectory() : notificationOverride;
+    if (QDir::cleanPath(notificationPath)
+        != QDir::cleanPath(m_notificationStore.storeDirectory())) {
+        m_notificationStore = NotificationStore(notificationPath);
+        m_notificationItems.clear();
+        emit notificationsChanged();
     }
+    queueNotificationOperation(PendingNotificationOperation{
+        NotificationOperationKind::Initialize,
+        m_notificationStore.storeDirectory(),
+    });
+
     if (m_project) {
-        QString tabError;
-        if (!m_workspaceTabs.openProject(m_project->projectDirectory, &tabError))
-            showError(localized(
-                QStringLiteral("Workspace tabs could not be opened: %1").arg(tabError),
-                QStringLiteral("開唔到工作區分頁：%1").arg(tabError)));
-        m_workspaceTabs.setDeferredPersistence(true);
+        const QString projectDirectory = cleanPath(m_project->projectDirectory);
+        m_workspaceTabs.closeProject();
         emit workspaceTabsChanged();
+        const QPointer<AppController> guard(this);
+        QThreadPool::globalInstance()->start(
+            [guard, projectDirectory, projectGeneration] {
+            WorkspaceTabs tabs;
+            QString tabError;
+            const bool opened = tabs.openProject(projectDirectory, &tabError);
+            if (opened)
+                tabs.setDeferredPersistence(true);
+            if (!guard)
+                return;
+            QMetaObject::invokeMethod(
+                guard, [guard, projectDirectory, projectGeneration, opened,
+                        tabError, tabs = std::move(tabs)]() mutable {
+                if (!guard || projectGeneration != guard->m_projectScopeGeneration
+                    || !guard->m_project
+                    || cleanPath(guard->m_project->projectDirectory) != projectDirectory) {
+                    return;
+                }
+                if (!opened) {
+                    guard->showError(guard->localized(
+                        QStringLiteral("Workspace tabs could not be opened: %1").arg(tabError),
+                        QStringLiteral("開唔到工作區分頁：%1").arg(tabError)));
+                    return;
+                }
+                guard->m_workspaceTabs = std::move(tabs);
+                emit guard->workspaceTabsChanged();
+            }, Qt::QueuedConnection);
+        });
     }
     restoreStudioState();
     if (m_winForgeRuntimePath.isEmpty()) {
         m_winForgeRuntimeContract = {};
-        m_winForgeRuntimeStatus = QStringLiteral("Choose a WinForge runtime folder to detect its contract.");
+        m_winForgeRuntimeStatus = localized(
+            QStringLiteral("Choose a WinForge runtime folder to detect its contract."),
+            QStringLiteral("揀 WinForge runtime 資料夾，WimForge 就會偵測佢嘅合約。"));
     } else {
-        QString bridgeError;
-        m_winForgeRuntimeContract = WinForgeBridge::detectRuntimeContract(
-            m_winForgeRuntimePath, &bridgeError);
-        m_winForgeRuntimeStatus = m_winForgeRuntimeContract.runtimeFound
-            ? QStringLiteral("%1 runtime · contract %2 · %3")
-                  .arg(m_winForgeRuntimeContract.declaredContract ? QStringLiteral("Declared")
-                                                                  : QStringLiteral("Legacy"))
-                  .arg(m_winForgeRuntimeContract.contractVersion)
-                  .arg(m_winForgeRuntimeContract.capabilities.join(QStringLiteral(", ")))
-            : bridgeError;
+        const QString runtimePath = m_winForgeRuntimePath;
+        m_winForgeRuntimeStatus = localized(
+            QStringLiteral("Detecting the WinForge runtime contract in the background…"),
+            QStringLiteral("正喺後台偵測 WinForge runtime 合約……"));
+        const QPointer<AppController> guard(this);
+        QThreadPool::globalInstance()->start(
+            [guard, runtimePath, projectGeneration] {
+            QString bridgeError;
+            const WinForgeRuntimeContract contract =
+                WinForgeBridge::detectRuntimeContract(runtimePath, &bridgeError);
+            if (!guard)
+                return;
+            QMetaObject::invokeMethod(
+                guard, [guard, runtimePath, projectGeneration, contract, bridgeError] {
+                if (!guard || projectGeneration != guard->m_projectScopeGeneration
+                    || cleanPath(guard->m_winForgeRuntimePath) != cleanPath(runtimePath)) {
+                    return;
+                }
+                guard->m_winForgeRuntimeContract = contract;
+                guard->m_winForgeRuntimeStatus = contract.runtimeFound
+                    ? QStringLiteral("%1 runtime · contract %2 · %3")
+                          .arg(contract.declaredContract ? QStringLiteral("Declared")
+                                                        : QStringLiteral("Legacy"))
+                          .arg(contract.contractVersion)
+                          .arg(contract.capabilities.join(QStringLiteral(", ")))
+                    : bridgeError;
+                emit guard->studioChanged();
+            }, Qt::QueuedConnection);
+        });
     }
     reloadPayloadCatalog();
     refreshPlan(); refreshHistory(); refreshRecoveryState(); updateWatcher();
@@ -6836,6 +7132,18 @@ void AppController::loadProjectState()
     emit vmLabChanged();
     emit stateChanged();
     emit studioChanged();
+    if (!m_sourceCatalogQuery.isEmpty()) {
+        const QString automaticQuery = m_sourceCatalogQuery;
+        QTimer::singleShot(0, this, [this, projectGeneration, automaticQuery] {
+            if (projectGeneration == m_projectScopeGeneration)
+                searchUpdateCatalog(automaticQuery);
+        });
+    } else {
+        m_updateCatalogStatus = localized(
+            QStringLiteral("Inspect an ISO to match updates automatically."),
+            QStringLiteral("檢查 ISO 之後，就會自動配對更新。"));
+        emit updateCatalogChanged();
+    }
 }
 
 void AppController::queueNotificationOperation(PendingNotificationOperation operation)
@@ -6861,8 +7169,10 @@ void AppController::beginNextNotificationOperation()
         return;
     m_notificationOperationBusy = true;
     const PendingNotificationOperation operation = m_notificationOperationQueue.head();
+    const auto notificationMutex = m_notificationRepositoryMutex;
     const QPointer<AppController> guard(this);
-    QThreadPool::globalInstance()->start([guard, operation] {
+    QThreadPool::globalInstance()->start([guard, operation, notificationMutex] {
+        QMutexLocker locker(notificationMutex.get());
         NotificationStore store(operation.storeDirectory);
         QString error;
         bool success = store.initialize(&error);
@@ -6967,17 +7277,55 @@ void AppController::updateWatcher()
 void AppController::onWatchedProjectChanged(const QString &path)
 {
     if (!m_project || !m_project->autoImport) return;
-    const QString directory = m_project->projectDirectory;
-    QTimer::singleShot(250, this, [this, directory, path] {
-        QString error;
-        const auto updated = ProjectConfig::load(directory, &error);
-        if (!updated) { showError(error); updateWatcher(); return; }
-        m_project = *updated; loadProjectState();
-        notify(localized(QStringLiteral("External config imported"),
-                         QStringLiteral("外部設定已匯入")),
-               localized(QStringLiteral("Imported from %1").arg(path),
-                         QStringLiteral("已由 %1 匯入").arg(path)),
-               QStringLiteral("info"));
+    const QString directory = cleanPath(m_project->projectDirectory);
+    const quint64 observedGeneration = m_projectScopeGeneration;
+    QTimer::singleShot(250, this, [this, directory, path, observedGeneration] {
+        if (!m_project || !m_project->autoImport
+            || cleanPath(m_project->projectDirectory) != directory
+            || observedGeneration != m_projectScopeGeneration
+            || m_projectTransitionBusy || m_projectMutationBusy
+            || !m_projectMutationQueue.isEmpty()) {
+            updateWatcher();
+            return;
+        }
+        m_projectTransitionBusy = true;
+        const quint64 transitionGeneration = ++m_projectScopeGeneration;
+        m_backgroundStatus = localized(
+            QStringLiteral("Importing an external project-file change in the background…"),
+            QStringLiteral("正喺後台匯入外部工程檔變更……"));
+        emit stateChanged();
+        const QPointer<AppController> guard(this);
+        QThreadPool::globalInstance()->start(
+            [guard, directory, path, transitionGeneration] {
+            QString error;
+            const auto updated = ProjectConfig::load(directory, &error);
+            if (!guard)
+                return;
+            QMetaObject::invokeMethod(
+                guard, [guard, directory, path, transitionGeneration,
+                        updated, error] {
+                if (!guard || transitionGeneration != guard->m_projectScopeGeneration
+                    || !guard->m_project
+                    || cleanPath(guard->m_project->projectDirectory) != directory) {
+                    return;
+                }
+                guard->m_projectTransitionBusy = false;
+                if (!updated) {
+                    guard->showError(error);
+                    guard->updateWatcher();
+                    return;
+                }
+                guard->m_project = *updated;
+                guard->loadProjectState();
+                guard->notify(guard->localized(
+                                  QStringLiteral("External config imported"),
+                                  QStringLiteral("外部設定已匯入")),
+                              guard->localized(
+                                  QStringLiteral("Imported from %1").arg(path),
+                                  QStringLiteral("已由 %1 匯入").arg(path)),
+                              QStringLiteral("info"));
+            }, Qt::QueuedConnection);
+        });
     });
 }
 

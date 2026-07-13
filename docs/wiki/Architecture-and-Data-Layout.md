@@ -21,6 +21,10 @@ Both user-facing executables share the core configuration, history, servicing, s
 
 The command shown in the UI is a review preview. The underlying operation retains structured fields such as `executable`, `arguments`, `dependsOn`, `requiresAdministrator`, `destructive`, and write/concurrency flags.
 
+`AppController` also separates interaction from durable/discovery work. Project mutations and workspace-tab persistence use serialized background queues; project create/open/import/export, notification-store Git operations, history loading, servicing-plan builds, payload scans/metadata, installed GPO catalog loading, runtime discovery, and ISO-driven Update Catalog searches run through background tasks. Results return to the Qt object thread before models or QML properties change. A failed persistence item pauses its queue and exposes an explicit retry rather than allowing later state to overtake it.
+
+`AppController` 亦會分開「用介面」同「做耐用儲存／搜尋」。工程 mutation 同 workspace-tab 儲存有各自順序後台隊列；建立／開啟／匯入／匯出工程、通知 Git、history 載入、servicing plan、payload 掃描／metadata、GPO 目錄、runtime 搜尋，同 ISO 帶動嘅 Update Catalog 搜尋都會放去後台。結果返到 Qt object thread 先更新 model 或 QML property。儲存失敗會暫停隊列並提供明確重試，之後嘅狀態唔可以爬過去。
+
 ## Repository source layout
 
 | Path | Purpose |
@@ -116,7 +120,7 @@ The current architecture does **not** imply that these are complete:
 - a compatibility database or update applicability resolver (the in-app Microsoft Update Catalog downloader is implemented, but it does not resolve applicability or cache across projects);
 - broad live-host inventory/refresh parity with mature commercial products;
 - a VMware/VirtualBox VM lab and recorded validation-run manager;
-- globally applied interface-density scaling and complete responsive/accessibility automation;
+- complete automated screen-reader coverage across every Qt platform plugin (the current shell does provide stable field/result names, PageTab state, keyboard tab/section navigation, a compact toolbar, responsive one/two/five-column layouts, and clipping-safe scrolling);
 - code-signed release artifacts; or
 - automatic main-repository-to-Wiki synchronization unless a dedicated workflow is added and verified.
 
@@ -126,7 +130,7 @@ Implementation references: [`CMakeLists.txt`](https://github.com/codingmachineed
 
 ## 香港粵語架構重點
 
-工程本身有頂層 Git 快照同 append-only action history；`.wimforge/tabs` 另外有一個已強化 Git 記分頁；通知中心又有自己嘅 Git；Job Engine journal 就記錄外部執行進度。四種歷史證明嘅事唔同，唔好將「撤銷設定」當成「已逆轉 DISM 寫入」。程式層 JSONL log 放喺 Qt application-local `logs`，5 MiB rotate，保留五份 archive；分享前仍然要人手檢查有冇私密資料。
+工程本身有頂層 Git 快照同 append-only action history；`.wimforge/tabs` 另外有一個已強化 Git 記分頁；通知中心又有自己嘅 Git；Job Engine journal 就記錄外部執行進度。儲存、history、catalog、payload 同 ISO 搜尋會喺後台做，結果返主 Qt thread 先更新畫面；失敗儲存會停低隊列等明確重試。介面已有 compact toolbar、響應式欄數／捲動、keyboard tabs 同穩定無障礙名稱，但唔會聲稱所有 Qt platform plugin 都已完成自動 screen-reader 覆蓋。四種歷史證明嘅事唔同，唔好將「撤銷設定」當成「已逆轉 DISM 寫入」。程式層 JSONL log 放喺 Qt application-local `logs`，5 MiB rotate，保留五份 archive；分享前仍然要人手檢查有冇私密資料。
 
 ---
 

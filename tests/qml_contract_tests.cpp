@@ -567,9 +567,10 @@ int main(int argc, char *argv[])
                    && mainQml.contains(QStringLiteral("en: \"Review & run\""))
                    && !mainQml.contains(QStringLiteral("buttonText(")),
                QStringLiteral("Visible navigation labels must render literal single ampersands"));
-    test.check(mainQml.contains(QStringLiteral(
-                   "if (ok) { openProjectSheet.close(); root.syncActiveWorkspaceTab() }")),
-               QStringLiteral("Opening a project must restore its saved active workspace tab"));
+    test.check(mainQml.contains(QStringLiteral("onProjectTransitionFinished"))
+                   && mainQml.contains(QStringLiteral("app.workspaceTabs.length > 0"))
+                   && mainQml.contains(QStringLiteral("root.syncActiveWorkspaceTab()")),
+               QStringLiteral("Opening a project must wait for success and then restore its saved active workspace tab"));
     test.check(mainQml.contains(QStringLiteral("if (startupPageRequested)"))
                    && mainQml.contains(QStringLiteral("navigateToPage(startupPage)")),
                QStringLiteral("An explicit --page request must override restored tab state"));
@@ -611,6 +612,27 @@ int main(int argc, char *argv[])
                    && !controllerSource.contains(QStringLiteral(
                        "setValue(QStringLiteral(\"project/last\")")),
                QStringLiteral("Normal startup must migrate recents without automatically reopening the last project"));
+    test.check(controllerHeader.contains(QStringLiteral("projectTransitionBusy READ projectTransitionBusy"))
+                   && controllerHeader.contains(QStringLiteral("projectTransitionFinished(bool success)"))
+                   && mainQml.contains(QStringLiteral("onProjectTransitionFinished"))
+                   && mainQml.contains(QStringLiteral("Creating…"))
+                   && mainQml.contains(QStringLiteral("Opening…")),
+               QStringLiteral("Async project transitions must keep their sheets in a visible pending state until completion"));
+    test.check(controllerHeader.contains(QStringLiteral("m_projectScopeGeneration"))
+                   && controllerSource.contains(QStringLiteral(
+                       "projectGeneration != m_projectScopeGeneration"))
+                   && controllerSource.contains(QStringLiteral(
+                       "discoveryGeneration != guard->m_payloadDiscoveryGeneration"))
+                   && controllerSource.contains(QStringLiteral(
+                       "inspectionGeneration != m_sourceInspectionGeneration"))
+                   && controllerSource.contains(QStringLiteral(
+                       "operationGeneration == m_catalogOperationGeneration")),
+               QStringLiteral("Project-scoped workers must reject stale source, payload, and catalog completions"));
+    test.check(controllerSource.contains(QStringLiteral(
+                   "inspectionTimeout->setInterval(180000)"))
+                   && controllerSource.contains(QStringLiteral(
+                       "Dismount-DiskImage -ImagePath $args[0]")),
+               QStringLiteral("ISO inspection must have a bounded timeout and cleanup path"));
     test.check(controllerHeader.contains(QStringLiteral("Q_PROPERTY(QStringList featureDisables"))
                    && controllerHeader.contains(QStringLiteral("Q_PROPERTY(QVariantList capabilityChanges"))
                    && controllerHeader.contains(QStringLiteral("Q_PROPERTY(QStringList appProvisions"))
@@ -717,6 +739,11 @@ int main(int argc, char *argv[])
                QStringLiteral("Shared fields must expose descriptions and page headers must not clip bilingual copy"));
     test.check(catalogSheet.contains(QStringLiteral("modal: false"))
                    && catalogSheet.contains(QStringLiteral("showAutomatic(targetCategory)"))
+                   && catalogSheet.contains(QStringLiteral("Accessible.role: Accessible.Dialog"))
+                   && catalogSheet.contains(QStringLiteral("Accessible.role: Accessible.List"))
+                   && catalogSheet.contains(QStringLiteral("app.openMicrosoftUpdateCatalog(query)"))
+                   && !catalogSheet.contains(QStringLiteral(
+                       "app.updateCatalogResults.length === 0"))
                    && catalogSheet.contains(QStringLiteral("Download %1")),
                QStringLiteral("Update Catalog results must be non-blocking, ISO-driven, and uniquely named for accessibility"));
     test.check(mainQml.contains(QStringLiteral("compactToolbar"))

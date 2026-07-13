@@ -15,7 +15,7 @@ Status meanings:
 | Workflow | WimForge | Notes |
 | --- | --- | --- |
 | ISO/media/WIM/ESD/SWM input | **Implemented** | ISO/media clone, raw image clone, SWM index export to working WIM |
-| Image-index inspection/selection | **Implemented** | DISM-based metadata and edition selection |
+| Image-index inspection/selection | **Implemented** | DISM-based edition, architecture, full-version, and build metadata plus target selection |
 | Immutable working source | **Implemented** | Clone-by-default contract is stricter than in-place editing |
 | WIM/ESD export | **Implemented** | Atomic partial/backup publication |
 | SWM split output | **Implemented** | Complete set built/promoted together |
@@ -29,8 +29,8 @@ Status meanings:
 | Workflow | WimForge | Notes |
 | --- | --- | --- |
 | Driver integration | **Implemented** | Driver files/folders, DISM plan, and host-driver export helper |
-| Update/CAB/MSU integration | **Implemented** | User supplies payloads; hashing and dependency gates apply |
-| Integrated update downloader | **Implemented** | In-app Microsoft Update Catalog search and download, restricted to trusted Microsoft hosts and queued for review; no applicability resolver or persistent cache yet |
+| Update/CAB/MSU integration | **Implemented** | Local picker/scanning or reviewed Catalog downloads; hashing and dependency gates apply |
+| Integrated update downloader | **Implemented** | ISO architecture/version/build automatically drives in-app Microsoft Update Catalog Updates/Drivers searches; trusted-host downloads are queued for review, with no applicability resolver or persistent cache yet |
 | Optional features enable/disable | **Implemented** | Tri-state Enable/Disable/Unchanged desktop controls and Windows feature identities through DISM |
 | Capabilities/FOD add/remove | **Implemented** | Add/Remove/Unchanged desktop editor; exact build-specific identity/payload correctness remains the user's responsibility |
 | Provisioned Appx remove/provision | **Implemented** | Separate package-name removal and signed Appx/MSIX file picker; no Store browser or dependency resolver |
@@ -98,12 +98,12 @@ These differences do not make every workload safer automatically. The ISO author
 
 ## 香港粵語總結
 
-WimForge 而家已經有 ISO/media/WIM/ESD/SWM 來源、Drivers/Updates、Features/FOD、Appx、registry/GPO、Unattended、packages、WinForge bridge、VM Lab、Git-backed history/tabs 同結構化 logging。Scheduled Tasks 亦已經係 typed 功能：可以 enable、disable 或 remove，有離線路徑/XML 驗證、desktop editor 同可審閱操作；remove 一定要 compatibility override 同 checkpoint。
+WimForge 而家已經有 ISO/media/WIM/ESD/SWM 來源、Drivers/Updates、Features/FOD、Appx、registry/GPO、Unattended、packages、WinForge bridge、VM Lab、Git-backed history/tabs 同結構化 logging。ISO 檢查會讀架構、完整版本同 build，再自動搜尋 Microsoft Update Catalog 嘅 Updates／Drivers；下載只限可信 Microsoft 主機並加入審閱隊列。Scheduled Tasks 亦已經係 typed 功能：可以 enable、disable 或 remove，有離線路徑/XML 驗證、desktop editor 同可審閱操作；remove 一定要 compatibility override 同 checkpoint。
 
 不過唔好將「有功能」當成「已經有 NTLite 多年累積嘅相容性智慧」。現時仍然冇：
 
 - Windows-build-aware 深度元件移除資料庫同長年實戰 compatibility 建議；
-- Windows Update 內置搜尋、下載、cache 同 applicability/dependency resolver；
+- Microsoft Update Catalog 搜尋同下載已經有，但仍然冇 persistent cache、applicability resolver 同 SSU／LCU dependency resolver；
 - Services 專用 inventory/dependency editor；
 - Scheduled Tasks 內置 inventory 同針對 Windows build 嘅建議（typed 編輯/執行已實作）；
 - 廣泛 live-host/remote-host 管理界面；

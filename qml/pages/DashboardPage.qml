@@ -30,13 +30,15 @@ ScrollView {
     function workflowState(index) {
         if (!app.projectLoaded)
             return index === 0 ? "next" : "waiting"
-        var sourceReady = app.sourceCatalogQuery.length > 0
+        var sourceReady = app.editionNames.length > 0
         var planReady = app.operationCount > 0
+        var runActive = app.runningJobCount > 0
+        var outputReady = app.currentOutput.length > 0
         if (index === 0) return sourceReady ? "done" : "next"
         if (index === 1) return sourceReady ? (planReady ? "done" : "next") : "waiting"
-        if (index === 2) return planReady ? "next" : "waiting"
-        if (index === 3) return app.runningJobCount > 0 ? "active" : (planReady ? "ready" : "waiting")
-        return app.runningJobCount === 0 && planReady ? "ready" : "waiting"
+        if (index === 2) return outputReady || runActive ? "done" : (planReady ? "next" : "waiting")
+        if (index === 3) return runActive ? "active" : (outputReady ? "done" : (planReady ? "ready" : "waiting"))
+        return outputReady && !runActive ? "next" : "waiting"
     }
     function workflowStateText(state) {
         if (state === "done") return root.tr("Done", "完成")

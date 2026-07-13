@@ -17,6 +17,10 @@ The **Customize** page records image intent in eight sections. Each successful e
 
 Text-list sections support explicit add and remove actions. Passive navigation does not change the project.
 
+The page scrolls as one responsive surface: payload actions use five, two, or one columns as space allows, so a narrow window does not clip the lower controls. Section tabs expose selected state to assistive technology and support Left/Right arrow navigation.
+
+成個頁面係響應式捲動畫面：payload 操作會按空間排五欄、兩欄或者一欄，窄視窗唔會截走下面啲掣。Section 分頁會向輔助技術報告已選狀態，亦可以用左／右方向鍵切換。
+
 ## Typed feature, capability, app, and task changes
 
 Optional features are tri-state. **Unchanged** removes the project override; it is not another spelling of Disable. Capability/FOD Add and Remove lists are also mutually exclusive, and clearing an identity restores Unchanged. Every successful mutation is saved through `ProjectConfig` and committed to the project's local Git repository.
@@ -61,7 +65,13 @@ Before enabling, disabling, or removing an item:
 
 ## Payload responsibility
 
-Update and driver payloads can now be acquired in-app from the Microsoft Update Catalog: the **Search Microsoft Update Catalog** control opens an in-app sheet that searches, downloads (only from trusted Microsoft hosts), and adds the `.msu`/`.cab` straight into the reviewed update or driver queue — no external browser. WimForge still does not acquire general application payloads for this page, does not resolve SSU/LCU applicability, and does not judge whether an update fits the target build. The operator remains responsible for source, architecture, applicability, licensing, redistribution, integrity, and signer review. Package Studio adds provider-aware first-logon profiles and trust metadata, but it also does not bypass vendor authentication, subscriptions, hardware requirements, or terms. See [Package Studio](Package-Studio).
+After source inspection records architecture, version, and build, WimForge automatically searches Microsoft Update Catalog for matching Updates. The Drivers section derives its own driver query from that same ISO profile. **View matches** opens a non-modal in-app results panel; its text field is an optional refinement, not a required “search for” step. A trusted Microsoft download is added straight to the reviewed update or driver queue—no external browser—and the search can be cancelled without closing the panel.
+
+來源檢查記低架構、版本同 build 之後，WimForge 會自動搜尋 Microsoft Update Catalog 嘅 Updates。Drivers 亦會由同一份 ISO 設定檔自動組合 driver 搜尋。撳 **睇配對結果** 會開非 modal app 內結果 panel；入面個文字欄只係可選微調，唔係必做嘅「search for」步驟。由可信 Microsoft 主機下載嘅項目會直接加入更新／驅動審閱隊列，唔使開外部 browser；搜尋亦可以取消，唔使關 panel。
+
+WimForge still does not acquire general application payloads for this page, resolve SSU/LCU applicability, or prove that a result fits the target image. The operator remains responsible for source, architecture, applicability, licensing, redistribution, integrity, and signer review. Package Studio adds provider-aware first-logon profiles and trust metadata, but it also does not bypass vendor authentication, subscriptions, hardware requirements, or terms. See [Package Studio](Package-Studio).
+
+WimForge 仍然唔會喺呢頁下載一般應用程式 payload、解決 SSU／LCU 依賴，或者證明搜尋結果一定啱目標映像。操作員仍然要負責來源、架構、適用性、授權、再發佈權、完整性同簽署者審閱。Package Studio 有 provider-aware first-logon profile 同 trust metadata，但一樣唔會繞過供應商登入、訂閱、硬件要求或條款。
 
 ## Answer files and post-setup work
 
@@ -83,7 +93,7 @@ After customization:
 
 ## 香港粵語重點
 
-Updates 同 Drivers 唔再係空白清單：可以用 picker 加 CAB/MSU、INF 或驅動資料夾，清單會顯示 KB、大小、provider、class 同 driver version。Microsoft Update Catalog 而家可以喺 app 內搜尋、下載（只限可信 Microsoft 主機）再自動加入更新／驅動程式隊列，唔使開瀏覽器；不過 WimForge 唔會估 SSU/LCU 依賴，亦唔會估某個 update 啱唔啱目標 build。Features 而家係真正三態，capability 可以加入／移除／回復不變；Apps 分開套件名移除同已簽署 bundle file picker。Scheduled Tasks 用 typed `enable` / `disable` / `remove` 變更，會做離線 XML 安全檢查；`remove` 一定要明確 compatibility override 同 checkpoint，而且仍然冇內置 task inventory 或 build-specific 建議。所有項目都要去 Review & Run 對指令同 destructive marker 先執行。
+Updates 同 Drivers 唔再係空白清單：揀完 ISO 會按架構、版本同 build 自動搜尋 Catalog，亦可以用 picker 加 CAB/MSU、INF 或驅動資料夾；清單會顯示 KB、大小、provider、class 同 driver version。搜尋結果可以 app 內下載（只限可信 Microsoft 主機）再自動加入審閱隊列，唔使開 browser 或先手打 query；不過 WimForge 唔會估 SSU/LCU 依賴，亦唔會證明某個 update 啱目標 build。頁面窄時會自動改成一欄並可以捲動，section tabs 可用方向鍵。Features 係真正三態；Apps 分開套件名移除同已簽署 bundle file picker。所有項目都要去 Review & Run 對指令同 destructive marker 先執行。
 
 ---
 

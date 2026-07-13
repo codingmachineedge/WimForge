@@ -78,6 +78,16 @@ int main(int argc, char *argv[])
                        && deferredReopened.tabs().constFirst().toMap()
                               .value(QStringLiteral("page")).toInt() == 2,
                    QStringLiteral("flushed deferred tab state survives reopening"));
+
+        const QString reusedProject = QDir(temporary.path()).filePath(
+            QStringLiteral("deferred-reused"));
+        QDir().mkpath(reusedProject);
+        deferred.closeProject();
+        test.check(deferred.openProject(reusedProject, &deferredError)
+                       && !deferred.hasPendingPersistence()
+                       && QFileInfo::exists(QDir(deferred.repositoryPath())
+                                                .filePath(QStringLiteral("tabs.json"))),
+                   QStringLiteral("closing resets deferred mode so a reused instance initializes the next project immediately"));
     }
 
     test.check(first.openPage(2, QStringLiteral("Customize"), &error), error);

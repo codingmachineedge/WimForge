@@ -9,13 +9,15 @@ The bridge is a strict contract boundary, not a guessed command-line wrapper.
 1. Describe the desired post-install result or choose **Add typed action**.
 2. Review proposals. Intent-generated entries remain drafts/disabled until approved.
 3. Choose machine or user phase and enable only intended actions.
-4. Select an optional published WinForge runtime folder and detect its contract.
+4. Select an optional published WinForge runtime folder with the folder picker and detect its contract.
 5. Resolve every unsupported-capability warning.
-6. Import/export the portable recipe when needed.
-7. Stage the recipe, optional runtime, and payloads into the ISO workspace.
+6. Import/export the portable recipe with the matching open/save file picker when needed.
+7. Choose the ISO workspace with its folder picker, then stage the recipe, optional runtime, and payloads.
 8. Review the main project history and servicing plan; every recipe edit is a project mutation and is undoable.
 
 The page uses non-modal Material surfaces. Invalid input becomes inline/snackbar/notification feedback while other work continues.
+
+頁面嘅 runtime folder、recipe 匯入／匯出同 ISO staging workspace 都有相應 folder 或 open/save file picker，唔使手打完整路徑。所有提示都係非 modal Material 畫面；有輸入錯誤時，其他工作仍然可以繼續。
 
 ## Recipe actions
 

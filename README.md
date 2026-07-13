@@ -18,14 +18,20 @@ It is an independent alternative to tools such as NTLite. WimForge is not affili
 
 ![Embedded terminal](docs/screenshots/embedded-terminal.png)
 
-The desktop interface is available in English, Hong Kong Cantonese, or a bilingual mode. Controls use icons and text, and consequential feedback stays inside the app as snackbars, a notification drawer, inline validation, recovery sheets, and non-modal Material popups. Servicing jobs keep running while those surfaces are open.
+The desktop interface is available in English, Hong Kong Cantonese, or a bilingual mode. Controls use icons and text, and consequential feedback stays inside the app as snackbars, a notification drawer, inline validation, recovery sheets, and non-modal Material popups. Servicing jobs keep running while those surfaces are open. The shell compacts its toolbar at narrower widths, long pages scroll instead of clipping, workspace and section tabs are keyboard-operable, and important fields/results expose stable accessibility names and descriptions.
+
+桌面介面可以用英文、香港粵語或者雙語。較窄視窗會自動收好 toolbar；長頁面可以捲動，唔會硬生生截走內容。Workspace 同 section 分頁可以用鍵盤操作，重要欄位同搜尋結果亦有穩定無障礙名稱同說明。
 
 ## What is implemented
 
 - Safe image workflow — accept ISO/media/WIM/ESD/SWM sources, inspect indexes from extracted media or image files, clone into a project-owned workspace, review a dependency graph, mount, service, validate, commit, export or split, and optionally create an ISO.
+- Automatic ISO profile and catalog matching — inspection records architecture, full image version, build, and edition inventory, then uses that profile to search Microsoft Update Catalog matches for Updates and Drivers without asking the operator to invent a query.
+- 自動 ISO 設定檔同目錄配對 — 檢查會記低架構、完整映像版本、build 同 edition 清單，再用呢份資料自動搜尋 Microsoft Update Catalog 嘅 Updates 同 Drivers，唔使操作員自己估搜尋字句。
 - Broad servicing configuration — drivers, updates and CAB/MSU packages, optional features, capabilities, provisioned Appx packages, component package identifiers, offline registry changes, answer files, staged files, and post-setup work.
 - Multi-job execution — independent verification work can run in parallel; writes remain dependency-ordered. The job engine journals transitions for interruption recovery.
 - Project Git repository — each project is its own local Git repository. Every successful configuration mutation creates a normal project commit, then attempts the separate action-history append/commit; a secondary history failure leaves the safe project commit in place and raises a persistent warning.
+- Responsive persistence and discovery — project create/open/import/export, configuration and workspace-tab saves, notification Git operations, history loading, plan building, payload scanning, GPO catalog loading, and ISO/catalog discovery run away from the UI thread. The project rail shows background status and progress; a failed serialized save pauses later saves and offers **Retry save** instead of silently dropping work.
+- 流暢後台儲存同搜尋 — 建立／開啟／匯入／匯出工程、設定同 workspace-tab 儲存、通知 Git 操作、history 載入、plan 建立、payload 掃描、GPO 目錄載入，同 ISO／Catalog 搜尋都會離開 UI 主執行緒做。工程 rail 會顯示後台狀態同進度；序列化儲存失敗時會暫停之後嘅儲存，並提供 **再試儲存**，唔會靜雞雞漏咗工作。
 - History Time Machine — append-only, hash-chained action events; guarded selective undo that preserves unrelated later edits; undo-of-undo/redo; restore actions; bookmarks; lightweight history lanes; Git log inspection; and A/B diff viewing.
 - Contextual undo anywhere — `Ctrl+Z` undoes in the active context. `Ctrl+Shift+Z`, or a right-click anywhere in the desktop, opens the non-modal active-page/global mini history manager. Element-specific filtering is available in the history core and CLI, but is not wired to every desktop control in this release.
 - Git-backed notification center — a separate local repository commits new, read, unread, dismiss, restore, and tombstoned-delete events. Its own latest change can be undone.
@@ -46,12 +52,13 @@ The desktop interface is available in English, Hong Kong Cantonese, or a bilingu
 
 ## The core workflow
 
-1. Create or open a project. WimForge initializes its local Git history.
-2. Use **Browse ISO / image** or **Browse media folder** to select a legally obtained Windows ISO, media folder, WIM, ESD, or SWM source. A raw ISO is mounted read-only for immediate DISM inventory, dismounted after inspection, and recorded by its stable internal `sources/install.*` path; the reviewed servicing plan later extracts it into the project-owned workspace and converts ESD/SWM input to a serviceable WIM before mounting.
-3. Configure image changes in Customize, Group Policy Studio, Unattended Studio, Package Studio, and WinForge Bridge.
-4. Open Review & Run. Inspect every executable, argument token, dependency, destructive flag, and bilingual description.
-5. Run only after validation succeeds. Keep the original source unchanged and test the output in a disposable virtual machine.
-6. Export a complete `.wimforge` save when the project and all local histories need to travel together.
+1. **Choose source** — create, open, or import a project, then choose a legally obtained Windows ISO, media folder, WIM, ESD, or SWM with the matching file/folder picker. Selection starts inspection automatically. A raw ISO is mounted read-only for DISM inventory, dismounted afterwards, and recorded by its stable internal `sources/install.*` path.
+2. **Customize** — review the detected architecture/version/build profile and automatic Update Catalog matches, then configure image changes in Customize, Group Policy Studio, Unattended Studio, Package Studio, and WinForge Bridge.
+3. **Review** — open **Review & Run** and inspect every executable, argument token, dependency, destructive flag, and bilingual description.
+4. **Run** — execute only after the plan passes validation; background project/history/notification work continues without freezing the shell.
+5. **Validate** — test the output in a disposable virtual machine, keep the original source unchanged, and export a complete `.wimforge` save when the project and all local histories need to travel together.
+
+香港粵語：跟住 **揀來源 → 自訂 → 審閱 → 執行 → 驗證** 五步做。揀 ISO／映像之後會自動檢查同配對 Catalog；進階路徑平時收起，需要先展開。正式執行前逐項對指令，完成後一定要用一次性 VM 驗證，再按需要匯出完整 `.wimforge` 儲存檔。
 
 WimForge uses Windows' servicing tools rather than replacing them. DISM performs image servicing, and `oscdimg` is required when the selected plan creates bootable ISO media. The desktop requests elevation when it launches; review the generated plan before execution.
 
@@ -193,7 +200,7 @@ Every push to `main` (and a manual release-workflow run launched from `main`) bu
 
 | Workflow | WimForge status | Important difference |
 | --- | --- | --- |
-| Source/index inspection | Implemented for ISO/media/WIM/ESD/SWM | Native source pickers; raw ISO is mounted read-only for inventory and dismounted before its stable internal image path is saved |
+| Source/index inspection | Implemented for ISO/media/WIM/ESD/SWM | Native source pickers; raw ISO is mounted read-only for edition/architecture/version/build inventory and dismounted before its stable internal image path is saved |
 | Driver, update and package integration | Implemented as reviewed DISM operations | Payload acquisition is the user's responsibility, except updates and drivers fetched via the in-app Microsoft Update Catalog |
 | Features and capabilities | Implemented | Uses Windows identities; no curated compatibility recommendations |
 | Appx provisioning/removal | Implemented | No store browser or live application inventory equivalent |
@@ -204,7 +211,7 @@ Every push to `main` (and a manual release-workflow run launched from `main`) bu
 | Live/online servicing | Core plan supports `/Online` operations | Desktop workflow is primarily designed around offline, cloned media |
 | Presets/project portability | Git-backed JSON plus complete `.wimforge` saves | Bundle format is WimForge-specific and deliberately uncompressed |
 | Undo/history | Event-sourced project configuration and notification history | Cannot undo external bytes after they are committed/applied |
-| Integrated update downloader | In-app Microsoft Update Catalog search and download | Restricted to trusted Microsoft hosts; files land in the reviewed update/driver queue; no applicability resolver or persistent cache yet |
+| Integrated update downloader | ISO-driven in-app Microsoft Update Catalog search and download | Architecture/version/build automatically creates Updates/Drivers queries; trusted-host files land in the reviewed queue, with no applicability resolver or persistent cache yet |
 | Host refresh, compatibility database | Not implemented | Validate applicability yourself |
 | Licensing | MIT open source | NTLite uses its own commercial/free licensing model |
 
@@ -262,10 +269,10 @@ Read the expanded [NTLite Feature Comparison](docs/wiki/NTLite-Feature-Compariso
 ## 香港粵語重點
 
 - WimForge 開啟時會先請求管理員權限；安裝版會放去受保護嘅 Program Files。可攜式版請解壓去只有你可以改嘅資料夾，唔好由 Downloads、Temp 或 shared folder 直接提權。
-- 開 app 先會見到類似 Visual Studio 嘅工程管理頁，可以建立、開啟、匯入工程，亦可以由最近清單繼續。
-- ISO、WIM、ESD、SWM 同 Windows media folder 都有 file/folder picker；原始 ISO 會唯讀掛載做 inventory，完成後會確認已 dismount。
-- Drivers 同 Updates 會顯示實際 INF、CAB、MSU 資料，亦有 Microsoft 官方 Update Catalog 入口；用邊個 payload 同適用性仍然要由映像作者核實。
-- 每個頁面都可以做 browser-style 分頁，可改名、排位、改字體/字號/顏色/粗體/斜體/刪除線。分頁會另外寫入工程內 Git，並且可以匯出 `.wftabs` 或完整 `.wftabrepo`。
+- 開 app 先會見到類似 Visual Studio 嘅工程管理頁，可以建立、開啟、匯入工程，亦可以由最近清單繼續；Git／bundle 工作會喺後台做，rail 會報狀態同畀你喺失敗後 **再試儲存**。
+- ISO、WIM、ESD、SWM 同 Windows media folder 都有 file/folder picker；揀完即時自動 inventory，原始 ISO 會唯讀掛載，完成後會確認已 dismount。進階 image／mount／output 路徑平時收起。
+- Drivers 同 Updates 會顯示實際 INF、CAB、MSU 資料；WimForge 會由 ISO 架構、版本同 build 自動搜尋 Microsoft Update Catalog，唔使先手打 query。不過 payload 適用性仍然要由映像作者核實。
+- 每個頁面都可以做 browser-style 分頁，可改名、排位、改字體/字號/顏色/粗體/斜體/刪除線，亦可用方向鍵、Enter 同 Space。分頁會喺後台寫入工程內 Git，並且可以匯出 `.wftabs` 或完整 `.wftabrepo`。
 - 診斷資料會寫入會 rotate 嘅 JSONL log，秘密格式會先遮蔽；分享 log 前仍然要自己審閱一次。
 - 界面、文件、release notes 同工程內產生嘅 commit subject 以 English / 香港粵語雙語呈現。
 

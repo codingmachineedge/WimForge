@@ -42,13 +42,21 @@ This modifies the host's global Node/npm tool set under the elevated desktop tok
 3. WimForge initializes `project.json`, `.wimforge/action-history.jsonl`, the project `.git`, and a dedicated `.wimforge/tabs/.git` repository for browser-style workspace tabs.
 4. The Source page opens.
 
-The creation sheet is an in-app, non-modal Material popup. It never suspends the application process or an existing job queue.
+The creation sheet is an in-app, non-modal Material popup. Creating, opening, importing, and exporting projects run in the background, so the shell remains responsive while Git and bundle work completes. The project rail reports the current background step and progress.
+
+工程 sheet 係 app 內非 modal Material popup。建立、開啟、匯入同匯出工程會喺後台做，所以 Git 或 bundle 仲處理緊時，介面仍然可以回應。工程 rail 會顯示而家做緊邊一步同進度。
 
 Every successful configuration mutation is saved atomically and committed. Passive navigation and telemetry are not treated as output-changing actions.
 
 ## Select and inspect a source
 
-The servicing source may be an ISO file, extracted Windows media directory, WIM, ESD, or SWM set. Use the file/folder browser on the Source page, then choose **Inspect source**. For a raw ISO, WimForge mounts it read-only, discovers `sources\install.wim`, `.esd`, or the first `.swm`, reads its editions, stores only the stable media-relative path, and attempts dismount in a `finally` cleanup path; inspection fails if Windows reports that the ISO remains attached. The reviewed plan clones the media into project-owned working space and converts non-mountable ESD/SWM input to a working WIM before servicing. Keep **clone source** enabled unless you have a specific, tested low-level reason not to; ISO and media sources are always cloned.
+The servicing source may be an ISO file, extracted Windows media directory, WIM, ESD, or SWM set. Use **Choose and inspect ISO / image…** or the media-folder picker on the Source page; choosing or finishing a typed source starts inspection automatically. For a raw ISO, WimForge mounts it read-only, discovers `sources\install.wim`, `.esd`, or the first `.swm`, reads its editions plus architecture, full version, and build, stores only the stable media-relative path, and attempts dismount in a `finally` cleanup path; inspection fails if Windows reports that the ISO remains attached. WimForge then builds a source-specific Microsoft Update Catalog query and searches matching Updates automatically; the Drivers section reuses the same ISO profile with a driver-specific query. Catalog results remain a review list, not an applicability verdict.
+
+來源可以係 ISO、解壓咗嘅 Windows media 資料夾、WIM、ESD 或 SWM。用 Source 頁嘅 **揀 ISO／映像並自動檢查……** 或 media-folder picker；揀完檔案／資料夾，或者完成輸入路徑，就會自動檢查。WimForge 會讀 edition、架構、完整版本同 build，再用 ISO 設定檔自動搜尋 Microsoft Update Catalog 嘅 Updates；Drivers 頁會用同一份資料加 driver 搜尋條件。搜尋結果只係畀你審閱，唔代表已證明適用。
+
+The reviewed plan clones the media into project-owned working space and converts non-mountable ESD/SWM input to a working WIM before servicing. Keep **clone source** enabled unless you have a specific, tested low-level reason not to; ISO and media sources are always cloned. Image, mount, output, and ISO-label controls are under **Show advanced paths** so the first source choice stays clear; each file or directory path has the appropriate picker.
+
+正式 plan 會將 media 複製去工程自己嘅工作區，ESD／SWM 亦會先轉做可維護 WIM。除非你有明確而測試過嘅低階理由，請保持 clone source。Image、mount、output 同 ISO label 收喺 **顯示進階路徑** 入面；每個檔案或資料夾路徑都有相應 picker，唔使靠估同手打。
 
 Set separate mount and output locations. WimForge validation rejects output that equals or overlaps source, working media, image, or mount paths.
 
@@ -56,15 +64,19 @@ See [Image Servicing](Image-Servicing) for the exact workspace model.
 
 ## Configure the result
 
-Use the studios in any useful order:
+The Overview page keeps the main route explicit: **Choose source → Customize → Review → Run → Validate**. Use the studios in any useful order during Customize:
 
-- **Customize** — drivers, update/package payloads, Windows features, capabilities, Appx, component identifiers, registry edits, answer files, and post-setup work.
+Overview 會清楚顯示主流程：**揀來源 → 自訂 → 審閱 → 執行 → 驗證**。去到自訂階段，各個 Studio 可以按需要用：
+
+- **Customize** — review automatic ISO-matched Updates/Drivers, choose or scan local payloads, and configure Windows features, capabilities, Appx, component identifiers, registry edits, answer files, and post-setup work.
 - **Group Policy Studio** — search installed ADMX/ADML policies and commit selected registry-backed policy state.
 - **Unattended Studio** — start from a template or import JSON/XML, then export a Microsoft answer file.
 - **Package Studio** — choose software for first logon, including the Full AI Development profile.
 - **WinForge Bridge** — approve declarative WinForge-family and typed deployment actions, then stage them into media.
 
-Changes show a snackbar and become visible in History. Errors create persistent notification entries instead of stopping the program with a native modal dialog.
+Changes show a snackbar and become visible in History. Project saves, workspace-tab commits, notification events, history loading, plan building, payload scans, and catalog discovery are serialized background work rather than UI-thread waits. If a project/tab save fails, the queue pauses and **Retry save** appears in the project rail; resolve the underlying Git/path problem before retrying. Errors create persistent notification entries instead of stopping the program with a native modal dialog.
+
+變更會用 snackbar 提示，亦會出現喺 History。工程同 workspace-tab 儲存、通知事件、history 載入、plan 建立、payload 掃描同 catalog 搜尋都係有次序嘅後台工作，唔會叫 UI 主執行緒企喺度等。工程／分頁儲存失敗時，隊列會暫停，工程 rail 會出現 **再試儲存**；先修好 Git 或路徑問題再試。錯誤會保留做通知，唔會彈原生 modal 對話框卡住程式。
 
 ## Review and run
 
@@ -117,9 +129,9 @@ Recognized page IDs include `overview`, `source`, `customize`, `gpo`, `unattende
 
 1. 用安裝程式裝去受保護 Program Files，或將 portable 解壓去受控資料夾；開啟時 Windows 會先問 UAC。
 2. 在工程起始頁建立、開啟、匯入，或由最近清單繼續。新工程會建 project Git、action history 同 workspace-tab Git。
-3. 用 **Browse ISO / image** 或 **Browse media folder** 揀來源。ISO 會唯讀掛載做 DISM inventory，確認 dismount 後只保留 `sources/install.*` 穩定相對路徑。
-4. 改好 Customize/各 Studio，去 Review & Run 審閱每個 executable、argument、依賴同破壞標記。
-5. 輸出後一定要在一次性 VM 做 clean install，並保留 log、hash 同復原資料。
+3. 用 **揀 ISO／映像並自動檢查……** 或 media-folder picker 揀來源。ISO 會唯讀掛載做 DISM inventory，確認 dismount 後只保留 `sources/install.*` 穩定相對路徑；架構、版本同 build 會自動帶去 Update Catalog 搜尋。
+4. 跟住 **揀來源 → 自訂 → 審閱 → 執行 → 驗證**；進階路徑平時收起，唔使一開始就處理一大堆設定。
+5. 後台儲存期間可以繼續用介面；如果見到 **再試儲存**，先處理 Git／路徑錯誤再重試。輸出後一定要在一次性 VM 做 clean install，並保留 log、hash 同復原資料。
 
 ---
 

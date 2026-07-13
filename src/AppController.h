@@ -17,6 +17,7 @@
 #include "core/WorkspaceTabs.h"
 
 #include <QFileSystemWatcher>
+#include <QMutex>
 #include <QObject>
 #include <QSettings>
 #include <QQueue>
@@ -85,6 +86,7 @@ class AppController final : public QObject
 
     Q_PROPERTY(bool busy READ busy NOTIFY stateChanged)
     Q_PROPERTY(bool backgroundBusy READ backgroundBusy NOTIFY stateChanged)
+    Q_PROPERTY(bool projectTransitionBusy READ projectTransitionBusy NOTIFY stateChanged)
     Q_PROPERTY(QString backgroundStatus READ backgroundStatus NOTIFY stateChanged)
     Q_PROPERTY(bool persistenceRetryAvailable READ persistenceRetryAvailable NOTIFY stateChanged)
     Q_PROPERTY(bool sourceInspectionBusy READ sourceInspectionBusy NOTIFY stateChanged)
@@ -206,6 +208,7 @@ public:
     [[nodiscard]] QString notificationRepoPath() const;
     [[nodiscard]] bool busy() const;
     [[nodiscard]] bool backgroundBusy() const;
+    [[nodiscard]] bool projectTransitionBusy() const;
     [[nodiscard]] QString backgroundStatus() const;
     [[nodiscard]] bool persistenceRetryAvailable() const;
     [[nodiscard]] bool sourceInspectionBusy() const;
@@ -474,6 +477,7 @@ signals:
     void vmLabChanged();
     void vmPreviewReady();
     void workspaceTabsChanged();
+    void projectTransitionFinished(bool success);
 
 private:
     using ProjectMutation = std::function<void(wimforge::ProjectConfig &)>;
@@ -542,7 +546,10 @@ private:
     // Download every resolved catalog file URL sequentially into the project's
     // own payload folder and queue each one; used by downloadUpdateCatalogItem.
     void beginCatalogFileDownloads(const QStringList &urls, const QString &category,
-                                   const QString &destinationDir, qint64 perFileByteCap);
+                                   const QString &destinationDir, qint64 perFileByteCap,
+                                   quint64 operationGeneration,
+                                   quint64 projectGeneration,
+                                   const QString &projectDirectory);
     [[nodiscard]] QStringList *listForCategory(wimforge::ProjectConfig &project, const QString &category);
     void reloadPayloadCatalog(bool force = false);
     void restoreStudioState();
@@ -551,6 +558,7 @@ private:
     bool persistWinForgeBridgeRecipe(const QString &message,
                                      const wimforge::WinForgeRecipe &recipe);
     bool applyHistoryState(const wimforge::ActionEvent &event, const QString &message);
+    bool requireIdleProjectHistory();
     void runOpenCode(const QString &prompt, const std::function<void(const QString &)> &completed);
     void processNextOpenCodeRequest();
     void recreateVmLab();
@@ -607,6 +615,7 @@ private:
     QQueue<PendingProjectMutation> m_projectMutationQueue;
     QQueue<PendingWorkspacePersistence> m_workspacePersistenceQueue;
     QQueue<PendingNotificationOperation> m_notificationOperationQueue;
+    std::shared_ptr<QMutex> m_notificationRepositoryMutex = std::make_shared<QMutex>();
     QString m_gpoStatus = QStringLiteral("Policy catalog has not been loaded yet.");
     QString m_pendingGpoQuery;
     bool m_pendingGpoRegularExpression = false;
@@ -629,15 +638,22 @@ private:
     bool m_payloadCatalogBusy = false;
     bool m_payloadDiscoveryBusy = false;
     bool m_planRefreshBusy = false;
+    bool m_planRefreshPending = false;
     bool m_historyRefreshBusy = false;
+    bool m_historyRefreshPending = false;
     bool m_gpoLoading = false;
     bool m_notificationOperationBusy = false;
     quint64 m_payloadCatalogGeneration = 0;
     quint64 m_planGeneration = 0;
     quint64 m_historyGeneration = 0;
+    quint64 m_projectScopeGeneration = 0;
+    quint64 m_sourceInspectionGeneration = 0;
+    quint64 m_payloadDiscoveryGeneration = 0;
+    quint64 m_catalogOperationGeneration = 0;
     QNetworkAccessManager *m_catalogNetwork = nullptr;
     QNetworkReply *m_catalogReply = nullptr;
     QVariantList m_updateCatalogResults;
+    QString m_updateCatalogQuery;
     QString m_updateCatalogStatus;
     bool m_updateCatalogBusy = false;
     double m_updateCatalogDownloadProgress = 0.0;

@@ -1,14 +1,14 @@
 # Workspace Tabs / 工作空間分頁
 
-Every project has browser-style workspace tabs. Choosing a page from the navigation rail opens that page as a tab or activates its existing tab. Tabs can be closed, moved, renamed, and styled with a font family, font size, color, bold, italic, and strikeout. `Ctrl+W` closes the active tab; `Ctrl+Tab` and `Ctrl+Shift+Tab` move through the tab strip.
+Every project has browser-style workspace tabs. Choosing a page from the navigation rail opens that page as a tab or activates its existing tab. Tabs can be closed, moved, renamed, and styled with a font family, font size, color, bold, italic, and strikeout. `Ctrl+W` closes the active tab; `Ctrl+Tab` and `Ctrl+Shift+Tab` move through the tab strip. After keyboard focus enters the strip, Left/Right moves and focuses the adjacent tab, while Enter or Space activates it; each tab exposes PageTab, selected, and focus state to assistive technology.
 
-每個工程都有好似 browser 咁嘅工作空間分頁。由 navigation rail 揀功能頁時，WimForge 會開一個分頁，或者切去已經開咗嗰個。分頁可以關閉、排位、改名，亦可以分別改字體系列、字號、顏色、粗體、斜體同刪除線。`Ctrl+W` 關而家呢個分頁；`Ctrl+Tab` 同 `Ctrl+Shift+Tab` 前後切換。
+每個工程都有好似 browser 咁嘅工作空間分頁。由 navigation rail 揀功能頁時，WimForge 會開一個分頁，或者切去已經開咗嗰個。分頁可以關閉、排位、改名，亦可以分別改字體系列、字號、顏色、粗體、斜體同刪除線。`Ctrl+W` 關而家呢個分頁；`Ctrl+Tab` 同 `Ctrl+Shift+Tab` 前後切換。鍵盤 focus 入咗分頁列之後，左／右鍵會移去相鄰分頁，Enter 或 Space 啟用；輔助技術會收到 PageTab、已選同 focus 狀態。
 
 ## Project-local Git history / 工程內 Git 歷史
 
-Tab state is stored in `.wimforge/tabs/tabs.json`. The containing `.wimforge/tabs` folder is its own local Git repository, separate from `project.json` history. Opening, activating, moving, closing, renaming, styling, and importing portable definitions creates a normal bilingual English / Hong Kong Cantonese commit in that repository. A complete-repository import restores its existing history instead of adding an artificial import commit. Closing the application or switching projects therefore does not lose the project workspace.
+Tab state is stored in `.wimforge/tabs/tabs.json`. The containing `.wimforge/tabs` folder is its own local Git repository, separate from `project.json` history. Opening, activating, moving, closing, renaming, styling, and importing portable definitions queues a serialized background save and normal bilingual English / Hong Kong Cantonese commit in that repository; the UI does not synchronously wait for Git after each navigation action. A failed item pauses later tab saves and exposes **Retry save** in the project rail. A complete-repository import restores its existing history instead of adding an artificial import commit. Closing the application or switching projects therefore does not lose the project workspace.
 
-分頁狀態儲喺 `.wimforge/tabs/tabs.json`；`.wimforge/tabs` 本身係一個本機 Git，同 `project.json` 歷史分開。開啟、啟用、移動、關閉、改名、改樣式同匯入可攜式定義都會建立 English / 香港粵語雙語 commit。完整 repo 匯入會復原原有歷史，唔會假加一個 import commit；關 app 或轉工程亦唔會遺失工作佈局。
+分頁狀態儲喺 `.wimforge/tabs/tabs.json`；`.wimforge/tabs` 本身係一個本機 Git，同 `project.json` 歷史分開。開啟、啟用、移動、關閉、改名、改樣式同匯入可攜式定義都會排入有次序嘅後台儲存，再建立 English / 香港粵語雙語 commit；每次 navigation 唔會叫 UI 同步等 Git。失敗會暫停之後嘅分頁儲存，工程 rail 會出 **再試儲存**。完整 repo 匯入會復原原有歷史，唔會假加一個 import commit；關 app 或轉工程亦唔會遺失工作佈局。
 
 The state file uses a versioned `org.wimforge.workspace-tabs` JSON format. Page identifiers and style values are validated, titles and font families are bounded, colors accept only `#RRGGBB` or Qt's `#AARRGGBB`, and a project is limited to 200 tabs. These machine identifiers stay language-neutral even though user-visible commit subjects are bilingual.
 

@@ -27,9 +27,11 @@ back to an external console.
 1. Open **Embedded terminal** in the navigation rail.
 2. Choose **Default (PowerShell)**, **Windows PowerShell**, or **Command
    Prompt**.
-3. Set a working directory. If the field is empty and a project is open,
+3. Set a working directory with the adjacent folder picker. If the field is empty and a project is open,
    WimForge uses the project root.
 4. Select **Start**, type a command, and press Enter or **Send**.
+
+工作資料夾旁邊有 folder picker，唔使手打完整路徑；留空兼有開緊工程時，WimForge 會用工程根目錄。
 
 The page resizes ConPTY when its output area changes. Up and Down recall up to
 100 commands from the current UI session. **Ctrl+C** sends the interrupt byte;

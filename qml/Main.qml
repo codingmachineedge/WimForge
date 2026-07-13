@@ -29,6 +29,7 @@ ApplicationWindow {
     Material.primary: DesignTokens.primary(darkTheme)
 
     property int currentPage: startupPage
+    property int pendingProjectPage: -1
     property bool notificationsOpen: false
     readonly property var controller: app
     readonly property real uiScale: Math.max(0.8, Math.min(1.25, app.interfaceScale))
@@ -164,8 +165,24 @@ ApplicationWindow {
             searchPalette.close()
         }
         function onWorkspaceTabsChanged() {
-            root.syncActiveWorkspaceTab()
+            if (root.pendingProjectPage >= 0 && app.workspaceTabs.length > 0) {
+                var destination = root.pendingProjectPage
+                root.pendingProjectPage = -1
+                root.navigateToPage(destination)
+            } else {
+                root.syncActiveWorkspaceTab()
+            }
             workspaceTabsScroll.revealActiveTab()
+        }
+        function onProjectTransitionFinished(success) {
+            if (!success) {
+                root.pendingProjectPage = -1
+                return
+            }
+            newProjectSheet.close()
+            openProjectSheet.close()
+            if (root.pendingProjectPage < 0)
+                root.syncActiveWorkspaceTab()
         }
     }
 
@@ -1009,8 +1026,8 @@ ApplicationWindow {
             importProjectFileDialog.open()
         }
         onRecentRequested: function(path) {
-            if (app.openProject(path))
-                root.syncActiveWorkspaceTab()
+            root.pendingProjectPage = -1
+            app.openProject(path)
         }
         onRemoveRecentRequested: function(path) { app.removeRecentProject(path) }
         onClearRecentRequested: app.clearRecentProjects()
@@ -1411,7 +1428,7 @@ ApplicationWindow {
         modal: true
         dim: true
         focus: true
-        closePolicy: Popup.CloseOnEscape
+        closePolicy: app.projectTransitionBusy ? Popup.NoAutoClose : Popup.CloseOnEscape
         padding: 24
         onOpened: projectName.forceActiveFocus()
         background: Rectangle {
@@ -1443,15 +1460,18 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     Item { Layout.fillWidth: true }
-                    Button { text: root.tr2("Cancel", "取消"); flat: true; onClicked: newProjectSheet.close() }
+                    Button { text: root.tr2("Cancel", "取消"); flat: true; enabled: !app.projectTransitionBusy; onClicked: newProjectSheet.close() }
                     Button {
-                        text: root.tr2("Create project", "建立工程")
+                        text: app.projectTransitionBusy
+                              ? root.tr2("Creating…", "建立緊……")
+                              : root.tr2("Create project", "建立工程")
                         highlighted: true
-                        enabled: projectName.text.trim().length > 0 && projectRoot.text.trim().length > 0
+                        enabled: !app.projectTransitionBusy
+                                 && projectName.text.trim().length > 0
+                                 && projectRoot.text.trim().length > 0
                         onClicked: {
-                            if (app.createProject(projectRoot.text.trim(), projectName.text.trim())) {
-                                newProjectSheet.close(); root.navigateToPage(1)
-                            }
+                            if (app.createProject(projectRoot.text.trim(), projectName.text.trim()))
+                                root.pendingProjectPage = 1
                         }
                     }
                 }
@@ -1472,7 +1492,7 @@ ApplicationWindow {
         width: Math.min(600, root.width - 32)
         height: Math.min(openProjectContent.implicitHeight + topPadding + bottomPadding, root.height - 32)
         modal: true; dim: true; focus: true
-        closePolicy: Popup.CloseOnEscape
+        closePolicy: app.projectTransitionBusy ? Popup.NoAutoClose : Popup.CloseOnEscape
         padding: 24
         onOpened: openPath.forceActiveFocus()
         background: Rectangle {
@@ -1510,16 +1530,19 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     Item { Layout.fillWidth: true }
-                    Button { text: root.tr2("Cancel", "取消"); flat: true; onClicked: openProjectSheet.close() }
+                    Button { text: root.tr2("Cancel", "取消"); flat: true; enabled: !app.projectTransitionBusy; onClicked: openProjectSheet.close() }
                     Button {
-                        text: root.tr2("Open", "開啟")
+                        text: app.projectTransitionBusy
+                              ? root.tr2("Opening…", "開緊……")
+                              : root.tr2("Open", "開啟")
                         highlighted: true
-                        enabled: openPath.text.trim().length > 0
+                        enabled: !app.projectTransitionBusy && openPath.text.trim().length > 0
                         onClicked: {
                             var ok = openPath.text.toLowerCase().endsWith(".json") || openPath.text.toLowerCase().endsWith(".wimforge")
                                    ? app.importProject(openPath.text.trim(), importDestination.text.trim())
                                    : app.openProject(openPath.text.trim())
-                            if (ok) { openProjectSheet.close(); root.syncActiveWorkspaceTab() }
+                            if (ok)
+                                root.pendingProjectPage = -1
                         }
                     }
                 }

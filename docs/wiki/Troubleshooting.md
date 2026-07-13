@@ -10,6 +10,7 @@ Start with the exact in-app status, persistent notification, operation output, a
 | Project will not create | Use a valid writable destination, install Git for Windows machine-wide under protected Program Files, and review any existing destination contents. For elevation safety, WimForge does not use a user-profile or arbitrary PATH Git executable. |
 | Project will not open | Select a directory containing `project.json`, not the JSON file itself. Use the import destination field for `.json` or `.wimforge` input. |
 | A project mutation reports a Git error | Confirm Git is available and the project `.git` directory is writable. Do not delete lock files until no WimForge/Git process owns them. |
+| **Retry save** appears and later edits remain queued | The serialized project or workspace-tab save queue paused at the first failed Git/persistence item. Read the persistent error, repair the reported path, permissions, disk-space, or Git condition, then choose **Retry save**. Do not close the app and assume later queued edits were committed. |
 | Complete-save import is refused | The importer rejects unsafe paths, links/reparse points, collisions, incomplete Git declarations, unsupported format flags, and an existing destination unless overwrite was explicitly requested. |
 
 Use `WimForgeCli.exe --project <folder> project validate --execution --json` when deterministic validation output is easier to archive. See [CLI](CLI).
@@ -18,7 +19,11 @@ Use `WimForgeCli.exe --project <folder> project validate --execution --json` whe
 
 ### A raw ISO shows no edition list
 
-Choose the ISO with **Browse ISO / image**, then let inspection finish. WimForge mounts it read-only, finds `sources\install.wim`, `install.esd`, or `install.swm`, runs DISM, and confirms dismount. If none exists, verify that the file is Windows installation media. Error 740 means the desktop process does not have the required administrator token.
+Choose the ISO with **Choose and inspect ISO / image…**, then let automatic inspection finish. WimForge mounts it read-only, finds `sources\install.wim`, `install.esd`, or `install.swm`, runs summary plus index-detail DISM inventory, and confirms dismount. If none exists, verify that the file is Windows installation media. Error 740 means the desktop process does not have the required administrator token.
+
+If edition names appear but the automatic Catalog profile is incomplete, inspect the reported architecture, full image version, and build. WimForge derives Updates and Drivers searches from those values; a malformed/custom image may not publish enough DISM metadata for a useful query. Catalog results still require manual applicability review.
+
+如果有 edition 但自動 Catalog 設定檔唔完整，請檢查畫面顯示嘅架構、完整映像版本同 build。Updates 同 Drivers 搜尋係由呢啲值組合；自訂／異常映像可能冇提供足夠 DISM metadata。就算有搜尋結果，仍然要人手審閱適用性。
 
 ### DISM inspection or servicing fails
 
@@ -105,8 +110,9 @@ Do not attach Windows images, proprietary installers, credentials, or a secret-b
 ## 香港粵語排查提示
 
 - 見到 `Qt6Guid.dll was not found`：通常係直接開咗未 deploy 嘅 Visual Studio output。請用完整 installer/portable ZIP，或先 `cmake --install` 去 `dev-runtime`。
-- ISO 冇 edition：用 **Browse ISO / image** 再等 inspect；Error 740 代表冇管理員 token。如果檢查話未 dismount，唔好當成已完成。
-- Drivers/Updates 冇資料：檢查撳嘅係 INF/folder 或 CAB/MSU，再用 refresh；Microsoft Catalog 搜尋結果仍然要對目標 build、edition 同架構。
+- ISO 冇 edition：用 **揀 ISO／映像並自動檢查……** 再等自動 inspect；Error 740 代表冇管理員 token。如果檢查話未 dismount，唔好當成已完成。
+- Drivers/Updates 冇自動配對：檢查 ISO inventory 有冇架構、完整版本同 build；亦可以加 INF／folder 或 CAB／MSU。本身有結果都仍然要對目標 build、edition 同架構。
+- 見到 **再試儲存**：後台工程／分頁儲存隊列已經喺第一個錯誤暫停。先修好路徑、權限、磁碟空間或 Git，再撳重試；唔好假設後面排緊嘅修改已經 commit。
 - 工程開唔到：桌面版只會用 Program Files 內受保護嘅 machine-wide Git，唔會用 user profile 或任意 PATH Git。
 - 報告前保留 `.wimforge` journals、分頁 repo 同 Settings 顯示嘅 JSONL log；先刪/遮帳戶、私人路徑、token、product key 同 proprietary payload 資料。
 

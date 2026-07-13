@@ -12,7 +12,7 @@ The accepted language values are `en`, `zh-HK`, and `bilingual`. Accepted page I
 
 ## Global shell
 
-The navigation rail remains available throughout the desktop workflow. At narrower desktop widths it becomes a compact icon rail; each control retains a name and tooltip. The header provides:
+The navigation rail remains available throughout the desktop workflow. At narrower desktop widths it becomes a compact icon rail; each control retains a name and tooltip. Below roughly 1100 logical pixels, the header also gives search the available width and moves project, theme, and language actions into the accessible **More application actions** menu instead of clipping them. The header provides:
 
 - a search field; in the current desktop implementation, submitting a query opens Group Policy Studio and searches its catalog;
 - a job indicator that opens **Review & run**;
@@ -20,9 +20,13 @@ The navigation rail remains available throughout the desktop workflow. At narrow
 - the current project control, which opens the project/import sheet; and
 - an interrupted-run banner when recovery state is detected.
 
-The project summary at the bottom of the rail shows the active project, Git status, and job progress. Informational sheets, snackbars, the notification drawer, and contextual history are in-app surfaces rather than native blocking dialogs.
+The project summary at the bottom of the rail shows the active project, Git status, job progress, and serialized background work. Creating/opening/importing/exporting projects, saving project and tab state, committing notification lifecycle events, loading history/catalogs, building plans, scanning payloads, and inspecting ISO/catalog data run away from the UI thread. If a save fails, the queue pauses and the rail exposes **Retry save** so later changes do not silently overtake it. Informational sheets, snackbars, the notification drawer, Update Catalog results, and contextual history are in-app non-modal surfaces rather than native blocking dialogs.
 
-The tab strip below the header works like a browser: navigation opens or activates a project-local page tab, and each tab can be moved, closed, renamed, or given its own font family, size, color, bold, italic, and strikeout styling. The tab menu imports or exports portable definitions and complete Git-backed tab repositories. See [Workspace Tabs](Workspace-Tabs).
+窄過大約 1100 logical pixels 時，header 會將工程、theme 同語言操作收去有無障礙名稱嘅 **更多應用程式操作** menu，唔會硬擠到裁切。工程 rail 會顯示 Git、job 同有次序嘅後台工作狀態；工程／分頁儲存、通知、history、catalog、plan、payload 同 ISO 工作都唔會塞住 UI 主執行緒。儲存失敗會暫停隊列並出 **再試儲存**，之後嘅變更唔會偷偷爬過去。
+
+The tab strip below the header works like a browser: navigation opens or activates a project-local page tab, and each tab can be moved, closed, renamed, or given its own font family, size, color, bold, italic, and strikeout styling. Tabs expose the PageTab role, selected/focus state, and a visible keyboard focus ring; Left/Right moves between them, while Enter or Space activates one. The tab menu imports or exports portable definitions and complete Git-backed tab repositories. See [Workspace Tabs](Workspace-Tabs).
+
+Header 下面嘅分頁列好似 browser。每個分頁會向輔助技術報告 PageTab、已選同 focus 狀態，鍵盤 focus 亦有清楚外框；左／右方向鍵切換，Enter 或 Space 啟用。分頁儲存同 Git commit 會排入後台隊列。
 
 ## The twelve pages
 
@@ -57,20 +61,24 @@ Undo appends compensating history; it does not rewrite the past or reverse exter
 
 ## Suggested first tour
 
-1. Open the demo on **Overview** and inspect the project/job metrics.
-2. Visit **Source & editions** to see the separate source, image, mount, and output fields.
-3. Add or remove one reversible item in **Customize**.
+The Overview cards make the primary sequence explicit: **Choose source → Customize → Review → Run → Validate**.
+
+1. Open the demo on **Overview** and inspect the five-step flow plus project/job metrics.
+2. Visit **Source & editions**, choose a source, and watch automatic inspection create its architecture/version/build profile and Update Catalog search. Open **Show advanced paths** only if you need the separate image, mount, or output fields.
+3. Add or remove one reversible item in **Customize**; on Updates/Drivers, review the automatic ISO matches rather than inventing a search query.
 4. Open **Review & run** and inspect the resulting command and dependency change without running it.
 5. Use `Ctrl+Z`, then inspect the new action in **History & recovery**.
-6. Create a test notification from **Settings** and exercise read, dismiss, restore, delete, and undo in the bell drawer.
+6. Create a test notification from **Settings** and exercise read, dismiss, restore, delete, and undo in the bell drawer while navigating elsewhere.
 7. Open **Virtual Machine Lab** to inspect provider discovery and exact-preview safety; no hypervisor is installed by WimForge.
 8. Open **Embedded terminal** and read its elevation/bounds notice. Start a session only if you intend to run an administrator command.
+
+Overview 會將主路線寫清楚：**揀來源 → 自訂 → 審閱 → 執行 → 驗證**。先揀來源，等自動檢查同 Catalog 配對完成；要改 image／mount／output 先展開進階路徑。Updates／Drivers 先睇自動 ISO 配對，再去 Review & Run 對指令。一路可以用鍵盤分頁同其他頁面，後台儲存、通知同 history 工作唔會凍住成個 shell。
 
 The current checked-in image gallery is on [Screenshots](Screenshots).
 
 ## 香港粵語導覽
 
-開 app 先會見到工程起始頁，可以建立、開啟、匯入或繼續最近工程。入到工程後，左邊 rail 有十二個功能頁；上面分頁列好似 browser 咁，可以開啟、排位、關閉、改名同改字體樣式。`Ctrl+W` 關而家呢個分頁，`Ctrl+Tab` / `Ctrl+Shift+Tab` 前後切換；工程內 `.wimforge/tabs/.git` 會記錄每次變更。所有確認、通知、復原同 history 都係 app 內非封鎖畫面，唔會將整個 job queue 卡死。
+開 app 先會見到工程起始頁，可以建立、開啟、匯入或繼續最近工程；呢啲 Git／bundle 工作會喺後台做。入到工程後，左邊 rail 有十二個功能頁；上面分頁列好似 browser 咁，可以開啟、排位、關閉、改名同改字體樣式。`Ctrl+W` 關而家呢個分頁，`Ctrl+Tab` / `Ctrl+Shift+Tab` 前後切換，Tab 後亦可以用左右鍵、Enter 同 Space；工程內 `.wimforge/tabs/.git` 會記錄每次變更。所有確認、通知、Catalog、復原同 history 都係 app 內非封鎖畫面，唔會將 UI 或 job queue 卡死。
 
 ---
 

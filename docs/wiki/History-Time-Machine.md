@@ -23,7 +23,9 @@ Each action event contains:
 - target/root IDs for compensation chains;
 - the preceding event's SHA-256 and its own canonical SHA-256.
 
-The hash chain detects accidental edits, truncation, and reordering before another event is accepted. A lock serializes writers from multiple windows. UI queries are bounded for responsiveness, but the journal itself is never truncated.
+The hash chain detects accidental edits, truncation, and reordering before another event is accepted. A lock serializes writers from multiple windows. Desktop history loading runs in the background and builds one bounded in-memory view; contextual, branch, and recent-action queries filter that cache instead of repeatedly rereading the full journal on the UI thread. The journal itself is never truncated.
+
+Hash chain 會喺接受新事件之前偵測意外修改、截短同重新排序，多個視窗嘅 writer 亦會由 lock 排隊。桌面 history 會喺後台一次過載入有上限嘅記憶體 view；context、branch 同最近動作查詢會篩呢份 cache，唔會每次都喺 UI 主執行緒重讀成份 journal。原始 journal 本身唔會被截短。
 
 ## Undo, redo, and undo-of-undo
 

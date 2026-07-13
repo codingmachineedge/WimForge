@@ -33,7 +33,9 @@ Undo uses `git revert` on the latest store commit. Reverting that revert perform
 
 ## Interface behavior
 
-The bell opens a Material drawer inside the application. It shows unread count, icon/text state, and actions for read/unread, dismiss, restore, and recoverable delete. The drawer does not suspend the main event loop or servicing jobs.
+The bell opens a Material drawer inside the application. It shows unread count, icon/text state, and actions for read/unread, dismiss, restore, and recoverable delete. Initialization, refresh, add, read/unread, dismiss, delete, restore, and undo operations are serialized on a background worker; the drawer does not wait synchronously for Git or suspend the main event loop and servicing jobs. The project rail includes notification work in its background status/progress.
+
+Bell 會喺 app 入面開 Material drawer，顯示未讀數量同讀／未讀、dismiss、restore、可復原 delete 操作。初始化、refresh、新通知、讀／未讀、dismiss、delete、restore 同 undo 會順序排去後台 worker 做；drawer 唔會同步企喺度等 Git，亦唔會塞住 UI event loop 或 servicing job。工程 rail 嘅後台狀態／進度亦會包括通知工作。
 
 Errors, completion, operator-approved OpenCode setup, and servicing status can create persistent entries. OpenCode discovery never starts merely because the elevated desktop launched. Short feedback can also appear as a snackbar. Recovery choices use in-app surfaces instead of native blocking dialogs.
 
@@ -77,7 +79,7 @@ The exporter should briefly pause repository writers to capture one coherent app
 
 ## 香港粵語速讀
 
-通知中心有獨立 Git，所以讀/未讀、dismiss、restore 同可復原 delete 唔會跟開緊邊個工程一齊消失。Delete 係 tombstone，唔係安全銷毀；Git 仍然可能有舊訊息，所以通知唔好放密碼、token 或 product key。條 bell drawer 同 snackbar 都係 app 內非封鎖畫面；OpenCode 亦只會在你明確批准 setup 後先會有相關通知。
+通知中心有獨立 Git，所以讀/未讀、dismiss、restore 同可復原 delete 唔會跟開緊邊個工程一齊消失。每次通知 Git 操作會排去後台順序做，開 drawer 或撳操作唔會凍住介面。Delete 係 tombstone，唔係安全銷毀；Git 仍然可能有舊訊息，所以通知唔好放密碼、token 或 product key。條 bell drawer 同 snackbar 都係 app 內非封鎖畫面；OpenCode 亦只會在你明確批准 setup 後先會有相關通知。
 
 ---
 

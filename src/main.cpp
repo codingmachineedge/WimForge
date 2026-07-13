@@ -6,7 +6,6 @@
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
-#include <QAccessible>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -261,13 +260,7 @@ int main(int argc, char *argv[])
 
     QQuickStyle::setStyle(QStringLiteral("Material"));
 
-    // Qt normally activates its accessibility bridge after a screen reader
-    // connects. Force the bridge on so Windows UI Automation can discover the
-    // QML control tree immediately, including during first-run and QA flows.
-    if (qEnvironmentVariableIsEmpty("QT_ACCESSIBILITY"))
-        qputenv("QT_ACCESSIBILITY", QByteArrayLiteral("1"));
     QGuiApplication application(argc, argv);
-    QAccessible::setActive(true);
     ApplicationLogSession logSession(QStringLiteral("gui"));
 #if defined(Q_OS_WIN) && !defined(WIMFORGE_DOCUMENTATION_CAPTURE)
     logElevationResult(elevation);

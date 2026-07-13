@@ -313,6 +313,7 @@ void WorkspaceTabs::closeProject()
     m_repositoryPath.clear();
     m_tabs.clear();
     m_activeIndex = -1;
+    m_deferredPersistence = false;
     m_pendingCommitMessage.clear();
 }
 
