@@ -738,16 +738,56 @@ int main(int argc, char *argv[])
                    && !headerComponent.contains(QStringLiteral("maximumLineCount: 3")),
                QStringLiteral("Shared fields must expose descriptions and page headers must not clip bilingual copy"));
     test.check(catalogSheet.contains(QStringLiteral("modal: false"))
-                   && catalogSheet.contains(QStringLiteral("showAutomatic(targetCategory)"))
-                   && catalogSheet.contains(QStringLiteral("Accessible.role: Accessible.Dialog"))
+                    && catalogSheet.contains(QStringLiteral("showAutomatic(targetCategory)"))
+                    && catalogSheet.contains(QStringLiteral("Accessible.role: Accessible.Dialog"))
                    && catalogSheet.contains(QStringLiteral("Accessible.role: Accessible.List"))
                    && catalogSheet.contains(QStringLiteral("app.openMicrosoftUpdateCatalog(query)"))
                    && !catalogSheet.contains(QStringLiteral(
                        "app.updateCatalogResults.length === 0"))
-                   && catalogSheet.contains(QStringLiteral("Download %1")),
+                    && catalogSheet.contains(QStringLiteral("Download %1")),
                QStringLiteral("Update Catalog results must be non-blocking, ISO-driven, and uniquely named for accessibility"));
+
+    const QString searchPalette = readText(
+        sourceRoot + QStringLiteral("/qml/components/SearchPalette.qml"), &test);
+    test.check(searchPalette.contains(QStringLiteral("function activateCurrentResult()"))
+                   && searchPalette.contains(QStringLiteral("resultList.currentIndex"))
+                   && searchPalette.contains(QStringLiteral("root.activateCurrentResult()"))
+                   && searchPalette.contains(QStringLiteral("Accessible.role: Accessible.Dialog"))
+                   && searchPalette.contains(QStringLiteral("Accessible.role: Accessible.List")),
+               QStringLiteral("Search results must expose dialog/list semantics and activate the focused result with Enter"));
+
+    const QString vmLabPage = readText(
+        sourceRoot + QStringLiteral("/qml/pages/VmLabPage.qml"), &test);
+    test.check(vmLabPage.contains(QStringLiteral("function selectMachine()"))
+                   && vmLabPage.contains(QStringLiteral("activeFocusOnTab: true"))
+                   && vmLabPage.contains(QStringLiteral("Accessible.role: Accessible.ListItem"))
+                   && vmLabPage.contains(QStringLiteral("Accessible.onPressAction: machineDelegate.selectMachine()"))
+                   && vmLabPage.contains(QStringLiteral("Keys.onSpacePressed")),
+               QStringLiteral("VM inventory rows must support keyboard and assistive-technology selection with visible focus"));
+
+    const QString gpoPage = readText(
+        sourceRoot + QStringLiteral("/qml/pages/GpoStudioPage.qml"), &test);
+    test.check(settingsPage.contains(QStringLiteral("Accessible.role: Accessible.PageTabList"))
+                   && settingsPage.contains(QStringLiteral("Accessible.role: Accessible.PageTab"))
+                   && settingsPage.contains(QStringLiteral("Accessible.name: root.tr(categoryDelegate.modelData.en"))
+                   && settingsPage.contains(QStringLiteral("categoryDelegate.visualFocus"))
+                   && gpoPage.contains(QStringLiteral("Accessible.name: root.tr(\"Group Policy catalog\""))
+                   && gpoPage.contains(QStringLiteral("Accessible.role: Accessible.ListItem"))
+                   && gpoPage.contains(QStringLiteral("policyDelegate.visualFocus")),
+               QStringLiteral("Settings and Group Policy navigation must expose names, selection semantics, and visible keyboard focus"));
+
+    const QString notificationCenter = readText(
+        sourceRoot + QStringLiteral("/qml/components/NotificationCenter.qml"), &test);
+    test.check(notificationCenter.contains(QStringLiteral("Accessible.role: Accessible.Dialog"))
+                   && notificationCenter.contains(QStringLiteral("function focusInitialControl()"))
+                   && notificationCenter.contains(QStringLiteral("closeButton.forceActiveFocus"))
+                   && notificationCenter.contains(QStringLiteral("Keys.onEscapePressed"))
+                   && notificationCenter.contains(QStringLiteral("property var tr:"))
+                   && mainQml.contains(QStringLiteral("tr: root.tr2"))
+                   && mainQml.contains(QStringLiteral("bell.forceActiveFocus")),
+               QStringLiteral("The notification drawer must be a bilingual dialog with initial focus, Escape close, and focus restoration"));
     test.check(mainQml.contains(QStringLiteral("compactToolbar"))
-                   && mainQml.contains(QStringLiteral("Accessible.role: Accessible.PageTab"))
+                    && mainQml.contains(QStringLiteral("Accessible.role: Accessible.PageTab"))
                    && mainQml.contains(QStringLiteral("Accessible.selected:"))
                    && mainQml.contains(QStringLiteral("activeFocusOnTab: true")),
                QStringLiteral("The shell must avoid narrow-toolbar clipping and expose keyboard-accessible workspace tabs"));
@@ -756,11 +796,80 @@ int main(int argc, char *argv[])
         sourceRoot + QStringLiteral("/qml/pages/TerminalPage.qml"), &test);
     const QString winForgePage = readText(
         sourceRoot + QStringLiteral("/qml/pages/WinForgeBridgePage.qml"), &test);
+    const QString packagePage = readText(
+        sourceRoot + QStringLiteral("/qml/pages/PackageStudioPage.qml"), &test);
+    const QString planPage = readText(
+        sourceRoot + QStringLiteral("/qml/pages/PlanPage.qml"), &test);
+    const QString historyPage = readText(
+        sourceRoot + QStringLiteral("/qml/pages/HistoryPage.qml"), &test);
+    const QString dashboardPage = readText(
+        sourceRoot + QStringLiteral("/qml/pages/DashboardPage.qml"), &test);
     test.check(settingsPage.contains(QStringLiteral("autoExportDialog"))
                    && terminalPage.contains(QStringLiteral("workingDirectoryDialog"))
                    && winForgePage.contains(QStringLiteral("runtimeFolderDialog"))
                    && winForgePage.contains(QStringLiteral("isoStagingFolderDialog")),
                QStringLiteral("Important file and directory path fields must provide consistent browse controls"));
+    test.check(packagePage.contains(QStringLiteral("packageProfileOpenDialog"))
+                   && packagePage.contains(QStringLiteral("packageProfileSaveDialog"))
+                   && packagePage.contains(QStringLiteral(
+                       "Browse for a package profile to import"))
+                   && packagePage.contains(QStringLiteral(
+                       "Browse for the package profile export destination"))
+                   && gpoPage.contains(QStringLiteral("gpoDocumentationDialog"))
+                   && gpoPage.contains(QStringLiteral(
+                       "Browse for the bilingual GPO documentation export destination")),
+               QStringLiteral("Package and GPO path fields must expose distinct bilingual open/save browse controls"));
+    test.check(vmLabPage.contains(QStringLiteral("vmSourceIsoDialog"))
+                   && vmLabPage.contains(QStringLiteral("vmImportConfigurationDialog"))
+                   && vmLabPage.contains(QStringLiteral("vmDiskDialog"))
+                   && vmLabPage.contains(QStringLiteral("vmAttachIsoDialog"))
+                   && vmLabPage.contains(QStringLiteral(
+                       "Browse for the Windows installation ISO"))
+                   && vmLabPage.contains(QStringLiteral(
+                       "Browse for an existing VM configuration"))
+                   && vmLabPage.contains(QStringLiteral(
+                       "Browse for an existing virtual disk"))
+                   && vmLabPage.contains(QStringLiteral(
+                       "Browse for an ISO to attach to the selected virtual machine")),
+               QStringLiteral("VM source, import, disk, and attach paths must each provide a uniquely named browse control"));
+    test.check(sourcePage.contains(QStringLiteral(
+                   "Browse for an extracted Windows media folder"))
+                   && sourcePage.contains(QStringLiteral(
+                       "Browse for the Windows image working copy"))
+                   && sourcePage.contains(QStringLiteral(
+                       "Browse for the image mount directory"))
+                   && sourcePage.contains(QStringLiteral(
+                       "Browse for the output image file"))
+                   && settingsPage.contains(QStringLiteral(
+                       "Browse for the automatic project export destination"))
+                   && packagePage.contains(QStringLiteral("modality: Qt.NonModal"))
+                   && gpoPage.contains(QStringLiteral("modality: Qt.NonModal"))
+                   && vmLabPage.contains(QStringLiteral("modality: Qt.NonModal")),
+               QStringLiteral("Browse controls must be disambiguated for accessibility and their file dialogs must stay nonmodal"));
+    test.check(winForgePage.contains(QStringLiteral(
+                   "Browse for the published WinForge runtime folder"))
+                   && winForgePage.contains(QStringLiteral(
+                       "Browse for the ISO staging folder"))
+                   && winForgePage.contains(QStringLiteral(
+                       "Choose a WinForge recipe to import"))
+                   && winForgePage.contains(QStringLiteral(
+                       "Choose the WinForge recipe export destination"))
+                   && winForgePage.contains(QStringLiteral("modality: Qt.NonModal")),
+               QStringLiteral("Every WinForge Bridge path picker must expose a distinct accessible name and nonmodal dialog"));
+    test.check(packagePage.contains(QStringLiteral("id: packagePageScroll"))
+                   && planPage.contains(QStringLiteral("id: planPageScroll"))
+                   && historyPage.contains(QStringLiteral("id: historyPageScroll"))
+                   && winForgePage.contains(QStringLiteral("id: bridgePageScroll"))
+                   && historyPage.contains(QStringLiteral("Layout.minimumHeight: root.compact ? 360 : 260"))
+                   && winForgePage.contains(QStringLiteral("Layout.minimumHeight: root.compact ? 480 : 260")),
+               QStringLiteral("High-density workflow pages must keep their lower controls reachable through bounded outer scrolling"));
+    test.check(dashboardPage.contains(QStringLiteral("ready for review"))
+                   && dashboardPage.contains(QStringLiteral("review-required"))
+                   && dashboardPage.contains(QStringLiteral("Review required"))
+                   && dashboardPage.contains(QStringLiteral("review first"))
+                   && dashboardPage.contains(QStringLiteral("run action"))
+                   && !dashboardPage.contains(QStringLiteral("in the reviewed plan")),
+               QStringLiteral("The guided workflow must distinguish a generated plan awaiting review from a reviewed or approved plan"));
     if (test.failures() == 0)
         QTextStream(stdout) << "QML/AppController contract is valid across " << qmlFileCount
                             << " files.\n";

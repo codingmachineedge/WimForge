@@ -51,9 +51,17 @@ Item {
         return String(index + 1)
     }
 
-    ColumnLayout {
+    ScrollView {
+        id: planPageScroll
         anchors.fill: parent
-        spacing: DesignTokens.spacing12
+        clip: true
+        contentWidth: availableWidth
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+        ColumnLayout {
+            width: planPageScroll.availableWidth
+            height: Math.max(planPageScroll.availableHeight, implicitHeight)
+            spacing: DesignTokens.spacing12
 
         WfPageHeader {
             Layout.fillWidth: true
@@ -429,5 +437,6 @@ Item {
                 }
             }
         }
+    }
     }
 }

@@ -34,6 +34,7 @@ Item {
     FileDialog {
         id: autoExportDialog
         title: root.tr("Choose the automatic project export", "揀自動工程匯出位置")
+        modality: Qt.NonModal
         fileMode: FileDialog.SaveFile
         defaultSuffix: "wimforge"
         nameFilters: [root.tr("WimForge project bundles (*.wimforge)", "WimForge 工程 bundle (*.wimforge)")]
@@ -78,11 +79,13 @@ Item {
 
             WfCard {
                 visible: root.railMode
-                Layout.preferredWidth: 210
+                Layout.preferredWidth: 235
                 Layout.fillHeight: true
                 dark: root.dark
                 surfaceLevel: "low"
                 padding: DesignTokens.spacing8
+                Accessible.role: Accessible.PageTabList
+                Accessible.name: root.tr("Settings categories", "設定類別")
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -107,10 +110,16 @@ Item {
                             required property var modelData
                             required property int index
                             Layout.fillWidth: true
-                            implicitHeight: DesignTokens.rowHeight
+                            implicitHeight: Math.max(DesignTokens.rowHeight,
+                                                     categoryContent.implicitHeight + DesignTokens.spacing16)
                             leftPadding: DesignTokens.spacing12
                             rightPadding: DesignTokens.spacing12
                             highlighted: root.categoryIndex === index
+                            focusPolicy: Qt.StrongFocus
+                            Accessible.role: Accessible.PageTab
+                            Accessible.name: root.tr(categoryDelegate.modelData.en,
+                                                      categoryDelegate.modelData.zh)
+                            Accessible.selected: highlighted
                             onClicked: root.categoryIndex = index
                             background: Rectangle {
                                 radius: DesignTokens.radiusControl
@@ -118,8 +127,12 @@ Item {
                                        ? DesignTokens.primaryContainer(root.dark)
                                        : categoryDelegate.hovered
                                          ? DesignTokens.surfaceHigh(root.dark) : "transparent"
+                                border.width: categoryDelegate.visualFocus ? 2 : 0
+                                border.color: categoryDelegate.visualFocus
+                                              ? DesignTokens.primary(root.dark) : "transparent"
                             }
                             contentItem: RowLayout {
+                                id: categoryContent
                                 spacing: DesignTokens.spacing8
                                 Label {
                                     Layout.preferredWidth: 24
@@ -139,7 +152,10 @@ Item {
                                     font.family: DesignTokens.fontBody
                                     font.pixelSize: 12
                                     font.weight: categoryDelegate.highlighted ? Font.DemiBold : Font.Normal
+                                    wrapMode: Text.Wrap
+                                    maximumLineCount: 2
                                     elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
                                 }
                             }
                         }
@@ -421,6 +437,9 @@ Item {
                             compact: true
                             variant: "tonal"
                             text: root.tr("Browse…", "瀏覽……")
+                            Accessible.name: root.tr("Browse for the automatic project export destination", "瀏覽自動工程匯出目的地")
+                            ToolTip.visible: hovered
+                            ToolTip.text: Accessible.name
                             enabled: root.app.autoExport
                             onClicked: autoExportDialog.open()
                         }

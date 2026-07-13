@@ -26,6 +26,7 @@ ScrollView {
     FileDialog {
         id: sourceFileDialog
         title: root.tr("Choose a Windows ISO or image", "揀 Windows ISO 或映像")
+        modality: Qt.NonModal
         fileMode: FileDialog.OpenFile
         nameFilters: [
             root.tr("Windows media and images (*.iso *.wim *.esd *.swm)", "Windows 媒體同映像 (*.iso *.wim *.esd *.swm)"),
@@ -36,11 +37,13 @@ ScrollView {
     FolderDialog {
         id: sourceFolderDialog
         title: root.tr("Choose an extracted Windows media folder", "揀已解壓嘅 Windows 安裝媒體資料夾")
+        modality: Qt.NonModal
         onAccepted: root.acceptSource(app.pathFromUrl(selectedFolder))
     }
     FileDialog {
         id: imageFileDialog
         title: root.tr("Choose install.wim, install.esd, or install.swm", "揀 install.wim、install.esd 或 install.swm")
+        modality: Qt.NonModal
         fileMode: FileDialog.OpenFile
         nameFilters: [
             root.tr("Windows images (*.wim *.esd *.swm)", "Windows 映像 (*.wim *.esd *.swm)"),
@@ -51,11 +54,13 @@ ScrollView {
     FolderDialog {
         id: mountFolderDialog
         title: root.tr("Choose an empty mount folder", "揀一個空白掛載資料夾")
+        modality: Qt.NonModal
         onAccepted: app.setProjectField("mountPath", app.pathFromUrl(selectedFolder))
     }
     FileDialog {
         id: outputFileDialog
         title: root.tr("Choose the output file", "揀輸出檔案")
+        modality: Qt.NonModal
         fileMode: FileDialog.SaveFile
         defaultSuffix: app.outputFormat.toLowerCase()
         nameFilters: app.outputFormat.toUpperCase() === "ISO"
@@ -204,6 +209,9 @@ ScrollView {
                             text: root.tr("Choose and inspect ISO / image…", "揀 ISO / 映像並自動檢查……")
                             glyph: "▱"
                             compact: true
+                            Accessible.name: root.tr("Choose and inspect a Windows ISO or image", "揀 Windows ISO 或映像並自動檢查")
+                            ToolTip.visible: hovered
+                            ToolTip.text: Accessible.name
                             enabled: app.projectLoaded && !app.busy
                             onClicked: sourceFileDialog.open()
                         }
@@ -211,6 +219,9 @@ ScrollView {
                             text: root.tr("Browse media folder…", "瀏覽媒體資料夾…")
                             glyph: "▰"
                             compact: true
+                            Accessible.name: root.tr("Browse for an extracted Windows media folder", "瀏覽已解壓嘅 Windows 安裝媒體資料夾")
+                            ToolTip.visible: hovered
+                            ToolTip.text: Accessible.name
                             enabled: app.projectLoaded && !app.busy
                             onClicked: sourceFolderDialog.open()
                         }
@@ -347,6 +358,9 @@ ScrollView {
                         WfButton {
                             text: root.tr("Browse…", "瀏覽…")
                             compact: true
+                            Accessible.name: root.tr("Browse for the Windows image working copy", "瀏覽 Windows 映像工作副本")
+                            ToolTip.visible: hovered
+                            ToolTip.text: Accessible.name
                             onClicked: imageFileDialog.open()
                         }
                     }
@@ -371,6 +385,9 @@ ScrollView {
                         WfButton {
                             text: root.tr("Browse…", "瀏覽…")
                             compact: true
+                            Accessible.name: root.tr("Browse for the image mount directory", "瀏覽映像掛載資料夾")
+                            ToolTip.visible: hovered
+                            ToolTip.text: Accessible.name
                             onClicked: mountFolderDialog.open()
                         }
                     }
@@ -489,6 +506,9 @@ ScrollView {
                             WfButton {
                                 text: root.tr("Browse…", "瀏覽…")
                                 compact: true
+                                Accessible.name: root.tr("Browse for the output image file", "瀏覽輸出映像檔")
+                                ToolTip.visible: hovered
+                                ToolTip.text: Accessible.name
                                 onClicked: outputFileDialog.open()
                             }
                         }

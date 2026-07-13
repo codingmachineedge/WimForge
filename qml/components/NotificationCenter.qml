@@ -11,6 +11,7 @@ WfCard {
     property var entries: []
     property int unreadCount: 0
     property bool motionEnabled: true
+    property var tr: function(en, zh) { return en }
     readonly property color secondaryTextColor: DesignTokens.onSurfaceVariant(dark)
     readonly property color errorColor: DesignTokens.error(dark)
     readonly property color warningColor: DesignTokens.tertiary(dark)
@@ -30,12 +31,35 @@ WfCard {
     height: parent.height - 92
     z: 900
     padding: 0
+    focusPolicy: opened ? Qt.StrongFocus : Qt.NoFocus
     radius: DesignTokens.radiusPill
     surfaceLevel: "low"
     outlineColor: DesignTokens.outline(dark)
+    Accessible.role: Accessible.Dialog
     Accessible.name: unreadCount > 0
-                     ? qsTr("Notification center, %1 unread").arg(unreadCount)
-                     : qsTr("Notification center, no unread notifications")
+                     ? root.tr("Notification center, %1 unread",
+                               "通知中心，%1 個未讀通知").arg(unreadCount)
+                     : root.tr("Notification center, no unread notifications",
+                               "通知中心，冇未讀通知")
+    Accessible.focusable: opened
+
+    function focusInitialControl() {
+        Qt.callLater(function() {
+            if (root.opened)
+                closeButton.forceActiveFocus(Qt.TabFocusReason)
+        })
+    }
+
+    onOpenedChanged: {
+        if (opened)
+            focusInitialControl()
+    }
+    Keys.onEscapePressed: function(event) {
+        if (!opened)
+            return
+        closeRequested()
+        event.accepted = true
+    }
 
     Behavior on x {
         NumberAnimation {
@@ -53,7 +77,7 @@ WfCard {
             Layout.fillWidth: true
             Layout.margins: DesignTokens.spacing16
             Label {
-                text: qsTr("Notification center")
+                text: root.tr("Notification center", "通知中心")
                 color: DesignTokens.onSurface(root.dark)
                 font.family: DesignTokens.fontDisplay
                 font.pixelSize: 20
@@ -69,15 +93,16 @@ WfCard {
             Item { Layout.fillWidth: true }
             WfIconButton {
                 glyph: "↶"
-                accessibleName: qsTr("Undo latest notification action")
+                accessibleName: root.tr("Undo latest notification action", "復原上一個通知操作")
                 toolTip: accessibleName
                 dark: root.dark
                 motionEnabled: root.motionEnabled
                 onClicked: root.undoRequested()
             }
             WfIconButton {
+                id: closeButton
                 glyph: "×"
-                accessibleName: qsTr("Close notification center")
+                accessibleName: root.tr("Close notification center", "關閉通知中心")
                 toolTip: accessibleName
                 dark: root.dark
                 motionEnabled: root.motionEnabled
@@ -90,7 +115,8 @@ WfCard {
             Layout.rightMargin: 18
             Layout.bottomMargin: 12
             Layout.fillWidth: true
-            text: qsTr("Every read, dismiss, restore and delete is committed to a separate local Git repository.")
+            text: root.tr("Every read, dismiss, restore and delete is committed to a separate local Git repository.",
+                          "每次標做已讀、略過、還原同刪除，都會提交到獨立嘅本機 Git 儲存庫。")
             wrapMode: Text.Wrap
             color: root.secondaryTextColor
             font.family: DesignTokens.fontBody
@@ -114,6 +140,8 @@ WfCard {
             leftMargin: DesignTokens.spacing12
             rightMargin: DesignTokens.spacing12
             model: root.entries
+            Accessible.role: Accessible.List
+            Accessible.name: root.tr("Notifications", "通知")
 
             delegate: WfCard {
                 id: notificationCard
@@ -129,17 +157,25 @@ WfCard {
                            : DesignTokens.primaryContainer(dark)
                 outlined: !modelData.read
                 outlineColor: DesignTokens.primary(dark)
-                readonly property string severityLabel: modelData.kind === "error" ? qsTr("Error")
-                                                       : modelData.kind === "warning" ? qsTr("Warning")
-                                                       : modelData.kind === "success" ? qsTr("Success")
-                                                       : qsTr("Information")
-                readonly property string stateLabel: modelData.deleted ? qsTr("Deleted")
-                                                    : modelData.dismissed ? qsTr("Dismissed")
-                                                    : modelData.read ? qsTr("Read") : qsTr("Unread")
+                readonly property string severityLabel: modelData.kind === "error"
+                                                        ? root.tr("Error", "錯誤")
+                                                        : modelData.kind === "warning"
+                                                          ? root.tr("Warning", "警告")
+                                                          : modelData.kind === "success"
+                                                            ? root.tr("Success", "成功")
+                                                            : root.tr("Information", "資訊")
+                readonly property string stateLabel: modelData.deleted
+                                                     ? root.tr("Deleted", "已刪除")
+                                                     : modelData.dismissed
+                                                       ? root.tr("Dismissed", "已略過")
+                                                       : modelData.read
+                                                         ? root.tr("Read", "已讀")
+                                                         : root.tr("Unread", "未讀")
                 readonly property color severityColor: modelData.kind === "error" ? root.errorColor
                                                        : modelData.kind === "warning" ? root.warningColor
                                                        : modelData.kind === "success" ? root.successColor
                                                        : DesignTokens.secondary(root.dark)
+                Accessible.role: Accessible.ListItem
                 Accessible.name: severityLabel + ", " + stateLabel + ": " + modelData.title + ". " + modelData.message
 
                 ColumnLayout {
@@ -188,7 +224,7 @@ WfCard {
                         Layout.fillWidth: true
                         WfButton {
                             visible: !modelData.read
-                            text: qsTr("Mark read")
+                            text: root.tr("Mark read", "標做已讀")
                             variant: "text"
                             compact: true
                             dark: notificationCard.dark
@@ -197,7 +233,7 @@ WfCard {
                         }
                         WfButton {
                             visible: modelData.read && !modelData.deleted
-                            text: qsTr("Mark unread")
+                            text: root.tr("Mark unread", "標做未讀")
                             variant: "text"
                             compact: true
                             dark: notificationCard.dark
@@ -206,7 +242,7 @@ WfCard {
                         }
                         WfButton {
                             visible: !modelData.dismissed
-                            text: qsTr("Dismiss")
+                            text: root.tr("Dismiss", "略過")
                             variant: "text"
                             compact: true
                             dark: notificationCard.dark
@@ -215,7 +251,7 @@ WfCard {
                         }
                         WfButton {
                             visible: modelData.dismissed || modelData.deleted
-                            text: qsTr("Restore")
+                            text: root.tr("Restore", "還原")
                             variant: "tonal"
                             compact: true
                             dark: notificationCard.dark
@@ -227,7 +263,8 @@ WfCard {
                             visible: !modelData.deleted
                             glyph: "⌫"
                             variant: "destructive"
-                            accessibleName: qsTr("Soft-delete notification; recoverable in Git")
+                            accessibleName: root.tr("Soft-delete notification; recoverable in Git",
+                                                    "暫時刪除通知；可以喺 Git 還原")
                             toolTip: accessibleName
                             buttonSize: 34
                             dark: notificationCard.dark
@@ -241,7 +278,7 @@ WfCard {
             Label {
                 anchors.centerIn: parent
                 visible: list.count === 0
-                text: qsTr("No notifications yet")
+                text: root.tr("No notifications yet", "暫時未有通知")
                 color: root.secondaryTextColor
                 font.family: DesignTokens.fontBody
             }

@@ -33,6 +33,7 @@ Item {
     FolderDialog {
         id: runtimeFolderDialog
         title: root.tr("Choose the published WinForge runtime folder", "揀已 publish 嘅 WinForge runtime 資料夾")
+        modality: Qt.NonModal
         onAccepted: {
             runtimePath.text = root.app.pathFromUrl(selectedFolder)
             root.app.setWinForgeBridgeRuntimePath(runtimePath.text)
@@ -41,11 +42,13 @@ Item {
     FolderDialog {
         id: isoStagingFolderDialog
         title: root.tr("Choose the ISO staging folder", "揀 ISO staging 資料夾")
+        modality: Qt.NonModal
         onAccepted: isoPath.text = root.app.pathFromUrl(selectedFolder)
     }
     FileDialog {
         id: recipeOpenDialog
         title: root.tr("Choose a WinForge recipe", "揀 WinForge recipe")
+        modality: Qt.NonModal
         fileMode: FileDialog.OpenFile
         nameFilters: [root.tr("WinForge recipes (*.json)", "WinForge recipe (*.json)"), root.tr("All files (*)", "所有檔案 (*)")]
         onAccepted: recipePath.text = root.app.pathFromUrl(selectedFile)
@@ -53,15 +56,24 @@ Item {
     FileDialog {
         id: recipeSaveDialog
         title: root.tr("Choose where to save the WinForge recipe", "揀 WinForge recipe 儲存位置")
+        modality: Qt.NonModal
         fileMode: FileDialog.SaveFile
         defaultSuffix: "json"
         nameFilters: [root.tr("WinForge recipes (*.json)", "WinForge recipe (*.json)")]
         onAccepted: recipePath.text = root.app.pathFromUrl(selectedFile)
     }
 
-    ColumnLayout {
+    ScrollView {
+        id: bridgePageScroll
         anchors.fill: parent
-        spacing: DesignTokens.spacing12
+        clip: true
+        contentWidth: availableWidth
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+        ColumnLayout {
+            width: bridgePageScroll.availableWidth
+            height: Math.max(bridgePageScroll.availableHeight, implicitHeight)
+            spacing: DesignTokens.spacing12
 
         RowLayout {
             Layout.fillWidth: true
@@ -164,6 +176,7 @@ Item {
         GridLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.minimumHeight: root.compact ? 480 : 260
             columns: root.compact ? 1 : 2
             columnSpacing: DesignTokens.spacing16
             rowSpacing: DesignTokens.spacing12
@@ -312,7 +325,7 @@ Item {
 
             WfCard {
                 Layout.fillWidth: root.compact
-                Layout.preferredWidth: root.compact ? -1 : 360
+                Layout.preferredWidth: root.compact ? -1 : 400
                 Layout.fillHeight: true
                 Layout.minimumWidth: 0
                 Layout.minimumHeight: 160
@@ -355,8 +368,9 @@ Item {
                             }
                             onToggled: root.app.setWinForgeBridgeIncludeRuntime(checked)
                         }
-                        RowLayout {
+                        ColumnLayout {
                             Layout.fillWidth: true
+                            spacing: DesignTokens.spacing8
                             WfField {
                                 id: runtimePath
                                 Layout.fillWidth: true
@@ -369,16 +383,21 @@ Item {
                                 onEditingFinished: root.app.setWinForgeBridgeRuntimePath(text)
                             }
                             WfButton {
+                                Layout.alignment: Qt.AlignRight
                                 dark: root.dark
                                 compact: true
                                 text: root.tr("Browse…", "瀏覽……")
+                                Accessible.name: root.tr("Browse for the published WinForge runtime folder", "瀏覽已 publish 嘅 WinForge runtime 資料夾")
+                                ToolTip.visible: hovered
+                                ToolTip.text: Accessible.name
                                 onClicked: runtimeFolderDialog.open()
                             }
                         }
-                        RowLayout {
+                        ColumnLayout {
                             Layout.fillWidth: true
                             spacing: DesignTokens.spacing8
                             WfButton {
+                                Layout.alignment: Qt.AlignLeft
                                 dark: root.dark
                                 compact: true
                                 variant: "outlined"
@@ -440,6 +459,9 @@ Item {
                                 compact: true
                                 variant: "text"
                                 text: root.tr("Choose recipe…", "揀 recipe……")
+                                Accessible.name: root.tr("Choose a WinForge recipe to import", "揀要匯入嘅 WinForge recipe")
+                                ToolTip.visible: hovered
+                                ToolTip.text: Accessible.name
                                 onClicked: recipeOpenDialog.open()
                             }
                             WfButton {
@@ -448,12 +470,16 @@ Item {
                                 compact: true
                                 variant: "text"
                                 text: root.tr("Choose save path…", "揀儲存位置……")
+                                Accessible.name: root.tr("Choose the WinForge recipe export destination", "揀 WinForge recipe 匯出目的地")
+                                ToolTip.visible: hovered
+                                ToolTip.text: Accessible.name
                                 onClicked: recipeSaveDialog.open()
                             }
                         }
 
-                        RowLayout {
+                        ColumnLayout {
                             Layout.fillWidth: true
+                            spacing: DesignTokens.spacing8
                             WfField {
                                 id: isoPath
                                 Layout.fillWidth: true
@@ -466,9 +492,13 @@ Item {
                                 mono: true
                             }
                             WfButton {
+                                Layout.alignment: Qt.AlignRight
                                 dark: root.dark
                                 compact: true
                                 text: root.tr("Browse…", "瀏覽……")
+                                Accessible.name: root.tr("Browse for the ISO staging folder", "瀏覽 ISO staging 資料夾")
+                                ToolTip.visible: hovered
+                                ToolTip.text: Accessible.name
                                 onClicked: isoStagingFolderDialog.open()
                             }
                         }
@@ -515,6 +545,7 @@ Item {
                 }
             }
         }
+    }
     }
 
     Popup {

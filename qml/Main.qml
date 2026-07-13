@@ -961,7 +961,11 @@ ApplicationWindow {
                 entries: app.notifications
                 unreadCount: app.notificationUnreadCount
                 motionEnabled: app.motionEnabled
-                onCloseRequested: root.notificationsOpen = false
+                tr: root.tr2
+                onCloseRequested: {
+                    root.notificationsOpen = false
+                    Qt.callLater(function() { bell.forceActiveFocus(Qt.TabFocusReason) })
+                }
                 onMarkReadRequested: id => app.markNotificationRead(id)
                 onMarkUnreadRequested: id => app.markNotificationUnread(id)
                 onDismissRequested: id => app.dismissNotification(id)

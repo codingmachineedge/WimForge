@@ -37,14 +37,14 @@ ScrollView {
         if (index === 0) return sourceReady ? "done" : "next"
         if (index === 1) return sourceReady ? (planReady ? "done" : "next") : "waiting"
         if (index === 2) return outputReady || runActive ? "done" : (planReady ? "next" : "waiting")
-        if (index === 3) return runActive ? "active" : (outputReady ? "done" : (planReady ? "ready" : "waiting"))
+        if (index === 3) return runActive ? "active" : (outputReady ? "done" : (planReady ? "review-required" : "waiting"))
         return outputReady && !runActive ? "next" : "waiting"
     }
     function workflowStateText(state) {
         if (state === "done") return root.tr("Done", "完成")
         if (state === "next") return root.tr("Next", "下一步")
         if (state === "active") return root.tr("Running", "執行緊")
-        if (state === "ready") return root.tr("Ready", "準備好")
+        if (state === "review-required") return root.tr("Review required", "要先檢查")
         return root.tr("Waiting", "等緊")
     }
     clip: true
@@ -89,7 +89,9 @@ ScrollView {
                 Layout.fillWidth: true
                 eyebrow: root.tr("OPERATIONS", "工序")
                 value: String(app.operationCount)
-                detail: root.tr("in the reviewed plan", "已排入檢查過嘅計劃")
+                detail: app.operationCount > 0
+                        ? root.tr("ready for review", "準備好俾你檢查")
+                        : root.tr("waiting for customizations", "等緊你揀調校")
                 iconSource: "qrc:/qt/qml/WimForge/assets/icons/customize.svg"
                 tone: "info"
             }
@@ -131,8 +133,8 @@ ScrollView {
                     model: [
                         { icon: "1", en: "Choose and inspect the Windows source", zh: "揀 Windows 來源並自動檢查", metaEn: "Source & editions", metaZh: "來源同版本", page: 1 },
                         { icon: "2", en: "Choose what to customize", zh: "揀想調校嘅項目", metaEn: "Customize", metaZh: "調校", page: 2 },
-                        { icon: "3", en: "Review exact commands and safety checks", zh: "逐條睇清楚指令同安全檢查", metaEn: "Review", metaZh: "檢查", page: 8 },
-                        { icon: "4", en: "Run the approved plan", zh: "執行批准咗嘅計劃", metaEn: "Run", metaZh: "開工", page: 8 },
+                        { icon: "3", en: "Review generated commands and safety checks", zh: "檢查產生咗嘅指令同安全閘", metaEn: "Open Review & run — review first", metaZh: "開檢查同開工頁面—先檢查", page: 8 },
+                        { icon: "4", en: "After review, use the explicit Run button", zh: "檢查完，再撳清楚標示嘅開工掣", metaEn: "Open Review & run — run action", metaZh: "開檢查同開工頁面—開工動作", page: 8 },
                         { icon: "5", en: "Validate the output in a virtual machine", zh: "喺虛擬機驗證輸出", metaEn: "Virtual Machine Lab", metaZh: "虛擬機實驗室", page: 7 }
                     ]
 

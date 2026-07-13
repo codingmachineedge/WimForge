@@ -39,9 +39,17 @@ Item {
         return filtered
     }
 
-    ColumnLayout {
+    ScrollView {
+        id: historyPageScroll
         anchors.fill: parent
-        spacing: DesignTokens.spacing12
+        clip: true
+        contentWidth: availableWidth
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+        ColumnLayout {
+            width: historyPageScroll.availableWidth
+            height: Math.max(historyPageScroll.availableHeight, implicitHeight)
+            spacing: DesignTokens.spacing12
 
         WfPageHeader {
             Layout.fillWidth: true
@@ -132,6 +140,7 @@ Item {
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.minimumHeight: root.compact ? 360 : 260
             currentIndex: tabs.currentIndex
 
             Item {
@@ -575,6 +584,7 @@ Item {
                 }
             }
         }
+    }
     }
 
     Popup {

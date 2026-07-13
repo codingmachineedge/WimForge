@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import "../components"
 
@@ -377,6 +378,8 @@ Item {
                             spacing: 3
                             model: root.app.gpoResults
                             boundsBehavior: Flickable.StopAtBounds
+                            Accessible.role: Accessible.List
+                            Accessible.name: root.tr("Group Policy catalog", "群組原則目錄")
 
                             delegate: ItemDelegate {
                                 id: policyDelegate
@@ -388,6 +391,12 @@ Item {
                                 rightPadding: 10
                                 topPadding: 9
                                 bottomPadding: 9
+                                focusPolicy: Qt.StrongFocus
+                                Accessible.role: Accessible.ListItem
+                                Accessible.name: policyDelegate.modelData.name + ". "
+                                                 + (policyDelegate.modelData.category
+                                                    || root.tr("Uncategorized policy", "未分類政策"))
+                                Accessible.selected: highlighted
 
                                 onClicked: {
                                     policyList.currentIndex = index
@@ -456,6 +465,9 @@ Item {
                                            : policyDelegate.hovered
                                              ? root.surfaceContainerColor
                                              : "transparent"
+                                    border.width: policyDelegate.visualFocus ? 2 : 0
+                                    border.color: policyDelegate.visualFocus
+                                                  ? root.primaryColor : "transparent"
                                 }
                             }
                         }
@@ -1069,6 +1081,19 @@ Item {
         }
     }
 
+    FileDialog {
+        id: gpoDocumentationDialog
+        title: root.tr("Choose where to export the bilingual GPO reference", "揀雙語 GPO 參考匯出位置")
+        modality: Qt.NonModal
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "md"
+        nameFilters: [
+            root.tr("Markdown documents (*.md)", "Markdown 文件 (*.md)"),
+            root.tr("All files (*)", "所有檔案 (*)")
+        ]
+        onAccepted: docsPath.text = root.app.pathFromUrl(selectedFile)
+    }
+
     Popup {
         id: docsExport
         anchors.centerIn: Overlay.overlay
@@ -1091,10 +1116,25 @@ Item {
                 font.pixelSize: 20
                 font.weight: Font.Bold
             }
-            TextField {
-                id: docsPath
+            RowLayout {
                 Layout.fillWidth: true
-                placeholderText: "D:\\docs\\all-installed-policies.md"
+                TextField {
+                    id: docsPath
+                    Layout.fillWidth: true
+                    placeholderText: "D:\\docs\\all-installed-policies.md"
+                    Accessible.name: root.tr("GPO documentation export path", "GPO 文件匯出路徑")
+                    selectByMouse: true
+                }
+                WfButton {
+                    dark: root.dark
+                    compact: true
+                    variant: "outlined"
+                    text: root.tr("Browse…", "瀏覽……")
+                    Accessible.name: root.tr("Browse for the bilingual GPO documentation export destination", "瀏覽雙語 GPO 文件匯出目的地")
+                    ToolTip.visible: hovered
+                    ToolTip.text: Accessible.name
+                    onClicked: gpoDocumentationDialog.open()
+                }
             }
             RowLayout {
                 Layout.fillWidth: true

@@ -37,6 +37,54 @@ Item {
     readonly property bool reviewNeedsToken:
         root.value(root.pendingPreview, "confirmation", "").length > 0
 
+    FileDialog {
+        id: vmSourceIsoDialog
+        title: root.tr("Choose the Windows installation ISO", "揀 Windows 安裝 ISO")
+        modality: Qt.NonModal
+        fileMode: FileDialog.OpenFile
+        nameFilters: [
+            root.tr("Windows ISO images (*.iso)", "Windows ISO 映像 (*.iso)"),
+            root.tr("All files (*)", "所有檔案 (*)")
+        ]
+        onAccepted: sourceIso.text = root.app.pathFromUrl(selectedFile)
+    }
+
+    FileDialog {
+        id: vmImportConfigurationDialog
+        title: root.tr("Choose an existing virtual machine configuration", "揀現有虛擬機設定檔")
+        modality: Qt.NonModal
+        fileMode: FileDialog.OpenFile
+        nameFilters: [
+            root.tr("Virtual machine configurations (*.vmx *.vbox)", "虛擬機設定檔 (*.vmx *.vbox)"),
+            root.tr("All files (*)", "所有檔案 (*)")
+        ]
+        onAccepted: importConfigurationPath.text = root.app.pathFromUrl(selectedFile)
+    }
+
+    FileDialog {
+        id: vmDiskDialog
+        title: root.tr("Choose an existing virtual disk", "揀現有虛擬磁碟")
+        modality: Qt.NonModal
+        fileMode: FileDialog.OpenFile
+        nameFilters: [
+            root.tr("Virtual disks (*.vdi *.vmdk)", "虛擬磁碟 (*.vdi *.vmdk)"),
+            root.tr("All files (*)", "所有檔案 (*)")
+        ]
+        onAccepted: newDiskPath.text = root.app.pathFromUrl(selectedFile)
+    }
+
+    FileDialog {
+        id: vmAttachIsoDialog
+        title: root.tr("Choose an ISO to attach", "揀要掛載嘅 ISO")
+        modality: Qt.NonModal
+        fileMode: FileDialog.OpenFile
+        nameFilters: [
+            root.tr("ISO images (*.iso)", "ISO 映像 (*.iso)"),
+            root.tr("All files (*)", "所有檔案 (*)")
+        ]
+        onAccepted: attachIsoPath.text = root.app.pathFromUrl(selectedFile)
+    }
+
     // Keep the controller contract in this block. The views below never call the
     // VM controller directly, so API changes remain local to these helpers.
     function refreshLab() {
@@ -619,6 +667,8 @@ Item {
                                 spacing: DesignTokens.spacing8
                                 boundsBehavior: Flickable.StopAtBounds
                                 model: root.filteredInventory()
+                                Accessible.role: Accessible.List
+                                Accessible.name: root.tr("Virtual machines", "虛擬機")
                                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
                                 delegate: Rectangle {
@@ -628,16 +678,38 @@ Item {
                                         root.value(machineDelegate.modelData, "id", "") === root.app.vmSelectedId
                                         && root.value(machineDelegate.modelData, "providerId", "")
                                            === root.value(root.app.vmSelected, "providerId", "")
+                                    function selectMachine() {
+                                        root.chooseVm(root.value(machineDelegate.modelData, "providerId", ""),
+                                                      root.value(machineDelegate.modelData, "id", ""))
+                                    }
                                     width: inventoryList.width
                                     height: 62
                                     radius: DesignTokens.radiusCard
                                     color: selected ? DesignTokens.primaryContainer(root.dark)
                                                     : DesignTokens.surfaceLowest(root.dark)
-                                    border.width: 1
-                                    border.color: selected ? DesignTokens.primary(root.dark) : root.outlineColor
+                                    border.width: activeFocus ? 2 : 1
+                                    border.color: activeFocus || selected
+                                                  ? DesignTokens.primary(root.dark) : root.outlineColor
+                                    activeFocusOnTab: true
+                                    Accessible.role: Accessible.ListItem
+                                    Accessible.selected: selected
+                                    Accessible.focusable: true
                                     Accessible.name: root.tr("Select %1, %2", "選取 %1，%2")
                                                         .arg(root.value(machineDelegate.modelData, "name", ""))
                                                         .arg(root.stateLabel(root.powerState(machineDelegate.modelData)))
+                                    Accessible.onPressAction: machineDelegate.selectMachine()
+                                    Keys.onReturnPressed: function(event) {
+                                        machineDelegate.selectMachine()
+                                        event.accepted = true
+                                    }
+                                    Keys.onEnterPressed: function(event) {
+                                        machineDelegate.selectMachine()
+                                        event.accepted = true
+                                    }
+                                    Keys.onSpacePressed: function(event) {
+                                        machineDelegate.selectMachine()
+                                        event.accepted = true
+                                    }
 
                                     RowLayout {
                                         anchors.fill: parent
@@ -678,8 +750,8 @@ Item {
                                     MouseArea {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.chooseVm(root.value(machineDelegate.modelData, "providerId", ""),
-                                                                 root.value(machineDelegate.modelData, "id", ""))
+                                        onPressed: machineDelegate.forceActiveFocus()
+                                        onClicked: machineDelegate.selectMachine()
                                     }
                                 }
 
@@ -1141,13 +1213,27 @@ Item {
                                     selectByMouse: true
                                 }
                             }
-                            TextField {
-                                id: sourceIso
+                            RowLayout {
                                 Layout.fillWidth: true
-                                text: root.app.currentOutput || ""
-                                placeholderText: root.tr("Absolute path to Windows ISO", "Windows ISO 絕對路徑")
-                                Accessible.name: root.tr("Installation ISO path", "安裝 ISO 路徑")
-                                selectByMouse: true
+                                spacing: 6
+                                TextField {
+                                    id: sourceIso
+                                    Layout.fillWidth: true
+                                    text: root.app.currentOutput || ""
+                                    placeholderText: root.tr("Absolute path to Windows ISO", "Windows ISO 絕對路徑")
+                                    Accessible.name: root.tr("Installation ISO path", "安裝 ISO 路徑")
+                                    selectByMouse: true
+                                }
+                                WfButton {
+                                    dark: root.dark
+                                    compact: true
+                                    variant: "outlined"
+                                    text: root.tr("Browse…", "瀏覽……")
+                                    Accessible.name: root.tr("Browse for the Windows installation ISO", "瀏覽 Windows 安裝 ISO")
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: Accessible.name
+                                    onClicked: vmSourceIsoDialog.open()
+                                }
                             }
                             ComboBox {
                                 id: guestType
@@ -1194,12 +1280,26 @@ Item {
                                     text: root.providerName(modelData)
                                 }
                             }
-                            TextField {
-                                id: importConfigurationPath
+                            RowLayout {
                                 Layout.fillWidth: true
-                                placeholderText: root.tr("Absolute .vmx or .vbox path", ".vmx 或 .vbox 絕對路徑")
-                                Accessible.name: root.tr("Existing VM configuration path", "現有 VM 設定路徑")
-                                selectByMouse: true
+                                spacing: 6
+                                TextField {
+                                    id: importConfigurationPath
+                                    Layout.fillWidth: true
+                                    placeholderText: root.tr("Absolute .vmx or .vbox path", ".vmx 或 .vbox 絕對路徑")
+                                    Accessible.name: root.tr("Existing VM configuration path", "現有 VM 設定路徑")
+                                    selectByMouse: true
+                                }
+                                WfButton {
+                                    dark: root.dark
+                                    compact: true
+                                    variant: "outlined"
+                                    text: root.tr("Browse…", "瀏覽……")
+                                    Accessible.name: root.tr("Browse for an existing VM configuration", "瀏覽現有 VM 設定檔")
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: Accessible.name
+                                    onClicked: vmImportConfigurationDialog.open()
+                                }
                             }
                             TextField {
                                 id: importDisplayName
@@ -1650,12 +1750,26 @@ Item {
                                         from: 0; to: 29; value: 1
                                         Accessible.name: root.tr("Disk bus port", "磁碟 bus port")
                                     }
-                                    TextField {
-                                        id: newDiskPath
+                                    RowLayout {
                                         Layout.fillWidth: true
-                                        placeholderText: root.tr("Existing absolute .vdi/.vmdk path", "現有 .vdi/.vmdk 絕對路徑")
-                                        Accessible.name: root.tr("Existing virtual disk path", "現有虛擬磁碟路徑")
-                                        selectByMouse: true
+                                        spacing: 6
+                                        TextField {
+                                            id: newDiskPath
+                                            Layout.fillWidth: true
+                                            placeholderText: root.tr("Existing absolute .vdi/.vmdk path", "現有 .vdi/.vmdk 絕對路徑")
+                                            Accessible.name: root.tr("Existing virtual disk path", "現有虛擬磁碟路徑")
+                                            selectByMouse: true
+                                        }
+                                        WfButton {
+                                            dark: root.dark
+                                            compact: true
+                                            variant: "outlined"
+                                            text: root.tr("Browse…", "瀏覽……")
+                                            Accessible.name: root.tr("Browse for an existing virtual disk", "瀏覽現有虛擬磁碟")
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: Accessible.name
+                                            onClicked: vmDiskDialog.open()
+                                        }
                                     }
                                     WfButton {
                                         Layout.fillWidth: true
@@ -1733,13 +1847,27 @@ Item {
                                         }
                                     }
                                 }
-                                TextField {
-                                    id: attachIsoPath
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    text: root.app.currentOutput || ""
-                                    placeholderText: root.tr("ISO path", "ISO 路徑")
-                                    Accessible.name: root.tr("ISO path to attach", "要掛載的 ISO 路徑")
-                                    selectByMouse: true
+                                    spacing: 6
+                                    TextField {
+                                        id: attachIsoPath
+                                        Layout.fillWidth: true
+                                        text: root.app.currentOutput || ""
+                                        placeholderText: root.tr("ISO path", "ISO 路徑")
+                                        Accessible.name: root.tr("ISO path to attach", "要掛載嘅 ISO 路徑")
+                                        selectByMouse: true
+                                    }
+                                    WfButton {
+                                        dark: root.dark
+                                        compact: true
+                                        variant: "outlined"
+                                        text: root.tr("Browse…", "瀏覽……")
+                                        Accessible.name: root.tr("Browse for an ISO to attach to the selected virtual machine", "瀏覽要掛載到已選虛擬機嘅 ISO")
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: Accessible.name
+                                        onClicked: vmAttachIsoDialog.open()
+                                    }
                                 }
                                 GridLayout {
                                     Layout.fillWidth: true

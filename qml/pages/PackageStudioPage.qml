@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import "../components"
 
@@ -47,9 +48,42 @@ Item {
         return filtered
     }
 
-    ColumnLayout {
+    FileDialog {
+        id: packageProfileOpenDialog
+        title: root.tr("Choose a package profile to import", "揀要匯入嘅套件設定檔")
+        modality: Qt.NonModal
+        fileMode: FileDialog.OpenFile
+        nameFilters: [
+            root.tr("JSON package profiles (*.json)", "JSON 套件設定檔 (*.json)"),
+            root.tr("All files (*)", "所有檔案 (*)")
+        ]
+        onAccepted: profilePath.text = root.app.pathFromUrl(selectedFile)
+    }
+
+    FileDialog {
+        id: packageProfileSaveDialog
+        title: root.tr("Choose where to export the package profile", "揀套件設定檔匯出位置")
+        modality: Qt.NonModal
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "json"
+        nameFilters: [
+            root.tr("JSON package profiles (*.json)", "JSON 套件設定檔 (*.json)"),
+            root.tr("All files (*)", "所有檔案 (*)")
+        ]
+        onAccepted: profilePath.text = root.app.pathFromUrl(selectedFile)
+    }
+
+    ScrollView {
+        id: packagePageScroll
         anchors.fill: parent
-        spacing: 14
+        clip: true
+        contentWidth: availableWidth
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+        ColumnLayout {
+            width: packagePageScroll.availableWidth
+            height: Math.max(packagePageScroll.availableHeight, implicitHeight)
+            spacing: 14
 
         RowLayout {
             Layout.fillWidth: true
@@ -342,14 +376,44 @@ Item {
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
                 }
-                TextField {
-                    id: profilePath
+                ColumnLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 38
-                    placeholderText: "D:\\profiles\\software.json"
-                    font.family: DesignTokens.fontMono
-                    font.pixelSize: 11
-                    selectByMouse: true
+                    spacing: 4
+                    TextField {
+                        id: profilePath
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 38
+                        placeholderText: "D:\\profiles\\software.json"
+                        font.family: DesignTokens.fontMono
+                        font.pixelSize: 11
+                        selectByMouse: true
+                        Accessible.name: root.tr("Package profile path", "套件設定檔路徑")
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        WfButton {
+                            dark: root.dark
+                            compact: true
+                            variant: "text"
+                            text: root.tr("Browse import…", "瀏覽匯入檔……")
+                            Accessible.name: root.tr("Browse for a package profile to import", "瀏覽要匯入嘅套件設定檔")
+                            ToolTip.visible: hovered
+                            ToolTip.text: Accessible.name
+                            onClicked: packageProfileOpenDialog.open()
+                        }
+                        WfButton {
+                            dark: root.dark
+                            compact: true
+                            variant: "text"
+                            text: root.tr("Browse export…", "瀏覽匯出位置……")
+                            Accessible.name: root.tr("Browse for the package profile export destination", "瀏覽套件設定檔匯出目的地")
+                            ToolTip.visible: hovered
+                            ToolTip.text: Accessible.name
+                            onClicked: packageProfileSaveDialog.open()
+                        }
+                        Item { Layout.fillWidth: true }
+                    }
                 }
                 WfButton {
                     Layout.fillWidth: root.width < 780
@@ -369,5 +433,6 @@ Item {
                 }
             }
         }
+    }
     }
 }

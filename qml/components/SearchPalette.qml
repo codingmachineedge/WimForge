@@ -25,6 +25,13 @@ Popup {
         queryField.selectAll()
     }
 
+    function activateCurrentResult() {
+        if (resultList.currentIndex < 0 || resultList.currentIndex >= app.searchResults.length)
+            return
+        app.activateSearchResult(app.searchResults[resultList.currentIndex])
+        close()
+    }
+
     onClosed: app.clearSearch()
 
     background: Rectangle {
@@ -43,6 +50,8 @@ Popup {
 
     contentItem: ColumnLayout {
         spacing: DesignTokens.spacing12
+        Accessible.role: Accessible.Dialog
+        Accessible.name: root.tr("Search WimForge", "搜尋 WimForge")
 
         RowLayout {
             Layout.fillWidth: true
@@ -118,6 +127,20 @@ Popup {
             clip: true
             spacing: DesignTokens.spacing4
             keyNavigationEnabled: true
+            Accessible.role: Accessible.List
+            Accessible.name: root.tr("Search results", "搜尋結果")
+            Keys.onReturnPressed: function(event) {
+                root.activateCurrentResult()
+                event.accepted = true
+            }
+            Keys.onEnterPressed: function(event) {
+                root.activateCurrentResult()
+                event.accepted = true
+            }
+            Keys.onEscapePressed: function(event) {
+                root.close()
+                event.accepted = true
+            }
             highlightMoveDuration: DesignTokens.motionDuration(100, app.motionEnabled)
             highlight: Rectangle {
                 radius: DesignTokens.radiusControl
@@ -131,6 +154,8 @@ Popup {
                 width: resultList.width
                 implicitHeight: Math.max(64, resultRow.implicitHeight + 16)
                 highlighted: ListView.isCurrentItem
+                Accessible.role: Accessible.ListItem
+                Accessible.selected: highlighted
                 Accessible.name: modelData.kindLabel + ": " + modelData.title + ". " + modelData.subtitle
                 onClicked: {
                     app.activateSearchResult(modelData)
