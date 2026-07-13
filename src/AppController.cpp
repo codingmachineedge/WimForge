@@ -874,20 +874,12 @@ AppController::AppController(QObject *parent)
     loadRecentProjects();
     m_winForgeIncludeRuntime = m_settings.value(QStringLiteral("bridge/includeRuntime"), true).toBool();
     m_winForgeRuntimePath = cleanPath(m_settings.value(QStringLiteral("bridge/runtimePath")).toString());
-    if (m_winForgeRuntimePath.isEmpty())
-        m_winForgeRuntimePath = discoverWinForgeRuntimePath();
     m_winForgeRecipe = emptyWinForgeRecipe();
 
-    QString notificationError;
-    if (m_notificationStore.initialize(&notificationError)) {
-        if (m_notificationStore.list(true, true, nullptr).isEmpty()) {
-            m_notificationStore.addNotification(
-                QStringLiteral("Welcome to WimForge"),
-                QStringLiteral("Projects and notifications both have Git history. Even this message can be read, dismissed, deleted and restored without losing its story."),
-                QStringLiteral("success"), QStringLiteral("WimForge"), {}, nullptr);
-        }
-    }
-    refreshNotifications();
+    queueNotificationOperation(PendingNotificationOperation{
+        NotificationOperationKind::Initialize,
+        m_notificationStore.storeDirectory(),
+    });
 
     connect(&m_watcher, &QFileSystemWatcher::fileChanged,
             this, &AppController::onWatchedProjectChanged);
@@ -911,19 +903,36 @@ AppController::AppController(QObject *parent)
     });
 
     restoreStudioState();
-    if (!m_winForgeRuntimePath.isEmpty()) {
-        QString bridgeError;
-        m_winForgeRuntimeContract = WinForgeBridge::detectRuntimeContract(
-            m_winForgeRuntimePath, &bridgeError);
-        m_winForgeRuntimeStatus = m_winForgeRuntimeContract.runtimeFound
-            ? QStringLiteral("Detected %1 runtime; capabilities: %2")
-                  .arg(m_winForgeRuntimeContract.declaredContract ? QStringLiteral("declared-contract")
-                                                                  : QStringLiteral("legacy"),
-                       m_winForgeRuntimeContract.capabilities.join(QStringLiteral(", ")))
-            : bridgeError;
-    }
-    if (!m_vmManager)
-        recreateVmLab();
+    // Let QML paint its first frame before optional host discovery begins.
+    // VM Lab stays lazy until its page explicitly asks to refresh.
+    QTimer::singleShot(0, this, [this] {
+        const QString configuredPath = m_winForgeRuntimePath;
+        const QPointer<AppController> guard(this);
+        QThreadPool::globalInstance()->start([guard, configuredPath] {
+            const QString runtimePath = configuredPath.isEmpty()
+                ? discoverWinForgeRuntimePath() : configuredPath;
+            QString bridgeError;
+            const WinForgeRuntimeContract contract = runtimePath.isEmpty()
+                ? WinForgeRuntimeContract{}
+                : WinForgeBridge::detectRuntimeContract(runtimePath, &bridgeError);
+            if (!guard)
+                return;
+            QMetaObject::invokeMethod(guard, [guard, runtimePath, contract, bridgeError] {
+                if (!guard)
+                    return;
+                guard->m_winForgeRuntimePath = runtimePath;
+                guard->m_winForgeRuntimeContract = contract;
+                guard->m_winForgeRuntimeStatus = contract.runtimeFound
+                    ? QStringLiteral("Detected %1 runtime; capabilities: %2")
+                          .arg(contract.declaredContract
+                                   ? QStringLiteral("declared-contract")
+                                   : QStringLiteral("legacy"),
+                               contract.capabilities.join(QStringLiteral(", ")))
+                    : bridgeError;
+                emit guard->studioChanged();
+            }, Qt::QueuedConnection);
+        });
+    });
 
     // Host developer tools are intentionally idle at startup. The desktop is
     // elevated, so discovery/verification/setup begins only after the explicit
@@ -1081,7 +1090,19 @@ QVariantList AppController::projectHistory() const
 int AppController::projectHistoryCount() const { return m_history.size(); }
 QString AppController::gitStatusText() const
 {
-    return !m_project ? QString() : localized(QStringLiteral("✓ Auto-committed"), QStringLiteral("✓ 已自動 commit"));
+    if (!m_project)
+        return {};
+    if (m_workspacePersistencePaused) {
+        return localized(QStringLiteral("⚠ Save needs retry"),
+                         QStringLiteral("⚠ 儲存需要再試"));
+    }
+    if (m_projectMutationBusy || !m_projectMutationQueue.isEmpty()
+        || m_workspacePersistenceBusy || !m_workspacePersistenceQueue.isEmpty()) {
+        return localized(QStringLiteral("↻ Saving in background"),
+                         QStringLiteral("↻ 正喺後台儲存"));
+    }
+    return localized(QStringLiteral("✓ Auto-committed"),
+                     QStringLiteral("✓ 已自動 commit"));
 }
 
 QVariantList AppController::actionHistory() const
@@ -1129,6 +1150,7 @@ bool AppController::backgroundBusy() const
 {
     return m_projectMutationBusy || !m_projectMutationQueue.isEmpty()
         || m_workspacePersistenceBusy || !m_workspacePersistenceQueue.isEmpty()
+        || m_notificationOperationBusy || !m_notificationOperationQueue.isEmpty()
         || m_payloadCatalogBusy || m_payloadDiscoveryBusy
         || m_planRefreshBusy || m_historyRefreshBusy
         || m_gpoLoading;
@@ -1136,6 +1158,10 @@ bool AppController::backgroundBusy() const
 QString AppController::backgroundStatus() const
 {
     return m_backgroundStatus;
+}
+bool AppController::persistenceRetryAvailable() const
+{
+    return m_workspacePersistencePaused;
 }
 bool AppController::sourceInspectionBusy() const { return m_inspecting; }
 double AppController::progress() const { return m_jobEngine.progress(); }
@@ -3664,18 +3690,35 @@ bool AppController::switchHistoryBranch(const QString &name)
 
 void AppController::undoLatestNotificationChange()
 {
-    QString error;
-    if (!m_notificationStore.revertLatest(&error)) { showError(error); return; }
-    refreshNotifications();
-    emit snackbarRequested(localized(QStringLiteral("Notification action reversed; repeat to redo it."),
-                                     QStringLiteral("通知動作已逆轉；再做一次就 redo。")), QStringLiteral("success"));
+    queueNotificationOperation(PendingNotificationOperation{
+        NotificationOperationKind::Undo, m_notificationStore.storeDirectory()});
 }
 
-void AppController::markNotificationRead(const QString &id) { QString e; if (!m_notificationStore.markRead(id, &e)) showError(e); refreshNotifications(); }
-void AppController::markNotificationUnread(const QString &id) { QString e; if (!m_notificationStore.markUnread(id, &e)) showError(e); refreshNotifications(); }
-void AppController::dismissNotification(const QString &id) { QString e; if (!m_notificationStore.dismiss(id, &e)) showError(e); refreshNotifications(); }
-void AppController::deleteNotification(const QString &id) { QString e; if (!m_notificationStore.softDelete(id, &e)) showError(e); refreshNotifications(); }
-void AppController::restoreNotification(const QString &id) { QString e; if (!m_notificationStore.restore(id, &e)) showError(e); refreshNotifications(); }
+void AppController::markNotificationRead(const QString &id)
+{
+    queueNotificationOperation({NotificationOperationKind::MarkRead,
+                                m_notificationStore.storeDirectory(), id});
+}
+void AppController::markNotificationUnread(const QString &id)
+{
+    queueNotificationOperation({NotificationOperationKind::MarkUnread,
+                                m_notificationStore.storeDirectory(), id});
+}
+void AppController::dismissNotification(const QString &id)
+{
+    queueNotificationOperation({NotificationOperationKind::Dismiss,
+                                m_notificationStore.storeDirectory(), id});
+}
+void AppController::deleteNotification(const QString &id)
+{
+    queueNotificationOperation({NotificationOperationKind::Delete,
+                                m_notificationStore.storeDirectory(), id});
+}
+void AppController::restoreNotification(const QString &id)
+{
+    queueNotificationOperation({NotificationOperationKind::Restore,
+                                m_notificationStore.storeDirectory(), id});
+}
 
 void AppController::sendTestNotification()
 {
@@ -6446,6 +6489,10 @@ bool AppController::loadDemoProject(QString *error)
              QStringLiteral("Index 2 — Windows 11 Enterprise")}},
         {QStringLiteral("summaryEn"), QStringLiteral("2 editions · Windows 11 25H2 · amd64")},
         {QStringLiteral("summaryZh"), QStringLiteral("2 個版本 · Windows 11 25H2 · amd64")},
+        {QStringLiteral("architecture"), QStringLiteral("x64")},
+        {QStringLiteral("version"), QStringLiteral("10.0.26100.1")},
+        {QStringLiteral("build"), QStringLiteral("26100")},
+        {QStringLiteral("catalogQuery"), QStringLiteral("Windows 11 26100 x64")},
     });
     QString saveError;
     if (!project.save(&saveError, bilingualCommitMessage(
@@ -6649,12 +6696,113 @@ void AppController::loadProjectState()
     emit studioChanged();
 }
 
+void AppController::queueNotificationOperation(PendingNotificationOperation operation)
+{
+    if (operation.storeDirectory.trimmed().isEmpty())
+        return;
+    if (operation.kind == NotificationOperationKind::Refresh
+        && !m_notificationOperationQueue.isEmpty()) {
+        const PendingNotificationOperation &last = m_notificationOperationQueue.constLast();
+        if (last.kind == NotificationOperationKind::Refresh
+            && last.storeDirectory == operation.storeDirectory) {
+            return;
+        }
+    }
+    m_notificationOperationQueue.enqueue(std::move(operation));
+    emit stateChanged();
+    beginNextNotificationOperation();
+}
+
+void AppController::beginNextNotificationOperation()
+{
+    if (m_notificationOperationBusy || m_notificationOperationQueue.isEmpty())
+        return;
+    m_notificationOperationBusy = true;
+    const PendingNotificationOperation operation = m_notificationOperationQueue.head();
+    const QPointer<AppController> guard(this);
+    QThreadPool::globalInstance()->start([guard, operation] {
+        NotificationStore store(operation.storeDirectory);
+        QString error;
+        bool success = store.initialize(&error);
+        if (success) {
+            switch (operation.kind) {
+            case NotificationOperationKind::Initialize: {
+                const QList<Notification> existing = store.list(true, true, &error);
+                success = error.isEmpty();
+                if (success && existing.isEmpty()) {
+                    success = !store.addNotification(
+                        QStringLiteral("Welcome to WimForge / 歡迎使用 WimForge"),
+                        QStringLiteral("Projects and notifications keep recoverable Git history. / 工程同通知都有可復原嘅 Git 歷史。"),
+                        QStringLiteral("success"), QStringLiteral("WimForge"), {}, &error).isEmpty();
+                }
+                break;
+            }
+            case NotificationOperationKind::Refresh:
+                break;
+            case NotificationOperationKind::Add:
+                success = !store.addNotification(
+                    operation.title, operation.message, operation.severity,
+                    QStringLiteral("WimForge"), {}, &error).isEmpty();
+                break;
+            case NotificationOperationKind::MarkRead:
+                success = store.markRead(operation.id, &error);
+                break;
+            case NotificationOperationKind::MarkUnread:
+                success = store.markUnread(operation.id, &error);
+                break;
+            case NotificationOperationKind::Dismiss:
+                success = store.dismiss(operation.id, &error);
+                break;
+            case NotificationOperationKind::Delete:
+                success = store.softDelete(operation.id, &error);
+                break;
+            case NotificationOperationKind::Restore:
+                success = store.restore(operation.id, &error);
+                break;
+            case NotificationOperationKind::Undo:
+                success = store.revertLatest(&error);
+                break;
+            }
+        }
+        QList<Notification> items;
+        if (success)
+            items = store.list(true, true, &error);
+        if (!error.isEmpty())
+            success = false;
+        if (!guard)
+            return;
+        QMetaObject::invokeMethod(
+            guard, [guard, operation, success, error, items] {
+            if (!guard)
+                return;
+            if (!guard->m_notificationOperationQueue.isEmpty())
+                guard->m_notificationOperationQueue.dequeue();
+            guard->m_notificationOperationBusy = false;
+            if (success
+                && operation.storeDirectory == guard->m_notificationStore.storeDirectory()) {
+                guard->m_notificationItems = items;
+                emit guard->notificationsChanged();
+                if (operation.kind == NotificationOperationKind::Undo) {
+                    emit guard->snackbarRequested(guard->localized(
+                        QStringLiteral("Notification action reversed; repeat to redo it."),
+                        QStringLiteral("通知動作已逆轉；再做一次就 redo。")),
+                        QStringLiteral("success"));
+                }
+            } else if (!success && !error.isEmpty()) {
+                emit guard->snackbarRequested(error, QStringLiteral("error"));
+            }
+            emit guard->stateChanged();
+            guard->beginNextNotificationOperation();
+        }, Qt::QueuedConnection);
+    });
+}
+
 void AppController::refreshNotifications()
 {
-    QString error;
-    m_notificationItems = m_notificationStore.list(true, true, &error);
-    if (!error.isEmpty()) emit snackbarRequested(error, QStringLiteral("error"));
-    emit notificationsChanged();
+    queueNotificationOperation(PendingNotificationOperation{
+        NotificationOperationKind::Refresh,
+        m_notificationStore.storeDirectory(),
+    });
 }
 
 void AppController::refreshRecoveryState()
@@ -6702,10 +6850,11 @@ void AppController::notify(const QString &title, const QString &message, const Q
         QJsonObject{{QStringLiteral("titleLength"), title.size()},
                     {QStringLiteral("messageLength"), message.size()},
                     {QStringLiteral("notificationSeverity"), severity}});
-    QString error;
-    m_notificationStore.addNotification(title, message, severity, QStringLiteral("WimForge"), {}, &error);
-    if (!error.isEmpty()) emit snackbarRequested(error, QStringLiteral("error"));
-    refreshNotifications();
+    queueNotificationOperation(PendingNotificationOperation{
+        NotificationOperationKind::Add,
+        m_notificationStore.storeDirectory(),
+        {}, title, message, severity,
+    });
 }
 
 void AppController::showError(const QString &message)
@@ -6719,14 +6868,14 @@ void AppController::showError(const QString &message)
                     {QStringLiteral("messageLength"), message.trimmed().size()}});
     m_statusText = message.trimmed();
     emit snackbarRequested(message.trimmed(), QStringLiteral("error"));
-    QString notificationError;
-    m_notificationStore.addNotification(
+    queueNotificationOperation(PendingNotificationOperation{
+        NotificationOperationKind::Add,
+        m_notificationStore.storeDirectory(),
+        {},
         localized(QStringLiteral("Action needs attention"),
                   QStringLiteral("呢個動作要處理")),
         message.trimmed(), QStringLiteral("error"),
-        QStringLiteral("WimForge"), {}, &notificationError);
-    if (notificationError.isEmpty())
-        refreshNotifications();
+    });
     emit stateChanged();
 }
 

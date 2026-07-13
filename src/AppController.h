@@ -86,6 +86,7 @@ class AppController final : public QObject
     Q_PROPERTY(bool busy READ busy NOTIFY stateChanged)
     Q_PROPERTY(bool backgroundBusy READ backgroundBusy NOTIFY stateChanged)
     Q_PROPERTY(QString backgroundStatus READ backgroundStatus NOTIFY stateChanged)
+    Q_PROPERTY(bool persistenceRetryAvailable READ persistenceRetryAvailable NOTIFY stateChanged)
     Q_PROPERTY(bool sourceInspectionBusy READ sourceInspectionBusy NOTIFY stateChanged)
     Q_PROPERTY(double progress READ progress NOTIFY stateChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY stateChanged)
@@ -206,6 +207,7 @@ public:
     [[nodiscard]] bool busy() const;
     [[nodiscard]] bool backgroundBusy() const;
     [[nodiscard]] QString backgroundStatus() const;
+    [[nodiscard]] bool persistenceRetryAvailable() const;
     [[nodiscard]] bool sourceInspectionBusy() const;
     [[nodiscard]] double progress() const;
     [[nodiscard]] QString statusText() const;
@@ -490,6 +492,29 @@ private:
         QString message;
     };
 
+    enum class NotificationOperationKind
+    {
+        Initialize,
+        Refresh,
+        Add,
+        MarkRead,
+        MarkUnread,
+        Dismiss,
+        Delete,
+        Restore,
+        Undo,
+    };
+
+    struct PendingNotificationOperation
+    {
+        NotificationOperationKind kind = NotificationOperationKind::Refresh;
+        QString storeDirectory;
+        QString id;
+        QString title;
+        QString message;
+        QString severity;
+    };
+
     bool mutateProject(const QString &message, const ProjectMutation &mutation);
     void beginNextProjectMutation();
     void finishProjectMutation(bool saved, const QString &error,
@@ -499,6 +524,8 @@ private:
     void refreshImageInventoryState();
     void queueWorkspacePersistence();
     void beginNextWorkspacePersistence();
+    void queueNotificationOperation(PendingNotificationOperation operation);
+    void beginNextNotificationOperation();
     bool saveProject(const QString &message);
     void loadRecentProjects();
     void rememberRecentProject(const QString &directory, const QString &name);
@@ -578,6 +605,7 @@ private:
     QQueue<OpenCodeRequest> m_openCodeRequests;
     QQueue<PendingProjectMutation> m_projectMutationQueue;
     QQueue<PendingWorkspacePersistence> m_workspacePersistenceQueue;
+    QQueue<PendingNotificationOperation> m_notificationOperationQueue;
     QString m_gpoStatus = QStringLiteral("Policy catalog has not been loaded yet.");
     QString m_pendingGpoQuery;
     bool m_pendingGpoRegularExpression = false;
@@ -601,6 +629,7 @@ private:
     bool m_planRefreshBusy = false;
     bool m_historyRefreshBusy = false;
     bool m_gpoLoading = false;
+    bool m_notificationOperationBusy = false;
     quint64 m_payloadCatalogGeneration = 0;
     quint64 m_planGeneration = 0;
     quint64 m_historyGeneration = 0;
