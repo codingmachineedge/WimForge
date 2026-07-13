@@ -2787,7 +2787,8 @@ Item {
 
     FileDialog {
         id: evidenceFileDialog
-        title: root.tr("Choose validation evidence", "選擇驗證證據")
+        title: root.tr("Choose validation evidence", "揀驗證證據")
+        modality: Qt.NonModal
         fileMode: FileDialog.OpenFile
         onAccepted: milestoneEvidence.text = root.app.pathFromUrl(selectedFile)
     }

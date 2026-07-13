@@ -33,7 +33,11 @@ Undo uses `git revert` on the latest store commit. Reverting that revert perform
 
 ## Interface behavior
 
-The bell opens a Material drawer inside the application. It shows unread count, icon/text state, and actions for read/unread, dismiss, restore, and recoverable delete. Initialization, refresh, add, read/unread, dismiss, delete, restore, and undo operations are serialized on a background worker; the drawer does not wait synchronously for Git or suspend the main event loop and servicing jobs. The project rail includes notification work in its background status/progress.
+The bell opens a Material drawer inside the application. It is exposed as a bilingual accessible dialog; opening it moves keyboard focus to the named close control. Escape closes the drawer, and focus returns to the notification bell so keyboard users do not lose their place. The notification list and each item report list/list-item, severity, read/dismiss/delete state, title, and message semantics.
+
+Bell 會喺 app 入面開 drawer，並向輔助技術報告做雙語 dialog。開啟時鍵盤 focus 會去有名稱嘅關閉掣；撳 Escape 關閉之後，focus 會返去通知 bell，鍵盤用家唔會唔知去咗邊。通知清單同每一項會報 list／list item、嚴重程度、讀／dismiss／delete 狀態、標題同訊息。
+
+It shows unread count, icon/text state, and actions for read/unread, dismiss, restore, and recoverable delete. Initialization, refresh, add, read/unread, dismiss, delete, restore, and undo operations are serialized on a background worker; the drawer does not wait synchronously for Git or suspend the main event loop and servicing jobs. The project rail includes notification work in its background status/progress.
 
 Bell 會喺 app 入面開 Material drawer，顯示未讀數量同讀／未讀、dismiss、restore、可復原 delete 操作。初始化、refresh、新通知、讀／未讀、dismiss、delete、restore 同 undo 會順序排去後台 worker 做；drawer 唔會同步企喺度等 Git，亦唔會塞住 UI event loop 或 servicing job。工程 rail 嘅後台狀態／進度亦會包括通知工作。
 
@@ -79,7 +83,7 @@ The exporter should briefly pause repository writers to capture one coherent app
 
 ## 香港粵語速讀
 
-通知中心有獨立 Git，所以讀/未讀、dismiss、restore 同可復原 delete 唔會跟開緊邊個工程一齊消失。每次通知 Git 操作會排去後台順序做，開 drawer 或撳操作唔會凍住介面。Delete 係 tombstone，唔係安全銷毀；Git 仍然可能有舊訊息，所以通知唔好放密碼、token 或 product key。條 bell drawer 同 snackbar 都係 app 內非封鎖畫面；OpenCode 亦只會在你明確批准 setup 後先會有相關通知。
+通知中心有獨立 Git，所以讀/未讀、dismiss、restore 同可復原 delete 唔會跟開緊邊個工程一齊消失。每次通知 Git 操作會排去後台順序做，開 drawer 或撳操作唔會凍住介面；drawer 會管理鍵盤 focus，Escape 關閉再返去 bell。Delete 係 tombstone，唔係安全銷毀；Git 仍然可能有舊訊息，所以通知唔好放密碼、token 或 product key。條 bell drawer 同 snackbar 都係 app 內非封鎖畫面；OpenCode 亦只會在你明確批准 setup 後先會有相關通知。
 
 ---
 

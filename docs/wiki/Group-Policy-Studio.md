@@ -58,6 +58,10 @@ The catalog and editor stay visible together. When results load—or when a sear
 
 Changing tabs or values edits a draft; it does not touch the host. The sticky commit bar states that the action updates the image-build project, and the resulting mutation is recorded in project history.
 
+Catalog results expose list/list-item and selected-state semantics. Each result accepts keyboard focus and draws a visible focus ring, so keyboard and assistive-technology users can distinguish the focused policy from the policy whose draft is currently selected. The details pane is independently scrollable when the window is short.
+
+Catalog 結果會向輔助技術報告 list、list item 同已選狀態。每個結果都可以收鍵盤 focus，亦有清楚 focus 外框，所以可以分得出「鍵盤而家指住邊項」同「邊項 policy draft 已經揀咗」。視窗較矮時，details pane 可以自己捲動。
+
 ## Applying a policy
 
 The catalog is read-only. When the user applies a selected state, the controller translates that policy into project registry tweaks:
@@ -75,7 +79,9 @@ Browsing, searching, changing pages, or exporting documentation cannot alter an 
 
 Studio export produces Markdown for every loaded policy. With `en-US` and `zh-HK`, it places both available languages beside each other for name, category, supported-on text, explanation, presentation labels, and enum options. Missing Cantonese resources remain visibly missing rather than being mislabeled as translated.
 
-The export also includes schema identity, source ADMX, class, registry behavior, element constraints, dynamic control type, and full presentation structure.
+The export also includes schema identity, source ADMX, class, registry behavior, element constraints, dynamic control type, and full presentation structure. **Browse…** opens a non-modal Markdown save dialog with a distinct **GPO documentation export path** name; selecting a destination does not export until the explicit export action is used.
+
+匯出亦包括 schema identity、來源 ADMX、class、registry 行為、element constraint、dynamic control type 同完整 presentation 結構。**瀏覽……** 會開非 modal Markdown save dialog，路徑欄有清楚 **GPO 文件匯出路徑** 無障礙名稱；揀位置本身唔會即刻匯出，要再用明確 export 動作。
 
 ## CLI examples
 

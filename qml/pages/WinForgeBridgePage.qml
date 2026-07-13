@@ -368,9 +368,11 @@ Item {
                             }
                             onToggled: root.app.setWinForgeBridgeIncludeRuntime(checked)
                         }
-                        ColumnLayout {
+                        GridLayout {
                             Layout.fillWidth: true
-                            spacing: DesignTokens.spacing8
+                            columns: root.compact ? 1 : 2
+                            columnSpacing: DesignTokens.spacing8
+                            rowSpacing: DesignTokens.spacing8
                             WfField {
                                 id: runtimePath
                                 Layout.fillWidth: true
@@ -383,10 +385,10 @@ Item {
                                 onEditingFinished: root.app.setWinForgeBridgeRuntimePath(text)
                             }
                             WfButton {
-                                Layout.alignment: Qt.AlignRight
+                                Layout.alignment: root.compact ? Qt.AlignRight : Qt.AlignVCenter
                                 dark: root.dark
                                 compact: true
-                                text: root.tr("Browse…", "瀏覽……")
+                                text: root.tr("Browse", "瀏覽")
                                 Accessible.name: root.tr("Browse for the published WinForge runtime folder", "瀏覽已 publish 嘅 WinForge runtime 資料夾")
                                 ToolTip.visible: hovered
                                 ToolTip.text: Accessible.name
@@ -397,7 +399,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: DesignTokens.spacing8
                             WfButton {
-                                Layout.alignment: Qt.AlignLeft
+                                Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                                 dark: root.dark
                                 compact: true
                                 variant: "outlined"
@@ -458,7 +460,7 @@ Item {
                                 dark: root.dark
                                 compact: true
                                 variant: "text"
-                                text: root.tr("Choose recipe…", "揀 recipe……")
+                                text: root.tr("Open…", "開啟……")
                                 Accessible.name: root.tr("Choose a WinForge recipe to import", "揀要匯入嘅 WinForge recipe")
                                 ToolTip.visible: hovered
                                 ToolTip.text: Accessible.name
@@ -469,7 +471,7 @@ Item {
                                 dark: root.dark
                                 compact: true
                                 variant: "text"
-                                text: root.tr("Choose save path…", "揀儲存位置……")
+                                text: root.tr("Save as…", "另存……")
                                 Accessible.name: root.tr("Choose the WinForge recipe export destination", "揀 WinForge recipe 匯出目的地")
                                 ToolTip.visible: hovered
                                 ToolTip.text: Accessible.name
@@ -477,9 +479,11 @@ Item {
                             }
                         }
 
-                        ColumnLayout {
+                        GridLayout {
                             Layout.fillWidth: true
-                            spacing: DesignTokens.spacing8
+                            columns: root.compact ? 1 : 2
+                            columnSpacing: DesignTokens.spacing8
+                            rowSpacing: DesignTokens.spacing8
                             WfField {
                                 id: isoPath
                                 Layout.fillWidth: true
@@ -492,10 +496,10 @@ Item {
                                 mono: true
                             }
                             WfButton {
-                                Layout.alignment: Qt.AlignRight
+                                Layout.alignment: root.compact ? Qt.AlignRight : Qt.AlignVCenter
                                 dark: root.dark
                                 compact: true
-                                text: root.tr("Browse…", "瀏覽……")
+                                text: root.tr("Browse", "瀏覽")
                                 Accessible.name: root.tr("Browse for the ISO staging folder", "瀏覽 ISO staging 資料夾")
                                 ToolTip.visible: hovered
                                 ToolTip.text: Accessible.name

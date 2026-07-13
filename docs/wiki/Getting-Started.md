@@ -78,15 +78,21 @@ Changes show a snackbar and become visible in History. Project saves, workspace-
 
 變更會用 snackbar 提示，亦會出現喺 History。工程同 workspace-tab 儲存、通知事件、history 載入、plan 建立、payload 掃描同 catalog 搜尋都係有次序嘅後台工作，唔會叫 UI 主執行緒企喺度等。工程／分頁儲存失敗時，隊列會暫停，工程 rail 會出現 **再試儲存**；先修好 Git 或路徑問題再試。錯誤會保留做通知，唔會彈原生 modal 對話框卡住程式。
 
+Path fields across these studios have matching non-modal pickers: Source file/folder/mount/output, Settings automatic export, Package profile open/save, GPO documentation export, VM ISO/configuration/disk/media/evidence, and WinForge runtime/recipe/staging. Use the picker beside the specific field instead of guessing a path; its accessible name states exactly what it opens or saves.
+
+各個 Studio 嘅路徑欄都有相應非 modal picker：Source 檔案／資料夾／mount／output、Settings 自動匯出、Package profile open／save、GPO 文件匯出、VM ISO／設定／磁碟／媒體／evidence，同 WinForge runtime／recipe／staging。請用嗰個欄位旁邊嘅 picker，唔使估路徑；無障礙名稱亦會講明究竟係開邊樣定儲邊樣。
+
 ## Review and run
 
 Open **Review & Run** or press `Ctrl+Enter`.
 
-1. Refresh the plan after configuration changes.
+1. Refresh the plan after configuration changes. **Ready for review** means generation succeeded; it does not mean anyone reviewed or approved it.
 2. Inspect each executable and argument list, dependencies, required elevation, and destructive marker.
 3. Resolve missing sources, payloads, mounts, or unsafe path errors.
 4. Export a PowerShell review script if a peer-review artifact is useful.
-5. Confirm the run in the non-modal in-app sheet.
+5. Only after review, use the separate **Run reviewed plan** action and confirm in the in-app sheet.
+
+Plan 顯示「準備好俾你檢查」只代表產生成功，唔代表有人審閱或批准。逐項對完 executable、arguments、依賴、權限同破壞標記，先用獨立 **執行已檢查計劃** 動作，再喺 app 內 sheet 確認。
 
 Independent input verification can run in parallel; writes remain dependency ordered. Do not assume that plan validation proves payload applicability to the selected Windows build.
 
@@ -113,6 +119,10 @@ The Settings page selects English, Hong Kong Cantonese, or bilingual presentatio
 ```
 
 Recognized page IDs include `overview`, `source`, `customize`, `gpo`, `unattended`, `packages`, `winforge`, `plan`, `history`, and `settings` in builds where the matching page is linked.
+
+At the supported 900×640 minimum window, use vertical scrolling to reach actions below the fold. Search results activate with Enter and close with Escape; VM inventory rows select with Enter/Space; the notification drawer puts focus on its close control, closes with Escape, and returns focus to the bell. Settings categories, color schemes, and GPO policy results expose visible keyboard focus and selected-state semantics.
+
+去到支援嘅最細 900×640 視窗，請向下捲去搵 fold 以下嘅操作。搜尋結果用 Enter 開、Escape 關；VM 清單項目用 Enter／Space 揀；通知 drawer 開啟會將 focus 放去關閉掣，Escape 關閉後 focus 返去 bell。Settings 類別、配色同 GPO policy 結果都有清楚鍵盤 focus 同已選狀態。
 
 ## Before deployment
 

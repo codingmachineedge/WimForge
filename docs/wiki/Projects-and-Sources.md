@@ -31,7 +31,7 @@ The **Source & editions** page accepts:
 - a WIM or ESD image; or
 - the first part of a split SWM set.
 
-Use **Choose and inspect ISO / image…** or the media-folder picker instead of typing paths. Selecting, dropping, or finishing a changed source path immediately inventories it; there is no separate inspect step to remember. For a raw ISO, WimForge mounts the file read-only, discovers `sources\install.wim`, `install.esd`, or `install.swm`, runs detailed DISM inventory, and confirms dismount. The project stores only the stable internal relative path—not the temporary drive letter—so the servicing plan can extract the ISO into its project-owned media tree later.
+Use **Choose and inspect ISO / image…** or the media-folder picker instead of typing paths. Selecting, dropping, or finishing a changed source path immediately inventories it; there is no separate inspect step to remember. The source-file and extracted-media dialogs are non-modal, so choosing a path does not freeze unrelated work. For a raw ISO, WimForge mounts the file read-only, discovers `sources\install.wim`, `install.esd`, or `install.swm`, runs detailed DISM inventory, and confirms dismount. The project stores only the stable internal relative path—not the temporary drive letter—so the servicing plan can extract the ISO into its project-owned media tree later.
 
 請用 **揀 ISO／映像並自動檢查……** 或 media-folder picker，唔好靠手打路徑。揀、拖放，或者完成修改來源路徑之後就會即時做 inventory，唔使再記住撳多次 Inspect。原始 ISO 會唯讀掛載、找出 `sources\install.*`、做詳細 DISM inventory，再確認 dismount；工程只會記穩定相對路徑，唔會記臨時光碟機字母。
 
@@ -41,9 +41,9 @@ Inspection records edition names, target architecture, the full image version, a
 
 ## Source, image, mount, and output paths
 
-The first-use view keeps the selected source and edition visible. Open **Show advanced paths** only when you need to change image, mount, output, format, or ISO-label details; every file/directory value has the appropriate picker. These fields have different responsibilities:
+The first-use view keeps the selected source and edition visible. Open **Show advanced paths** only when you need to change image, mount, output, format, or ISO-label details; working-image, mount-directory, and output-file values each have their own non-modal picker and purpose-specific accessibility name. The complete page scrolls vertically at 900×640, so the advanced output controls remain reachable. These fields have different responsibilities:
 
-第一次使用時只會先突出已揀來源同 edition。要改 image、mount、output、格式或者 ISO label 先開 **顯示進階路徑**；每個檔案／資料夾值都有相應 picker。各欄位用途如下：
+第一次使用時只會先突出已揀來源同 edition。要改 image、mount、output、格式或者 ISO label 先開 **顯示進階路徑**；工作映像、mount 資料夾同 output 檔各自有非 modal picker 同講清楚用途嘅無障礙名稱。900×640 時成頁可以直向捲動，下面嘅進階輸出操作仍然搵得到。各欄位用途如下：
 
 | Field | Meaning |
 | --- | --- |

@@ -44,6 +44,17 @@ catalog. Search and filter by provider or power state, then select a machine to
 see its identity, configuration path, hardware, attached devices, warnings,
 ownership, and allowed actions.
 
+The inventory is exposed as an accessible list. Each row reports its machine
+name, power state, selected state, and keyboard focus; Tab reaches the rows,
+Enter or Space selects the focused machine, and the visible focus outline stays
+distinct from selection. On compact layouts, selecting a row opens its detail
+pane without removing the ability to return to inventory.
+
+Inventory 係有無障礙語意嘅 list；每一行會報虛擬機名、電源狀態、已選
+狀態同鍵盤 focus。Tab 可以去到清單項目，Enter 或 Space 揀 focus 緊嗰部
+機，focus 外框亦會同已選狀態分開。Compact layout 揀完會開 details，但
+仍然可以返去 inventory。
+
 Provider identity is always a pair: provider ID plus provider-native machine
 ID. Display names are not treated as unique. A refresh records complete live
 state and a revision before a mutation can be reviewed. If inventory is
@@ -67,6 +78,18 @@ The **Create / load** tab has two distinct ownership paths.
    selected provider proves support.
 5. Review the generated effects and exact provider commands, then execute that
    preview.
+
+Use the non-modal ISO picker beside the installation path; choosing a file only
+fills the draft. Loading an external machine likewise uses the `.vmx`/`.vbox`
+picker. Hardware uses a separate `.vdi`/`.vmdk` disk picker and attached-media
+ISO picker, while Validation has its own evidence-file picker. Their accessible
+names state the exact purpose, so several generic browse controls are not
+announced identically.
+
+安裝路徑旁邊有非 modal ISO picker，揀檔只會填入 draft。載入外部虛擬機有
+獨立 `.vmx`／`.vbox` picker；Hardware 另外有 `.vdi`／`.vmdk` 磁碟 picker
+同掛載媒體 ISO picker，Validation 亦有自己嘅 evidence-file picker。每個掣
+嘅無障礙名稱都會講清楚用途，唔會全部只讀成同一個「瀏覽」。
 
 A managed machine must be created as a direct child of WimForge's configured
 managed root. The target is reserved without following reparse points before a
@@ -163,6 +186,15 @@ Destructive actions also require the exact token displayed by the fresh
 preview, normally `DELETE <machine or snapshot name>`. The token is
 case-sensitive and target-specific. A checkbox or generic **Yes** does not
 replace it.
+
+At the supported 900×640 minimum, VM Lab reduces tall inventory/detail panels,
+uses compact one-column flow where needed, and keeps dense hardware, snapshot,
+validation, and exact-preview content in bounded scroll views. Lower actions
+remain reachable instead of being clipped below the window.
+
+去到支援嘅最細 900×640，VM Lab 會縮短 inventory／details panel，需要時改
+做 compact 一欄流程，hardware、snapshot、validation 同 exact preview 等
+密集內容會放入有界 scroll view。下面啲操作仍然捲得到，唔會被視窗截走。
 
 ## Removal and ownership boundaries
 

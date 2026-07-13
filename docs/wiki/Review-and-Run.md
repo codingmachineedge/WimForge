@@ -14,7 +14,9 @@ Choose **Rebuild plan** after changing the source or configuration. The planner 
 - administrator, destructive, reboot, and checkpoint flags; and
 - whether the operation writes the mounted image/media workspace or may prepare in parallel.
 
-An empty plan usually means no project is open or the project has no actionable source/configuration. A status message reports the first planning error when validation fails.
+An empty plan usually means no project is open or the project has no actionable source/configuration. A status message reports the first planning error when validation fails. A successfully generated plan is **ready for review**; it is not reviewed, approved, or safe to run merely because planning completed or the page was opened. Overview therefore keeps **Review** and **Run** as separate workflow steps.
+
+空 plan 通常代表未開工程，或者來源／設定未有可執行內容；驗證失敗會顯示第一個 planning error。Plan 成功產生只係 **準備好俾你檢查**，唔代表已審閱、已批准或者已經安全；單單開咗呢頁亦唔算 review。Overview 因此會將 **審閱** 同 **執行** 分開做兩步。
 
 ## Read each operation card
 
@@ -44,7 +46,9 @@ A failed dependency causes a queued dependent operation to be skipped. The journ
 
 ## Checkpoints and confirmation
 
-Keep **Create recovery checkpoint before destructive steps** enabled. The confirmation sheet reports the operation count, concurrency limit, and number of destructive operations before **Run reviewed plan** calls the job engine.
+Keep **Create recovery checkpoint before destructive steps** enabled. After completing the review, use the separate **Run reviewed plan** action. Its confirmation sheet reports the operation count, concurrency limit, and number of destructive operations before the job engine starts; automatic validation never presses or substitutes for that action.
+
+請保持 **Create recovery checkpoint before destructive steps**。逐項檢查完先用獨立 **執行已檢查計劃** 動作；確認 sheet 會先列操作數量、並行上限同破壞性操作數量，之後先啟動 Job Engine。自動 validation 唔會代你撳呢個掣。
 
 A project must be open, the plan must be nonempty, and no other run may be active. Destructive CLI apply also requires `--yes`; see [Command-Line Interface](CLI).
 
@@ -58,6 +62,10 @@ A project must be open, the plan must be nonempty, and no other run may be activ
 - do not assume the exported script extends WimForge's transaction boundary.
 
 The application itself launches structured executables and arguments. A separately edited exported script is the operator's responsibility.
+
+The Review & Run page has an outer vertical scroll surface. At 900×640, the plan summary, operation list, export controls, and final run action remain reachable instead of being clipped below the viewport.
+
+Review & Run 成頁可以直向捲動；900×640 時 plan 摘要、operation 清單、匯出控制同最後 run 動作仍然搵得到，唔會被 viewport 截走。
 
 ## Cancellation and recovery
 

@@ -25,6 +25,10 @@ The command shown in the UI is a review preview. The underlying operation retain
 
 `AppController` 亦會分開「用介面」同「做耐用儲存／搜尋」。工程 mutation 同 workspace-tab 儲存有各自順序後台隊列；建立／開啟／匯入／匯出工程、通知 Git、history 載入、servicing plan、payload 掃描／metadata、GPO 目錄、runtime 搜尋，同 ISO 帶動嘅 Update Catalog 搜尋都會放去後台。結果返到 Qt object thread 先更新 model 或 QML property。儲存失敗會暫停隊列並提供明確重試，之後嘅狀態唔可以爬過去。
 
+The QML interaction contract targets a 900×640 minimum window. Long workflow pages use outer vertical scrolling, dense editors use bounded inner scroll areas, and compact layouts reduce columns/heights rather than making lower actions unreachable. Path-bearing studios use purpose-specific non-modal `FileDialog`/`FolderDialog` controls. Search, notification, Settings, GPO, workspace/section tabs, and VM inventory expose roles, names, selected state, visible keyboard focus, and Enter/Space/Escape behavior appropriate to their control type.
+
+QML interaction contract 以 900×640 做最細視窗。長流程頁會用外層直向捲動，密集 editor 用有界內層 scroll area，compact layout 會減欄數／高度，唔會令下面啲操作撳唔到。有路徑嘅 Studio 會用講清楚用途嘅非 modal `FileDialog`／`FolderDialog`。Search、通知、Settings、GPO、workspace／section tabs 同 VM inventory 都會按控制類型提供 role、名稱、已選狀態、清楚鍵盤 focus，同 Enter／Space／Escape 行為。
+
 ## Repository source layout
 
 | Path | Purpose |
@@ -120,7 +124,7 @@ The current architecture does **not** imply that these are complete:
 - a compatibility database or update applicability resolver (the in-app Microsoft Update Catalog downloader is implemented, but it does not resolve applicability or cache across projects);
 - broad live-host inventory/refresh parity with mature commercial products;
 - a VMware/VirtualBox VM lab and recorded validation-run manager;
-- complete automated screen-reader coverage across every Qt platform plugin (the current shell does provide stable field/result names, PageTab state, keyboard tab/section navigation, a compact toolbar, responsive one/two/five-column layouts, and clipping-safe scrolling);
+- complete automated screen-reader coverage across every Qt platform plugin (the current shell does provide stable field/result names, PageTab/list/dialog semantics, search/notification/VM keyboard handling, a compact toolbar, responsive one/two/five-column layouts, purpose-specific non-modal pickers, and 900×640 clipping-safe scrolling);
 - code-signed release artifacts; or
 - automatic main-repository-to-Wiki synchronization unless a dedicated workflow is added and verified.
 

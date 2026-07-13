@@ -18,9 +18,9 @@ It is an independent alternative to tools such as NTLite. WimForge is not affili
 
 ![Embedded terminal](docs/screenshots/embedded-terminal.png)
 
-The desktop interface is available in English, Hong Kong Cantonese, or a bilingual mode. Controls use icons and text, and consequential feedback stays inside the app as snackbars, a notification drawer, inline validation, recovery sheets, and non-modal Material popups. Servicing jobs keep running while those surfaces are open. The shell compacts its toolbar at narrower widths, long pages scroll instead of clipping, workspace and section tabs are keyboard-operable, and important fields/results expose stable accessibility names and descriptions.
+The desktop interface is available in English, Hong Kong Cantonese, or a bilingual mode. Controls use icons and text, and consequential feedback stays inside the app as snackbars, a notification drawer, inline validation, recovery sheets, and non-modal Material popups. Servicing jobs keep running while those surfaces are open. The shell compacts its toolbar at narrower widths; at the supported 900×640 minimum, long pages and dense work areas scroll instead of hiding lower controls. Workspace/section tabs, global search results, settings categories, GPO results, VM inventory, and the notification drawer have keyboard focus and accessibility semantics.
 
-桌面介面可以用英文、香港粵語或者雙語。較窄視窗會自動收好 toolbar；長頁面可以捲動，唔會硬生生截走內容。Workspace 同 section 分頁可以用鍵盤操作，重要欄位同搜尋結果亦有穩定無障礙名稱同說明。
+桌面介面可以用英文、香港粵語或者雙語。較窄視窗會自動收好 toolbar；去到支援嘅最細 900×640 視窗，長頁面同密集工作區仍然可以捲動，下面啲掣唔會失蹤。Workspace／section 分頁、全域搜尋結果、Settings 類別、GPO 結果、VM 清單同通知 drawer 都有鍵盤 focus 同無障礙語意。
 
 ## What is implemented
 
@@ -32,6 +32,8 @@ The desktop interface is available in English, Hong Kong Cantonese, or a bilingu
 - Project Git repository — each project is its own local Git repository. Every successful configuration mutation creates a normal project commit, then attempts the separate action-history append/commit; a secondary history failure leaves the safe project commit in place and raises a persistent warning.
 - Responsive persistence and discovery — project create/open/import/export, configuration and workspace-tab saves, notification Git operations, history loading, plan building, payload scanning, GPO catalog loading, and ISO/catalog discovery run away from the UI thread. The project rail shows background status and progress; a failed serialized save pauses later saves and offers **Retry save** instead of silently dropping work.
 - 流暢後台儲存同搜尋 — 建立／開啟／匯入／匯出工程、設定同 workspace-tab 儲存、通知 Git 操作、history 載入、plan 建立、payload 掃描、GPO 目錄載入，同 ISO／Catalog 搜尋都會離開 UI 主執行緒做。工程 rail 會顯示後台狀態同進度；序列化儲存失敗時會暫停之後嘅儲存，並提供 **再試儲存**，唔會靜雞雞漏咗工作。
+- Complete non-modal path selection — Source image/media/mount/output, Settings automatic export, Package profile import/export, GPO documentation export, VM ISO/configuration/disk/media, and WinForge runtime/recipe/staging fields each have a distinctly named file/folder picker that does not block the rest of the desktop.
+- 完整非 modal 路徑選擇 — Source 映像／媒體／mount／output、Settings 自動匯出、Package profile 匯入／匯出、GPO 文件匯出、VM ISO／設定檔／磁碟／媒體，同 WinForge runtime／recipe／staging 欄位，各自都有清楚命名嘅 file／folder picker，唔會封鎖桌面其他部分。
 - History Time Machine — append-only, hash-chained action events; guarded selective undo that preserves unrelated later edits; undo-of-undo/redo; restore actions; bookmarks; lightweight history lanes; Git log inspection; and A/B diff viewing.
 - Contextual undo anywhere — `Ctrl+Z` undoes in the active context. `Ctrl+Shift+Z`, or a right-click anywhere in the desktop, opens the non-modal active-page/global mini history manager. Element-specific filtering is available in the history core and CLI, but is not wired to every desktop control in this release.
 - Git-backed notification center — a separate local repository commits new, read, unread, dismiss, restore, and tombstoned-delete events. Its own latest change can be undone.
@@ -54,11 +56,11 @@ The desktop interface is available in English, Hong Kong Cantonese, or a bilingu
 
 1. **Choose source** — create, open, or import a project, then choose a legally obtained Windows ISO, media folder, WIM, ESD, or SWM with the matching file/folder picker. Selection starts inspection automatically. A raw ISO is mounted read-only for DISM inventory, dismounted afterwards, and recorded by its stable internal `sources/install.*` path.
 2. **Customize** — review the detected architecture/version/build profile and automatic Update Catalog matches, then configure image changes in Customize, Group Policy Studio, Unattended Studio, Package Studio, and WinForge Bridge.
-3. **Review** — open **Review & Run** and inspect every executable, argument token, dependency, destructive flag, and bilingual description.
-4. **Run** — execute only after the plan passes validation; background project/history/notification work continues without freezing the shell.
+3. **Review** — a generated plan is only **ready for review**, not reviewed or approved. Open **Review & Run** and inspect every executable, argument token, dependency, destructive flag, and bilingual description.
+4. **Run** — after review, use the separate explicit **Run reviewed plan** action. Passing automatic validation or merely opening the page never counts as operator review; background project/history/notification work continues without freezing the shell.
 5. **Validate** — test the output in a disposable virtual machine, keep the original source unchanged, and export a complete `.wimforge` save when the project and all local histories need to travel together.
 
-香港粵語：跟住 **揀來源 → 自訂 → 審閱 → 執行 → 驗證** 五步做。揀 ISO／映像之後會自動檢查同配對 Catalog；進階路徑平時收起，需要先展開。正式執行前逐項對指令，完成後一定要用一次性 VM 驗證，再按需要匯出完整 `.wimforge` 儲存檔。
+香港粵語：跟住 **揀來源 → 自訂 → 審閱 → 執行 → 驗證** 五步做。揀 ISO／映像之後會自動檢查同配對 Catalog；進階路徑平時收起，需要先展開。Plan 產生咗只代表「等你檢查」，唔代表已審閱；逐項對完指令先用獨立 **執行已檢查計劃** 動作。完成後一定要用一次性 VM 驗證，再按需要匯出完整 `.wimforge` 儲存檔。
 
 WimForge uses Windows' servicing tools rather than replacing them. DISM performs image servicing, and `oscdimg` is required when the selected plan creates bootable ISO media. The desktop requests elevation when it launches; review the generated plan before execution.
 

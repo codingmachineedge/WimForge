@@ -93,7 +93,11 @@ The task keeps its registration when any package, network wait, payload check, o
 
 ## Studio workflow
 
-1. Open Package Studio and load the AI template or import a profile.
+The desktop provides separate, purpose-named **Browse import…** and **Browse export…** controls. They open non-modal JSON file dialogs and fill the shared profile path; choosing a file does not itself import, export, stage, or mutate the project. The page has an outer vertical scroll surface, so its profile controls, catalog, and staging actions remain reachable at 900×640.
+
+桌面版分開 **瀏覽匯入檔……** 同 **瀏覽匯出位置……**，兩個都有講清楚用途嘅無障礙名稱，亦會開非 modal JSON file dialog。揀路徑本身唔會即刻 import、export、stage 或改工程。成頁可以直向捲動，所以 900×640 時 profile、catalog 同 staging 操作仍然搵得到。
+
+1. Open Package Studio and load the AI template or use **Browse import…**, then explicitly import a profile.
 2. Enable/disable entries. Dependencies are validated when the profile is planned.
 3. Supply and verify official offline payloads for any manual slots.
 4. Choose the appropriate network mode.
@@ -134,7 +138,7 @@ Implementation detail lives in [`docs/package-studio.md`](https://github.com/cod
 
 ## 香港粵語重點
 
-Package Studio 將 WinGet、npm、pip、已簽名 installer、offline payload 同結構化 custom executable 放入可審閱依賴圖。佢唔會代你登入廠商、贈送 licence 或估 hash/signer；冇可信資料嘅 slot 預設關閉。Host OpenCode helper 喺提權 app 開啟時唔會自動搜 PATH/用戶 profile；你要喺 Package Studio 撳 **Verify / install now** 明確批准，驗到 `opencode --version` 正常先算 ready。
+Package Studio 將 WinGet、npm、pip、已簽名 installer、offline payload 同結構化 custom executable 放入可審閱依賴圖。Profile 匯入同匯出各有非 modal picker，頁面亦可以捲到底，唔使喺窄視窗手打路徑或者搵唔到 staging 掣。佢唔會代你登入廠商、贈送 licence 或估 hash/signer；冇可信資料嘅 slot 預設關閉。Host OpenCode helper 喺提權 app 開啟時唔會自動搜 PATH/用戶 profile；你要喺 Package Studio 撳 **Verify / install now** 明確批准，驗到 `opencode --version` 正常先算 ready。
 
 ---
 
