@@ -153,6 +153,19 @@ def validate_token_overlay(document: dict[str, Any], service: dict[str, Any]) ->
     )
 
 
+def validate_dockerignore(root: Path) -> None:
+    entries = {
+        line.strip()
+        for line in (root / ".dockerignore").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    require("/build" in entries, "Docker context must exclude the root build directory")
+    require(
+        "/build-*" in entries,
+        "Docker context must exclude root build variants without hiding source build scripts",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -164,6 +177,7 @@ def main() -> int:
     root = arguments.repository_root.resolve()
     base = root / "compose.yaml"
     overlay = root / "deploy/provisioning/compose.token.yaml"
+    validate_dockerignore(root)
 
     environment = dict(os.environ)
     environment.pop("WIMFORGE_PORT", None)
@@ -182,7 +196,7 @@ def main() -> int:
         validate_base(overlay_service, expect_unauthenticated=False)
         validate_token_overlay(overlay_document, overlay_service)
 
-    print("compose_contract: base and token-overlay security checks passed")
+    print("compose_contract: bounded context, base, and token-overlay security checks passed")
     return 0
 
 

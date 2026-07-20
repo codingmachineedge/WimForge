@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://codingmachineedge.github.io/WimForge/assets/wiki-regex-builder.schema.json",
+  "$id": "https://ding-ding-projects.github.io/WimForge/docs/assets/wiki-regex-builder.schema.json",
   "title": "WimForge wiki regex builder project",
   "type": "object",
   "additionalProperties": false,

@@ -85,7 +85,7 @@ Notification read/dismiss/delete actions go to their own repository. External si
 
 `history undo` operates on the project Git timeline. CLI `action-history undo EVENT_ID` and `redo` append compensation events to the selective journal; the desktop controller additionally guarded-applies merge-patch events it recorded to project configuration. Arbitrary application-defined CLI diff objects are audit data and are not promised to mutate `project.json`.
 
-Implementation detail lives in [`docs/context-history.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/context-history.md).
+Implementation detail lives in [`docs/context-history.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/context-history.md).
 
 ---
 

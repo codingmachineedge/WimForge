@@ -12,8 +12,9 @@ import QtQuick.Layouts
 Popup {
     id: root
 
+    required property var tr
     property var events: []
-    property string contextTitle: qsTr("This item")
+    property string contextTitle: root.tr("This item", "呢個項目")
     property string contextKey: ""
     property string elementId: ""
     property string branchName: "main"
@@ -30,7 +31,7 @@ Popup {
     signal branchRequested(string eventId, string name)
 
     function openAt(pointerX, pointerY, title, recentEvents) {
-        contextTitle = title || qsTr("This item")
+        contextTitle = title || root.tr("This item", "呢個項目")
         events = recentEvents || []
         const availableWidth = parent ? parent.width : 1280
         const availableHeight = parent ? parent.height : 800
@@ -90,7 +91,7 @@ Popup {
     }
 
     contentItem: ColumnLayout {
-        Accessible.name: qsTr("Contextual history for %1").arg(root.contextTitle)
+        Accessible.name: root.tr("Contextual history", "相關歷史") + ": " + root.contextTitle
         spacing: 0
 
         RowLayout {
@@ -120,7 +121,7 @@ Popup {
                 spacing: 1
                 Label {
                     Layout.fillWidth: true
-                    text: qsTr("History here")
+                    text: root.tr("History here", "呢度嘅歷史")
                     color: DesignTokens.onSurface(root.dark)
                     font.family: DesignTokens.fontDisplay
                     font.pixelSize: 18
@@ -138,7 +139,7 @@ Popup {
             }
             WfIconButton {
                 glyph: "×"
-                accessibleName: qsTr("Close contextual history")
+                accessibleName: root.tr("Close contextual history", "關閉相關歷史")
                 toolTip: accessibleName
                 dark: root.dark
                 motionEnabled: root.motionEnabled
@@ -179,7 +180,9 @@ Popup {
                                                    || modelData.type === "compensation"
                 readonly property bool effective: modelData.effective === undefined
                                                   ? true : modelData.effective
-                readonly property string stateLabel: effective ? qsTr("Applied") : qsTr("Undone")
+                readonly property string stateLabel: effective
+                                                     ? root.tr("Applied", "已套用")
+                                                     : root.tr("Undone", "已 Undo")
                 readonly property string eventIcon: {
                     if (modelData.icon === "undo") return "↶"
                     if (modelData.icon === "redo") return "↷"
@@ -209,7 +212,8 @@ Popup {
                             spacing: 1
                             Label {
                                 Layout.fillWidth: true
-                                text: actionCard.modelData.title || qsTr("Recorded action")
+                                text: actionCard.modelData.title
+                                      || root.tr("Recorded action", "已記錄動作")
                                 color: DesignTokens.onSurface(root.dark)
                                 font.family: DesignTokens.fontBody
                                 font.weight: Font.DemiBold
@@ -218,7 +222,9 @@ Popup {
                             }
                             Label {
                                 Layout.fillWidth: true
-                                text: actionCard.modelData.diffSummary || actionCard.modelData.description || qsTr("No diff summary")
+                                text: actionCard.modelData.diffSummary
+                                      || actionCard.modelData.description
+                                      || root.tr("No diff summary", "冇差異摘要")
                                 font.family: DesignTokens.fontBody
                                 font.pixelSize: 11
                                 color: root.secondaryTextColor
@@ -243,7 +249,7 @@ Popup {
                         }
                         WfStatusChip {
                             visible: actionCard.modelData.destructive
-                            text: qsTr("Destructive")
+                            text: root.tr("Destructive", "破壞性")
                             tone: "error"
                             dark: root.dark
                         }
@@ -256,7 +262,7 @@ Popup {
                         WfButton {
                             visible: actionCard.toggleable && actionCard.effective
                             glyph: "↶"
-                            text: qsTr("Undo")
+                            text: root.tr("Undo", "Undo")
                             variant: "text"
                             compact: true
                             dark: root.dark
@@ -266,7 +272,7 @@ Popup {
                         WfButton {
                             visible: actionCard.toggleable && !actionCard.effective
                             glyph: "↷"
-                            text: qsTr("Redo")
+                            text: root.tr("Redo", "Redo")
                             variant: "text"
                             compact: true
                             dark: root.dark
@@ -275,7 +281,7 @@ Popup {
                         }
                         WfButton {
                             visible: actionCard.modelData.type === "action"
-                            text: qsTr("Restore here")
+                            text: root.tr("Restore here", "還原到呢度")
                             variant: "tonal"
                             compact: true
                             dark: root.dark
@@ -285,7 +291,7 @@ Popup {
                         Item { Layout.fillWidth: true }
                         WfIconButton {
                             glyph: "★"
-                            accessibleName: qsTr("Bookmark this action")
+                            accessibleName: root.tr("Bookmark this action", "為呢個動作加書籤")
                             toolTip: accessibleName
                             buttonSize: 34
                             dark: root.dark
@@ -300,7 +306,7 @@ Popup {
                         }
                         WfIconButton {
                             glyph: "⑂"
-                            accessibleName: qsTr("Branch from this action")
+                            accessibleName: root.tr("Branch from this action", "由呢個動作開分支")
                             toolTip: accessibleName
                             buttonSize: 34
                             dark: root.dark
@@ -321,7 +327,9 @@ Popup {
                 anchors.centerIn: parent
                 visible: actionList.count === 0
                 width: Math.min(280, actionList.width - 32)
-                text: qsTr("Nothing changed here yet. Future actions will appear without interrupting your work.")
+                text: root.tr(
+                          "Nothing changed here yet. Future actions will appear without interrupting your work.",
+                          "呢度暫時未有改動；之後嘅動作會顯示喺呢度，唔會打斷你工作。")
                 wrapMode: Text.Wrap
                 horizontalAlignment: Text.AlignHCenter
                 color: root.secondaryTextColor
@@ -348,7 +356,8 @@ Popup {
                     id: inlineName
                     Layout.fillWidth: true
                     placeholderText: inlineEditor.mode === "branch"
-                                     ? qsTr("New branch name") : qsTr("Bookmark name")
+                                     ? root.tr("New branch name", "新分支名稱")
+                                     : root.tr("Bookmark name", "書籤名稱")
                     maximumLength: 80
                     onAccepted: saveInlineButton.clicked()
                     dark: root.dark
@@ -356,7 +365,7 @@ Popup {
                 }
                 WfButton {
                     id: saveInlineButton
-                    text: qsTr("Save")
+                    text: root.tr("Save", "儲存")
                     variant: "filled"
                     compact: true
                     dark: root.dark
@@ -372,7 +381,7 @@ Popup {
                 }
                 WfIconButton {
                     glyph: "×"
-                    accessibleName: qsTr("Cancel naming")
+                    accessibleName: root.tr("Cancel naming", "取消命名")
                     toolTip: accessibleName
                     buttonSize: 34
                     dark: root.dark
@@ -388,7 +397,9 @@ Popup {
             Layout.rightMargin: 14
             Layout.topMargin: 8
             Layout.bottomMargin: 10
-            text: qsTr("Undo is recorded as a new action, so undoing an undo safely redoes it.")
+            text: root.tr(
+                      "Undo is recorded as a new action, so undoing an undo safely redoes it.",
+                      "Undo 會記錄成新動作，所以再 Undo 一次就可以安全 Redo。")
             wrapMode: Text.Wrap
             font.family: DesignTokens.fontBody
             font.pixelSize: 10

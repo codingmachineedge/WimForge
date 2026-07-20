@@ -1181,8 +1181,8 @@ Item {
                         Label {
                             Layout.fillWidth: true
                             text: componentsPage.tr(
-                                      "Enable and Disable update the task XML atomically. Delete removes the task definition and needs an explicit compatibility override plus a checkpoint.",
-                                      "啟用同停用會原子更新工作 XML。刪除會移走工作定義，必須明確確認相容性解鎖，亦會先做檢查點。")
+                                      "Enable and Disable update the task XML atomically. Delete removes the task definition, needs an explicit compatibility override, and marks the operation as checkpoint-required for review.",
+                                      "啟用同停用會原子更新工作 XML。刪除會移走工作定義，必須明確確認相容性解鎖，亦會將工序標示為需要檢查點審閱。")
                             font.family: DesignTokens.fontBody
                             font.pixelSize: 12
                             color: DesignTokens.onSurfaceVariant(root.dark)

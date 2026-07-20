@@ -20,7 +20,7 @@ shown.
 開啟 WimForge 會先到呢個類似 Visual Studio 嘅工程管理頁；你可以建立新工程、開啟現有資料夾、匯入 `.json` / `.wimforge`，或由最近工程清單繼續。
 
 ## Overview
-![WimForge Overview with the project metrics, four-step build flow, safety rails, navigation, and current-job status](screenshots/overview.png)
+![WimForge Overview with the project metrics, five-step build flow, safety rails, navigation, and current-job status / WimForge 總覽顯示工程指標、五步建置流程、安全護欄、導覽同目前工序狀態](screenshots/overview.png)
 
 ## Source and editions
 ![Source and editions page with source inspection, clone-before-editing guidance, mount workspace, and output settings](screenshots/source.png)
@@ -71,4 +71,6 @@ shown.
     captures, run `scripts/verify-documentation-screenshots.ps1` to enforce all
     fifteen names, true-PNG signatures, and exact dimensions.
 
-    標準 app 畫廊用雙語同鎖定深色 theme 拍攝，輸出係 1,440×900、一個 logical pixel 對一個輸出 pixel；實體 DPI metadata 唔屬於合約。之後亦要由同一個 commit 嘅本機 MkDocs build 重拍 desktop/mobile 兩張網站圖，全套十五張都要逐張核對，而且路徑一定要保持中性。
+    Launching the capture build without automated screenshot or project arguments opens an isolated interactive QA session with the safe demo; `--page`, `--language`, `--theme`, and `--customize-section` can choose its initial view.
+
+    標準 app 畫廊用雙語同鎖定深色 theme 拍攝，輸出係 1,440×900、一個 logical pixel 對一個輸出 pixel；實體 DPI metadata 唔屬於合約。Capture build 冇帶自動截圖或工程參數時，會用安全 demo 開一個隔離嘅互動 QA session；可以用 `--page`、`--language`、`--theme` 同 `--customize-section` 揀起始畫面。之後亦要由同一個 commit 嘅本機 MkDocs build 重拍 desktop/mobile 兩張網站圖，全套十五張都要逐張核對，而且路徑一定要保持中性。

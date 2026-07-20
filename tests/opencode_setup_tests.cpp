@@ -133,6 +133,16 @@ void passiveReadinessNeverLaunchesUserProfileTools(TestRun &test)
                    && fixture.wingetLookups == 0 && fixture.fakeRunner->count() == 0
                    && deniedCallbacks == 1,
                QStringLiteral("passive readiness cannot resolve or launch a user-profile tool"));
+    test.check(fixture.setup->statusEnglish().contains(
+                   QStringLiteral("requires explicit approval"))
+                   && fixture.setup->statusCantonese().contains(
+                       QStringLiteral("要你明確批准"))
+                   && fixture.setup->status()
+                       == fixture.setup->statusEnglish() + QStringLiteral(" / ")
+                              + fixture.setup->statusCantonese()
+                   && fixture.setup->errorEnglish().isEmpty()
+                   && fixture.setup->errorCantonese().isEmpty(),
+               QStringLiteral("authorization rejection updates every localized status field"));
 
     fixture.setup->retry();
     test.check(fixture.executableLookups > 0 && fixture.fakeRunner->count() == 1,
@@ -145,13 +155,28 @@ void reportsAbsentToolsWithoutStartingAProcess(TestRun &test)
     test.check(fixture.setup->stateName() == QStringLiteral("absent")
                    && fixture.setup->canRetry(),
                QStringLiteral("the initial absent state is explicit and actionable"));
+    test.check(fixture.setup->statusEnglish().startsWith(
+                   QStringLiteral("OpenCode host integration is idle"))
+                   && fixture.setup->statusCantonese().startsWith(
+                       QStringLiteral("WimForge 已提升權限"))
+                   && fixture.setup->status()
+                       == fixture.setup->statusEnglish() + QStringLiteral(" / ")
+                              + fixture.setup->statusCantonese(),
+               QStringLiteral("OpenCode status retains separate language variants for the desktop"));
     int failedCallbacks = 0;
     fixture.setup->retry([&](bool ready, const QString &error) {
         if (!ready && error.contains(QStringLiteral("neither npm nor WinGet")))
             ++failedCallbacks;
     });
     test.check(fixture.setup->state() == OpenCodeSetupState::Failed
-                   && fixture.fakeRunner->count() == 0 && failedCallbacks == 1,
+                   && fixture.fakeRunner->count() == 0 && failedCallbacks == 1
+                   && fixture.setup->errorEnglish().contains(
+                       QStringLiteral("neither npm nor WinGet"))
+                   && fixture.setup->errorCantonese()
+                       == QStringLiteral(
+                           "OpenCode 需要 Node.js/npm，但而家 npm 同 WinGet 都搵唔到。")
+                   && !fixture.setup->errorCantonese().contains(
+                       QStringLiteral("neither npm nor WinGet")),
                QStringLiteral("missing prerequisites fail once without spawning a process"));
 }
 
@@ -291,8 +316,13 @@ void failedStartAndShutdownAreObservable(TestRun &test)
     failedStart.error = QStringLiteral("access denied");
     failedFixture.fakeRunner->complete(0, failedStart);
     test.check(failedFixture.setup->state() == OpenCodeSetupState::Failed
-                   && failedFixture.setup->error().contains(QStringLiteral("access denied")),
-               QStringLiteral("failed-to-start diagnostics reach the public error"));
+                   && failedFixture.setup->errorEnglish().contains(
+                       QStringLiteral("access denied"))
+                   && failedFixture.setup->errorCantonese().contains(
+                        QStringLiteral("啟動唔到"))
+                    && failedFixture.setup->errorCantonese().contains(
+                        QStringLiteral("診斷：access denied")),
+                QStringLiteral("failed-to-start diagnostics remain actionable in Cantonese mode"));
 
     Fixture shutdownFixture;
     shutdownFixture.npm = {QStringLiteral("npm"), {}};

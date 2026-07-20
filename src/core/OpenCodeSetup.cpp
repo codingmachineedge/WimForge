@@ -272,9 +272,11 @@ OpenCodeSetup::OpenCodeSetup(OpenCodeSetupEnvironment environment,
 
     // The desktop process is elevated. Do not even resolve user-profile/PATH
     // developer tools until the operator selects the explicit setup action.
-    m_status = bilingualStatus(
-        QStringLiteral("OpenCode host integration is idle because WimForge is elevated. Select Verify / install now to approve host-tool discovery and administrator execution for this session."),
-        QStringLiteral("WimForge 已提升權限，所以 OpenCode host 整合而家保持閒置。請撳 Verify / install now，批准今次工作階段搜尋 host 工具同用管理員權限執行。"));
+    m_statusEnglish = QStringLiteral(
+        "OpenCode host integration is idle because WimForge is elevated. Select Verify / install now to approve host-tool discovery and administrator execution for this session.");
+    m_statusCantonese = QStringLiteral(
+        "WimForge 已提升權限，所以 OpenCode host 整合而家保持閒置。請撳 Verify / install now，批准今次工作階段搜尋 host 工具同用管理員權限執行。");
+    m_status = bilingualStatus(m_statusEnglish, m_statusCantonese);
     m_lastTransitionMs = m_environment.nowMs();
     StructuredLogger::instance().log(
         LogSeverity::Info, QStringLiteral("opencode"),
@@ -347,13 +349,16 @@ void OpenCodeSetup::ensureReady(Completion completed)
         return;
     }
     if (!m_explicitSetupAuthorized) {
-        const QString message = bilingualStatus(
-            QStringLiteral("OpenCode host integration requires explicit approval because WimForge is elevated. Open Package Studio and select Verify / install now before using an assisted action."),
-            QStringLiteral("WimForge 已提升權限，所以 OpenCode host 整合要你明確批准。請先去 Package Studio 撳 Verify / install now，之後先用輔助動作。"));
-        m_status = message;
+        m_statusEnglish = QStringLiteral(
+            "OpenCode host integration requires explicit approval because WimForge is elevated. Open Package Studio and select Verify / install now before using an assisted action.");
+        m_statusCantonese = QStringLiteral(
+            "WimForge 已提升權限，所以 OpenCode host 整合要你明確批准。請先去 Package Studio 撳 Verify / install now，之後先用輔助動作。");
+        m_status = bilingualStatus(m_statusEnglish, m_statusCantonese);
+        m_errorEnglish.clear();
+        m_errorCantonese.clear();
         m_error.clear();
         if (completed)
-            completed(false, message);
+            completed(false, m_status);
         emit changed();
         StructuredLogger::instance().log(
             LogSeverity::Warning, QStringLiteral("opencode"),
@@ -378,9 +383,9 @@ void OpenCodeSetup::ensureReady(Completion completed)
             completePending(true, {});
             return;
         }
-        transition(OpenCodeSetupState::Absent, bilingualStatus(
+        transition(OpenCodeSetupState::Absent,
             QStringLiteral("OpenCode is no longer available; setup will repair it."),
-            QStringLiteral("而家搵唔到 OpenCode；設定程序會修復佢。")));
+            QStringLiteral("而家搵唔到 OpenCode；設定程序會修復佢。"));
     }
     if (busy()) {
         StructuredLogger::instance().log(
@@ -452,20 +457,26 @@ void OpenCodeSetup::startAttempt()
         startWinGetInstall();
         return;
     }
-    finishFailed(QStringLiteral(
-        "OpenCode needs Node.js/npm, but neither npm nor WinGet is available."));
+    finishFailed(
+        QStringLiteral(
+            "OpenCode needs Node.js/npm, but neither npm nor WinGet is available."),
+        QStringLiteral(
+            "OpenCode 需要 Node.js/npm，但而家 npm 同 WinGet 都搵唔到。"));
 }
 
 void OpenCodeSetup::startWinGetInstall()
 {
     const QString winget = m_environment.wingetExecutable().trimmed();
     if (winget.isEmpty()) {
-        finishFailed(QStringLiteral("WinGet disappeared before Node.js installation could start."));
+        finishFailed(
+            QStringLiteral(
+                "WinGet disappeared before Node.js installation could start."),
+            QStringLiteral("Node.js 安裝開始前 WinGet 已經唔見咗。"));
         return;
     }
-    transition(OpenCodeSetupState::Installing, bilingualStatus(
+    transition(OpenCodeSetupState::Installing,
         QStringLiteral("Installing Node.js LTS with WinGet…"),
-        QStringLiteral("正用 WinGet 安裝 Node.js LTS…")));
+        QStringLiteral("正用 WinGet 安裝 Node.js LTS…"));
     StructuredLogger::instance().log(
         LogSeverity::Info, QStringLiteral("opencode"),
         QStringLiteral("opencode.action.started"),
@@ -490,13 +501,16 @@ void OpenCodeSetup::startNpmInstall()
 {
     const OpenCodeToolCommand npm = m_environment.npmCommand();
     if (npm.isEmpty()) {
-        finishFailed(QStringLiteral(
-            "Node.js installation completed, but npm could not be found. Restart WimForge or retry after Node.js finishes updating PATH."));
+        finishFailed(
+            QStringLiteral(
+                "Node.js installation completed, but npm could not be found. Restart WimForge or retry after Node.js finishes updating PATH."),
+            QStringLiteral(
+                "Node.js 安裝完成，但搵唔到 npm。請重新啟動 WimForge，或者等 Node.js 更新完 PATH 再重試。"));
         return;
     }
-    transition(OpenCodeSetupState::Installing, bilingualStatus(
+    transition(OpenCodeSetupState::Installing,
         QStringLiteral("Installing OpenCode automatically with npm…"),
-        QStringLiteral("正用 npm 自動安裝 OpenCode…")));
+        QStringLiteral("正用 npm 自動安裝 OpenCode…"));
     QStringList arguments = npm.prefixArguments;
     arguments.append({QStringLiteral("install"), QStringLiteral("-g"),
                       QStringLiteral("opencode-ai@latest")});
@@ -519,13 +533,16 @@ void OpenCodeSetup::startVerification()
 {
     m_executablePath = m_environment.openCodeExecutable();
     if (m_executablePath.isEmpty()) {
-        finishFailed(QStringLiteral(
-            "OpenCode installation returned success, but no native executable was found in PATH or the npm prefix."));
+        finishFailed(
+            QStringLiteral(
+                "OpenCode installation returned success, but no native executable was found in PATH or the npm prefix."),
+            QStringLiteral(
+                "OpenCode 安裝程序回報成功，但喺 PATH 或 npm prefix 搵唔到原生 executable。"));
         return;
     }
-    transition(OpenCodeSetupState::Verifying, bilingualStatus(
+    transition(OpenCodeSetupState::Verifying,
         QStringLiteral("Live-verifying OpenCode…"),
-        QStringLiteral("正即時驗證 OpenCode…")));
+        QStringLiteral("正即時驗證 OpenCode…"));
     const quint64 generation = m_generation;
     StructuredLogger::instance().log(
         LogSeverity::Info, QStringLiteral("opencode"),
@@ -548,7 +565,9 @@ void OpenCodeSetup::handleWinGetResult(quint64 generation,
         return;
     logOpenCodeProcessResult(QStringLiteral("install-node"), result);
     if (!result.succeeded()) {
-        finishFailed(processFailure(QStringLiteral("Node.js installation"), result));
+        finishFailed(
+            processFailure(QStringLiteral("Node.js installation"), result),
+            processFailureCantonese(QStringLiteral("Node.js 安裝"), result));
         return;
     }
     startNpmInstall();
@@ -561,7 +580,9 @@ void OpenCodeSetup::handleNpmResult(quint64 generation,
         return;
     logOpenCodeProcessResult(QStringLiteral("install-opencode"), result);
     if (!result.succeeded()) {
-        finishFailed(processFailure(QStringLiteral("OpenCode npm installation"), result));
+        finishFailed(
+            processFailure(QStringLiteral("OpenCode npm installation"), result),
+            processFailureCantonese(QStringLiteral("OpenCode npm 安裝"), result));
         return;
     }
     m_installedDuringAttempt = true;
@@ -575,34 +596,46 @@ void OpenCodeSetup::handleVerificationResult(quint64 generation,
         return;
     logOpenCodeProcessResult(QStringLiteral("verify"), result);
     if (!result.succeeded()) {
-        finishFailed(processFailure(QStringLiteral("OpenCode live verification"), result));
+        finishFailed(
+            processFailure(QStringLiteral("OpenCode live verification"), result),
+            processFailureCantonese(QStringLiteral("OpenCode 即時驗證"), result));
         return;
     }
     const QString version = firstOutputLine(result.output);
     if (version.isEmpty()) {
-        finishFailed(QStringLiteral(
-            "OpenCode live verification returned no version text."));
+        finishFailed(
+            QStringLiteral(
+                "OpenCode live verification returned no version text."),
+            QStringLiteral("OpenCode 即時驗證冇回傳版本文字。"));
         return;
     }
     finishReady(version);
 }
 
 void OpenCodeSetup::transition(OpenCodeSetupState state,
-                               const QString &status,
-                               const QString &error)
+                               const QString &statusEnglish,
+                               const QString &statusCantonese,
+                               const QString &errorEnglish,
+                               const QString &errorCantonese)
 {
     const QString previousState = stateName();
     m_state = state;
-    m_status = status;
-    m_error = error;
+    m_statusEnglish = statusEnglish;
+    m_statusCantonese = statusCantonese;
+    m_status = bilingualStatus(m_statusEnglish, m_statusCantonese);
+    m_errorEnglish = errorEnglish;
+    m_errorCantonese = errorCantonese;
+    m_error = m_errorEnglish.isEmpty() && m_errorCantonese.isEmpty()
+        ? QString()
+        : bilingualStatus(m_errorEnglish, m_errorCantonese);
     m_lastTransitionMs = m_environment.nowMs();
     StructuredLogger::instance().log(
-        error.isEmpty() ? LogSeverity::Info : LogSeverity::Warning,
+        m_error.isEmpty() ? LogSeverity::Info : LogSeverity::Warning,
         QStringLiteral("opencode"), QStringLiteral("opencode.state.changed"),
         QStringLiteral("OpenCode setup state changed. / OpenCode 設定狀態已經改變。"),
         QJsonObject{{QStringLiteral("from"), previousState},
                     {QStringLiteral("to"), stateName()},
-                    {QStringLiteral("errorPresent"), !error.isEmpty()}});
+                    {QStringLiteral("errorPresent"), !m_error.isEmpty()}});
     emit changed();
 }
 
@@ -610,9 +643,9 @@ void OpenCodeSetup::finishReady(const QString &version)
 {
     m_version = version;
     const bool installedDuringAttempt = m_installedDuringAttempt;
-    transition(OpenCodeSetupState::Ready, bilingualStatus(
+    transition(OpenCodeSetupState::Ready,
         QStringLiteral("OpenCode is installed and live-verified: %1").arg(version),
-        QStringLiteral("OpenCode 已安裝兼即時驗證：%1").arg(version)));
+        QStringLiteral("OpenCode 已安裝兼即時驗證：%1").arg(version));
     StructuredLogger::instance().log(
         LogSeverity::Info, QStringLiteral("opencode"),
         QStringLiteral("opencode.attempt.succeeded"),
@@ -624,21 +657,22 @@ void OpenCodeSetup::finishReady(const QString &version)
     completePending(true, {});
 }
 
-void OpenCodeSetup::finishFailed(const QString &message)
+void OpenCodeSetup::finishFailed(const QString &messageEnglish,
+                                 const QString &messageCantonese)
 {
     m_executablePath.clear();
-    const QString displayMessage = message.contains(QStringLiteral(" / "))
-        ? message
-        : bilingualStatus(message,
-                           QStringLiteral("OpenCode 設定失敗；請參考前面嘅英文診斷。"));
-    transition(OpenCodeSetupState::Failed, displayMessage, displayMessage);
+    const QString displayMessage = bilingualStatus(messageEnglish,
+                                                    messageCantonese);
+    transition(OpenCodeSetupState::Failed, messageEnglish, messageCantonese,
+               messageEnglish, messageCantonese);
     StructuredLogger::instance().log(
         LogSeverity::Error, QStringLiteral("opencode"),
         QStringLiteral("opencode.attempt.failed"),
         QStringLiteral("OpenCode setup failed; diagnostic contents were omitted from logging. / OpenCode 設定失敗；記錄已經省略診斷內容。"),
-        QJsonObject{{QStringLiteral("diagnosticPresent"), !message.isEmpty()}});
+        QJsonObject{{QStringLiteral("diagnosticPresent"),
+                     !messageEnglish.isEmpty() || !messageCantonese.isEmpty()}});
     emit failed(displayMessage);
-    completePending(false, message);
+    completePending(false, messageEnglish);
 }
 
 void OpenCodeSetup::completePending(bool ready, const QString &error)
@@ -672,6 +706,24 @@ QString OpenCodeSetup::processFailure(const QString &operation,
         .arg(operation)
         .arg(result.exitCode)
         .arg(detail.isEmpty() ? QStringLiteral("No diagnostic output was returned.") : detail);
+}
+
+QString OpenCodeSetup::processFailureCantonese(
+    const QString &operation,
+    const OpenCodeProcessResult &result) const
+{
+    if (result.outcome == OpenCodeProcessResult::Outcome::TimedOut)
+        return QStringLiteral("%1 逾時。").arg(operation);
+    const QString detail = !result.output.isEmpty() ? result.output : result.error;
+    const QString diagnostic = detail.isEmpty()
+        ? QStringLiteral("冇收到診斷資料。")
+        : QStringLiteral("診斷：%1").arg(detail);
+    if (result.outcome == OpenCodeProcessResult::Outcome::FailedToStart)
+        return QStringLiteral("%1 啟動唔到。%2").arg(operation, diagnostic);
+    return QStringLiteral("%1 失敗（退出碼 %2）。%3")
+        .arg(operation)
+        .arg(result.exitCode)
+        .arg(diagnostic);
 }
 
 } // namespace wimforge

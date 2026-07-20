@@ -305,8 +305,8 @@ Item {
 
                 SettingsPanel {
                     panelTitle: root.tr("Jobs & resources", "工序同資源")
-                    panelDescription: root.tr("Bound concurrent servicing work so the desktop stays responsive and recovery headroom remains available.",
-                                              "限制同步維護工作，保持介面暢順並預留復原資源。")
+                    panelDescription: root.tr("Apply the active parallel-job limit and save CPU and scratch-space preferences for future scheduling.",
+                                              "套用而家嘅平行工序上限，並儲存 CPU 同暫存空間偏好，留畀之後嘅排程支援使用。")
 
                     SettingsValueRow {
                         title: root.tr("Maximum parallel jobs", "最多平行工序")
@@ -326,8 +326,8 @@ Item {
 
                     SettingsValueRow {
                         title: root.tr("CPU thread ceiling", "CPU 執行緒上限")
-                        description: root.tr("Caps worker threads without changing Windows processor affinity.",
-                                             "限制 worker threads，但唔會改 Windows processor affinity。")
+                        description: root.tr("Saved for future scheduling; current external tool launches do not use this preference.",
+                                             "呢個偏好會儲存，留畀之後嘅排程支援使用；而家啟動外部工具時未會套用。")
                         RowLayout {
                             Layout.preferredWidth: 270
                             Slider {
@@ -350,8 +350,8 @@ Item {
 
                     SettingsValueRow {
                         title: root.tr("Scratch-space reserve", "暫存空間保留")
-                        description: root.tr("Jobs pause before temporary storage falls below this threshold.",
-                                             "暫存空間跌穿呢個門檻前，工序會暫停。")
+                        description: root.tr("Saved as a future planning target; the current planner does not pause jobs at this threshold.",
+                                             "呢個門檻會儲存做之後嘅規劃目標；而家嘅 planner 未會喺跌到呢個數值時暫停工序。")
                         SpinBox {
                             Layout.preferredWidth: 150
                             Layout.preferredHeight: DesignTokens.controlHeight
@@ -373,30 +373,30 @@ Item {
 
                     SettingsToggle {
                         title: root.tr("Crash journal", "死機日誌")
-                        description: root.tr("Flush state after every transition so interrupted jobs can resume safely.",
-                                             "每次狀態轉換後即寫狀態，令中斷工序可以安全恢復。")
+                        description: root.tr("Saves this preference for future journal policy; the current job engine maintains its recovery journal independently.",
+                                             "會儲存呢個偏好，留畀之後嘅 journal policy；而家 job engine 會獨立維護復原 journal。")
                         checked: root.app.crashJournalEnabled
                         onToggled: checked => root.app.crashJournalEnabled = checked
                     }
                     SettingsToggle {
                         title: root.tr("Verify source hash", "驗證來源 hash")
-                        description: root.tr("Hash the selected image before apply and reject unexpected source changes.",
-                                             "套用前 hash 已選映像，拒絕未預期嘅來源變更。")
+                        description: root.tr("Compute SHA-256 before writes and reject a mismatch when an expected hash is configured.",
+                                             "寫入前計算 SHA-256；有設定預期 hash 時，唔一致就會拒絕繼續。")
                         checked: root.app.verifySourceHash
                         onToggled: checked => root.app.verifySourceHash = checked
                     }
                     SettingsToggle {
-                        title: root.tr("Checkpoint destructive operations", "破壞性工序檢查點")
-                        description: root.tr("Require a Git-backed checkpoint before an irreversible servicing step.",
-                                             "不可逆維護步驟之前，必須建立 Git-backed 檢查點。")
+                        title: root.tr("Future checkpoint policy", "日後檢查點 policy")
+                        description: root.tr("Saves checkpoint intent for future enforcement; current runs do not create a Git checkpoint from this preference.",
+                                             "會儲存檢查點意向，留畀日後實作；而家執行唔會因為呢個偏好自動建立 Git 檢查點。")
                         checked: root.app.checkpointBeforeDestructive
                         onToggled: checked => root.app.checkpointBeforeDestructive = checked
                     }
                     SettingsValueRow {
-                        title: root.tr("Recoverable deletion", "可復原刪除")
-                        description: root.tr("WimForge keeps tombstones instead of permanently deleting project state.",
-                                             "WimForge 會保留墓碑記錄，唔會永久刪除工程狀態。")
-                        WfStatusChip { dark: root.dark; tone: "success"; text: root.tr("PROTECTED", "受保護") }
+                        title: root.tr("Recoverable notification deletion", "可復原通知刪除")
+                        description: root.tr("Deleting a notification writes a tombstone so its history remains recoverable.",
+                                             "刪除通知會寫入墓碑記錄，保留可以復原嘅歷史。")
+                        WfStatusChip { dark: root.dark; tone: "success"; text: root.tr("NOTIFICATIONS", "通知") }
                     }
                 }
 
@@ -414,21 +414,21 @@ Item {
                     }
                     SettingsToggle {
                         title: root.tr("Export after every commit", "每次 commit 後匯出")
-                        description: root.tr("Write a portable configuration snapshot whenever project history advances.",
-                                             "工程歷史每次推進時，寫出可攜設定快照。")
+                        description: root.tr("Write a complete .wimforge project bundle whenever project history advances.",
+                                             "工程歷史每次推進時，寫出完整 .wimforge 工程 bundle。")
                         checked: root.app.autoExport
                         onToggled: checked => root.app.autoExport = checked
                     }
                     SettingsValueRow {
                         title: root.tr("Export destination", "匯出目的地")
-                        description: root.tr("Used only when automatic export is enabled.",
-                                             "只會喺自動匯出啟用時使用。")
+                        description: root.tr("Choose a .wimforge path before enabling automatic export; other extensions are rejected.",
+                                             "啟用自動匯出之前先揀 .wimforge 路徑；其他副檔名會被拒絕。")
                         WfField {
                             Layout.preferredWidth: 320
                             dark: root.dark
                             mono: true
                             text: root.app.autoExportPath
-                            readOnly: !root.app.autoExport
+                            readOnly: !root.app.projectLoaded
                             placeholderText: root.tr("Auto-export destination", "自動匯出目的地")
                             onEditingFinished: root.app.autoExportPath = text
                         }
@@ -440,7 +440,7 @@ Item {
                             Accessible.name: root.tr("Browse for the automatic project export destination", "瀏覽自動工程匯出目的地")
                             ToolTip.visible: hovered
                             ToolTip.text: Accessible.name
-                            enabled: root.app.autoExport
+                            enabled: root.app.projectLoaded
                             onClicked: autoExportDialog.open()
                         }
                     }
@@ -448,14 +448,14 @@ Item {
 
                 SettingsPanel {
                     panelTitle: root.tr("Diagnostics", "診斷")
-                    panelDescription: root.tr("Inspect structured local logs and Git-backed notification history without leaving WimForge.",
-                                              "唔使離開 WimForge，都可以檢查結構化本機日誌同 Git-backed 通知歷史。")
+                    panelDescription: root.tr("Open structured local logs with Windows and inspect Git-backed notification history in WimForge.",
+                                               "用 Windows 開結構化本機日誌，並喺 WimForge 檢查 Git-backed 通知歷史。")
 
                     SettingsValueRow {
                         title: root.tr("Structured logging", "結構化記錄")
-                        description: root.tr("JSONL logs rotate automatically and secret-like values are redacted.",
-                                             "JSONL 日誌會自動輪替，似密碼嘅值會遮蔽。")
-                        WfStatusChip { dark: root.dark; tone: "success"; text: root.tr("ENABLED", "已啟用") }
+                        description: root.tr("Best-effort JSONL logging rotates and redacts secret-like values when startup succeeds.",
+                                             "JSONL 記錄會盡力啟動；成功後會自動輪替同遮蔽似密碼嘅值。")
+                        WfStatusChip { dark: root.dark; tone: "neutral"; text: root.tr("BEST EFFORT", "盡力啟用") }
                     }
                     SettingsValueRow {
                         title: root.tr("Current log", "而家嘅 log")

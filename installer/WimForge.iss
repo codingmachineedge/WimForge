@@ -14,9 +14,9 @@
 #endif
 
 #define MyAppName "WimForge"
-#define MyAppPublisher "codingmachineedge"
+#define MyAppPublisher "Ding-Ding-Projects"
 #define MyAppExeName "WimForge.exe"
-#define MyAppUrl "https://github.com/codingmachineedge/WimForge"
+#define MyAppUrl "https://github.com/Ding-Ding-Projects/WimForge"
 
 [Setup]
 AppId={{D72458D7-6214-43E9-8F65-58E046A08F14}

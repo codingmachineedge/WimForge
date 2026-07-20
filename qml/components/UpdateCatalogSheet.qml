@@ -16,9 +16,6 @@ Popup {
     // Which payload queue downloads are filed into ("updates" or "drivers").
     property string category: "updates"
     property string initialQuery: ""
-    Accessible.role: Accessible.Dialog
-    Accessible.name: sheet.tr("Microsoft Update Catalog results",
-                              "Microsoft Update Catalog 結果")
 
     // Open the non-blocking results panel. The ISO inventory owns the default
     // query; this field is only an optional refinement.
@@ -56,6 +53,9 @@ Popup {
 
     contentItem: ColumnLayout {
         spacing: DesignTokens.spacing12
+        Accessible.role: Accessible.Dialog
+        Accessible.name: sheet.tr("Microsoft Update Catalog results",
+                                  "Microsoft Update Catalog 結果")
 
         RowLayout {
             Layout.fillWidth: true

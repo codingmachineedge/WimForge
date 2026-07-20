@@ -46,9 +46,9 @@ A failed dependency causes a queued dependent operation to be skipped. The journ
 
 ## Checkpoints and confirmation
 
-Keep **Create recovery checkpoint before destructive steps** enabled. After completing the review, use the separate **Run reviewed plan** action. Its confirmation sheet reports the operation count, concurrency limit, and number of destructive operations before the job engine starts; automatic validation never presses or substitutes for that action.
+Operation cards expose checkpoint-required metadata for review. **Save future checkpoint-policy preference (not enforced yet)** persists intent only; the current run path does not create a Git checkpoint from it. Create and verify an appropriate backup or checkpoint yourself before destructive work. After completing the review, use the separate **Run reviewed plan** action. Its confirmation sheet reports the operation count, concurrency limit, and number of destructive operations before the job engine starts; automatic validation never presses or substitutes for that action.
 
-請保持 **Create recovery checkpoint before destructive steps**。逐項檢查完先用獨立 **執行已檢查計劃** 動作；確認 sheet 會先列操作數量、並行上限同破壞性操作數量，之後先啟動 Job Engine。自動 validation 唔會代你撳呢個掣。
+Operation card 會顯示需要檢查點嘅審閱標記。**儲存日後檢查點 policy 偏好（而家未執行）** 只會保存意向，而家執行流程唔會因此自動建立 Git 檢查點；做破壞性工作之前，請自行建立兼核實合適嘅 backup 或檢查點。逐項檢查完先用獨立 **執行已檢查計劃** 動作；確認 sheet 會先列操作數量、並行上限同破壞性操作數量，之後先啟動 Job Engine。自動 validation 唔會代你撳呢個掣。
 
 A project must be open, the plan must be nonempty, and no other run may be active. Destructive CLI apply also requires `--yes`; see [Command-Line Interface](CLI).
 

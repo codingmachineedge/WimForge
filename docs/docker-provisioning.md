@@ -65,7 +65,7 @@ Invoke-RestMethod http://127.0.0.1:8080/healthz
 The main-branch workflow is configured to publish this Linux/amd64 image with provenance and an SBOM:
 
 ```text
-ghcr.io/codingmachineedge/wimforge-provisioning:latest
+ghcr.io/ding-ding-projects/wimforge-provisioning:latest
 ```
 
 Until a workflow run has published the package and its owner has made it public, use `--build` as above or authenticate with `docker login ghcr.io`. A `sha-<full-commit>` tag is easier to audit than `latest`, but a registry tag can be overwritten and rebuilding the same commit can pick up newer signed Debian packages. For production, pin a verified image digest and enforce registry tag immutability or a reviewed rebuild policy. The local build compiles the CLI and runs the Linux-compatible CTest gate before creating the runtime image.

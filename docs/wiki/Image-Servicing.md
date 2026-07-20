@@ -101,7 +101,7 @@ WimForge cannot guarantee that Windows will accept an applicable-looking payload
 - Microsoft [DISM command-line options](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/deployment-image-servicing-and-management--dism--command-line-options?view=windows-10)
 - NTLite's independent [Image page](https://www.ntlite.com/docs/image/) for comparison context
 
-The implementation-level contract is documented in [`docs/servicing-plan.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/servicing-plan.md).
+The implementation-level contract is documented in [`docs/servicing-plan.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/servicing-plan.md).
 
 ## 香港粵語重點
 

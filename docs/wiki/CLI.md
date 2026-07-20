@@ -184,7 +184,7 @@ Nested response files resolve relative to their containing file, are cycle-check
 | 8 | File or repository I/O failed |
 | 10 | Invalid internally generated plan/internal error |
 
-The full command/field reference lives in [`docs/cli.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/cli.md). Run `.\WimForgeCli.exe help` for the exact command set compiled into the current binary.
+The full command/field reference lives in [`docs/cli.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/cli.md). Run `.\WimForgeCli.exe help` for the exact command set compiled into the current binary.
 
 ---
 

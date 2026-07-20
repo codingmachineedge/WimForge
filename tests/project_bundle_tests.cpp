@@ -343,6 +343,24 @@ int main(int argc, char **argv)
     test.check(exported, QStringLiteral("bundle export succeeds: %1").arg(error));
     test.check(QFileInfo(bundle).size() > 72, QStringLiteral("bundle contains manifest and payload"));
 
+    QFile lastGoodBundle(bundle);
+    test.check(lastGoodBundle.open(QIODevice::ReadOnly),
+               QStringLiteral("last-good bundle opens before failure test"));
+    const QByteArray lastGoodBytes = lastGoodBundle.readAll();
+    lastGoodBundle.close();
+    const QList<ProjectBundleRepository> invalidRepositories = {
+        {ProjectBundle::ProjectRepositoryRole,
+         QDir(sourceRoot).filePath(QStringLiteral("missing-repository")),
+         QStringLiteral("repos/project")},
+    };
+    const bool failedReplacement = ProjectBundle::exportToFile(
+        bundle, invalidRepositories, {}, &error);
+    QFile preservedBundle(bundle);
+    test.check(!failedReplacement && preservedBundle.open(QIODevice::ReadOnly)
+                   && preservedBundle.readAll() == lastGoodBytes,
+               QStringLiteral("failed bundle export preserves the complete last-good bundle: %1")
+                   .arg(error));
+
     test.check(QDir(sourceRoot).removeRecursively(),
                QStringLiteral("original repositories can be removed before restore"));
     const QString restoredRoot = QDir(temporary.path()).filePath(QStringLiteral("restored"));

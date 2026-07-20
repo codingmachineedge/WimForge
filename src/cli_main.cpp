@@ -53,7 +53,7 @@ private:
 int main(int argc, char *argv[])
 {
     QCoreApplication::setOrganizationName(QStringLiteral("WimForge"));
-    QCoreApplication::setOrganizationDomain(QStringLiteral("github.com/codingmachineedge"));
+    QCoreApplication::setOrganizationDomain(QStringLiteral("github.com/Ding-Ding-Projects"));
     QCoreApplication::setApplicationName(QStringLiteral("WimForgeCli"));
     QCoreApplication::setApplicationVersion(QString::fromLatin1(WIMFORGE_VERSION));
     QCoreApplication application(argc, argv);

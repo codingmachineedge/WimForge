@@ -36,8 +36,8 @@ GitHub's automatically generated source-code zip and tarball links are not direc
 This can be audited without downloading a release:
 
 ```powershell
-gh api repos/codingmachineedge/WimForge/actions/artifacts --jq '.total_count'
-gh release view --repo codingmachineedge/WimForge --json tagName,isDraft,isPrerelease,assets
+gh api repos/Ding-Ding-Projects/WimForge/actions/artifacts --jq '.total_count'
+gh release view --repo Ding-Ding-Projects/WimForge --json tagName,isDraft,isPrerelease,assets
 ```
 
 The first command should print `0`. The second should show `false` for both release flags and exactly the setup executable and portable zip.

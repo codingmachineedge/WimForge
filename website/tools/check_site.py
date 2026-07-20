@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dependency-free structural and local-link checks for the WimForge Pages website."""
+"""Dependency-free website and canonical-publication checks for WimForge."""
 
 from __future__ import annotations
 
@@ -26,6 +26,85 @@ EXPECTED_GENERATED_ASSETS = (
     "assets/site/automation-cli.webp",
     "assets/site/workflow-overview.webp",
 )
+
+CANONICAL_REPOSITORY = "Ding-Ding-Projects/WimForge"
+CANONICAL_REPOSITORY_URL = f"https://github.com/{CANONICAL_REPOSITORY}"
+CANONICAL_PAGES_ROOT = "https://ding-ding-projects.github.io/WimForge/"
+CANONICAL_DOCS_ROOT = f"{CANONICAL_PAGES_ROOT}docs/"
+CANONICAL_CONTAINER_IMAGE = "ghcr.io/ding-ding-projects/wimforge-provisioning"
+
+# Keep the former owner split in this source file so the guard does not match
+# its own definition while scanning every production-facing text file.
+LEGACY_OWNER = "codingmachine" + "edge"
+LEGACY_PUBLICATION_FRAGMENTS = (
+    f"github.com/{LEGACY_OWNER}",
+    f"raw.githubusercontent.com/{LEGACY_OWNER}",
+    f"{LEGACY_OWNER}.github.io",
+    f"ghcr.io/{LEGACY_OWNER}",
+    f"{LEGACY_OWNER}/WimForge",
+)
+PUBLICATION_SCAN_DIRECTORIES = (
+    ".github",
+    "assets",
+    "deploy",
+    "docs",
+    "installer",
+    "qml",
+    "scripts",
+    "server",
+    "src",
+    "templates",
+    "tests",
+    "tools",
+    "website",
+)
+PUBLICATION_TEXT_SUFFIXES = {
+    ".cmake",
+    ".cmd",
+    ".cpp",
+    ".css",
+    ".h",
+    ".html",
+    ".iss",
+    ".js",
+    ".json",
+    ".manifest",
+    ".md",
+    ".ps1",
+    ".py",
+    ".sh",
+    ".toml",
+    ".txt",
+    ".xml",
+    ".yaml",
+    ".yml",
+}
+PUBLICATION_TEXT_FILENAMES = {"Dockerfile"}
+REQUIRED_CANONICAL_REFERENCES = {
+    ".github/workflows/container.yml": (CANONICAL_CONTAINER_IMAGE,),
+    ".github/workflows/pages.yml": (CANONICAL_DOCS_ROOT,),
+    "compose.yaml": (f"{CANONICAL_CONTAINER_IMAGE}:latest",),
+    "installer/WimForge.iss": (
+        '#define MyAppPublisher "Ding-Ding-Projects"',
+        f'#define MyAppUrl "{CANONICAL_REPOSITORY_URL}"',
+    ),
+    "mkdocs.yml": (
+        CANONICAL_DOCS_ROOT,
+        CANONICAL_REPOSITORY_URL,
+        CANONICAL_REPOSITORY,
+    ),
+    "scripts/bootstrap-build.ps1": (f"{CANONICAL_REPOSITORY_URL}.git",),
+    "scripts/sync_wiki.py": (CANONICAL_REPOSITORY,),
+    "src/cli_main.cpp": ("github.com/Ding-Ding-Projects",),
+    "src/main.cpp": ("github.com/Ding-Ding-Projects",),
+    "website/index.html": (
+        CANONICAL_PAGES_ROOT,
+        CANONICAL_DOCS_ROOT,
+        f"{CANONICAL_DOCS_ROOT}wiki/Contributing/",
+        CANONICAL_REPOSITORY_URL,
+        f"{CANONICAL_REPOSITORY_URL}/tree/main/templates",
+    ),
+}
 
 
 class SiteParser(HTMLParser):
@@ -181,6 +260,57 @@ def check_manifest(manifest_file: Path, repo_root: Path) -> list[str]:
     return errors
 
 
+def iter_publication_text_files(repo_root: Path):
+    candidates = [path for path in repo_root.iterdir() if path.is_file()]
+    for directory in PUBLICATION_SCAN_DIRECTORIES:
+        root = repo_root / directory
+        if root.is_dir():
+            candidates.extend(path for path in root.rglob("*") if path.is_file())
+
+    for path in sorted(set(candidates)):
+        relative = path.relative_to(repo_root)
+        # Dated audits are append-only evidence of what was true at the time;
+        # changing their former-owner references would falsify that record.
+        if relative.parts[:2] == ("docs", "audits"):
+            continue
+        if (
+            path.name not in PUBLICATION_TEXT_FILENAMES
+            and path.suffix.lower() not in PUBLICATION_TEXT_SUFFIXES
+        ):
+            continue
+        yield path
+
+
+def check_publication_contract(repo_root: Path) -> list[str]:
+    errors: list[str] = []
+    for path in iter_publication_text_files(repo_root):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as exc:
+            errors.append(f"{path}: unable to inspect publication references: {exc}")
+            continue
+        for line_number, line in enumerate(lines, start=1):
+            comparable_line = line.casefold()
+            for fragment in LEGACY_PUBLICATION_FRAGMENTS:
+                if fragment.casefold() in comparable_line:
+                    errors.append(
+                        f"{path}:{line_number}: stale production publication reference {fragment!r}"
+                    )
+                    break
+
+    for relative, required_fragments in REQUIRED_CANONICAL_REFERENCES.items():
+        path = repo_root / relative
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            errors.append(f"{path}: unable to verify canonical publication reference: {exc}")
+            continue
+        for fragment in required_fragments:
+            if fragment not in text:
+                errors.append(f"{path}: missing canonical publication reference {fragment!r}")
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[2])
@@ -191,6 +321,7 @@ def main() -> int:
 
     errors: list[str] = []
     warnings: list[str] = []
+    errors.extend(check_publication_contract(repo_root))
     for html_file in sorted(site_root.glob("*.html")):
         html_errors, html_warnings = check_html(html_file, repo_root)
         errors.extend(html_errors)

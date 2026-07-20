@@ -89,7 +89,7 @@ Microsoft notes that hiding some answer-file passwords is not encryption. Restri
 
 The journal helps WimForge identify and review an interrupted operation without guessing its external completion state. Git preserves configuration history. `.wimforge` preserves those repositories. None replaces offline backups, source media, VM snapshots, or organizational disaster recovery.
 
-For implementation details, read [`docs/servicing-plan.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/servicing-plan.md), [`docs/context-history.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/context-history.md), and [`docs/project-bundles.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/project-bundles.md).
+For implementation details, read [`docs/servicing-plan.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/servicing-plan.md), [`docs/context-history.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/context-history.md), and [`docs/project-bundles.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/project-bundles.md).
 
 ---
 

@@ -96,7 +96,11 @@ public:
     [[nodiscard]] OpenCodeSetupState state() const { return m_state; }
     [[nodiscard]] QString stateName() const;
     [[nodiscard]] QString status() const { return m_status; }
+    [[nodiscard]] QString statusEnglish() const { return m_statusEnglish; }
+    [[nodiscard]] QString statusCantonese() const { return m_statusCantonese; }
     [[nodiscard]] QString error() const { return m_error; }
+    [[nodiscard]] QString errorEnglish() const { return m_errorEnglish; }
+    [[nodiscard]] QString errorCantonese() const { return m_errorCantonese; }
     [[nodiscard]] QString version() const { return m_version; }
     [[nodiscard]] QString executablePath() const { return m_executablePath; }
     [[nodiscard]] bool busy() const;
@@ -126,19 +130,29 @@ private:
     void handleNpmResult(quint64 generation, const OpenCodeProcessResult &result);
     void handleVerificationResult(quint64 generation, const OpenCodeProcessResult &result);
     void transition(OpenCodeSetupState state,
-                    const QString &status,
-                    const QString &error = {});
+                    const QString &statusEnglish,
+                    const QString &statusCantonese,
+                    const QString &errorEnglish = {},
+                    const QString &errorCantonese = {});
     void finishReady(const QString &version);
-    void finishFailed(const QString &message);
+    void finishFailed(const QString &messageEnglish,
+                      const QString &messageCantonese);
     void completePending(bool ready, const QString &error);
     [[nodiscard]] QString processFailure(const QString &operation,
                                          const OpenCodeProcessResult &result) const;
+    [[nodiscard]] QString processFailureCantonese(
+        const QString &operation,
+        const OpenCodeProcessResult &result) const;
 
     OpenCodeSetupEnvironment m_environment;
     std::unique_ptr<OpenCodeProcessRunner> m_runner;
     OpenCodeSetupState m_state = OpenCodeSetupState::Absent;
     QString m_status;
+    QString m_statusEnglish;
+    QString m_statusCantonese;
     QString m_error;
+    QString m_errorEnglish;
+    QString m_errorCantonese;
     QString m_version;
     QString m_executablePath;
     qint64 m_lastTransitionMs = 0;

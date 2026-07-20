@@ -103,7 +103,7 @@ The number of policies is determined by the selected store. WimForge does not cl
 - Third-party schemas are accepted when structurally valid, but the ISO author remains responsible for their source and target compatibility.
 - Localization can only display ADML languages present in the selected store.
 
-Implementation detail lives in [`docs/gpo-studio.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/gpo-studio.md).
+Implementation detail lives in [`docs/gpo-studio.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/gpo-studio.md).
 
 ---
 

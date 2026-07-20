@@ -29,11 +29,13 @@ cmake --install build --config Debug --prefix $runtime
 Run a safe populated demo:
 
 ```powershell
-& "$runtime\WimForge.exe" --demo --language bilingual --page overview
-& "$runtime\WimForgeCli.exe" --json package template ai-development
+& "$runtime\bin\WimForge.exe" --demo --language bilingual --page overview
+& "$runtime\bin\WimForgeCli.exe" --json package template ai-development
 ```
 
-The absolute install prefix is required by Qt's deploy script and produces a self-contained developer runtime. Launching the naked Visual Studio output without either this install step or the matching Qt `bin` directory on `PATH` can fail with a missing `Qt6Guid.dll`. The demo's `--page` option is useful for visual QA of individual studios. Use only IDs compiled into the build.
+An absolute install prefix is clearest in scripts. If `cmake --install` receives a caller-relative prefix, WimForge normalizes it before Qt's deploy script runs, so both forms produce the same self-contained developer runtime. Both executables, `qt.conf`, and the matching Qt/MSVC runtime DLLs stay together under `dev-runtime\bin`; Qt plugins and QML modules use the sibling `dev-runtime\plugins` and `dev-runtime\qml` directories referenced by `qt.conf`. Launching the naked Visual Studio output without either this install step or the matching Qt `bin` directory on `PATH` can fail with a missing `Qt6Guid.dll`. The demo's `--page` option is useful for visual QA of individual studios. Use only IDs compiled into the build.
+
+寫 script 用絕對 install prefix 最清楚；如果 `cmake --install` 收到 caller-relative prefix，WimForge 會喺 Qt deploy script 執行前先轉正，兩種寫法都會整到同一套自我完備嘅開發 runtime。完成後兩個 executable、`qt.conf` 同配對嘅 Qt／MSVC runtime DLL 會一齊放喺 `dev-runtime\bin`。Qt plugin 同 QML module 就分別放喺同層嘅 `dev-runtime\plugins` 同 `dev-runtime\qml`，由 `qt.conf` 指去正確位置。未做呢個 install 就直接開 Visual Studio output，或者 `PATH` 冇配對嘅 Qt `bin`，都可能會報少咗 `Qt6Guid.dll`。
 
 ## Configure with Ninja
 
@@ -64,7 +66,12 @@ Registered CTest executables cover:
 - installed-policy ADMX/ADML parsing, localization, regex, and documentation;
 - unattended JSON/XML, passes, names, GVLKs, templates, and safety validation;
 - WinForge recipe/contract validation, link/path defenses, staging, bootstrap, and PowerShell parser checks;
-- CLI command, JSON-envelope, response-file, bundle, and history behavior.
+- CLI command, JSON-envelope, response-file, bundle, and history behavior;
+- the installed developer-runtime layout, deployed Qt files, Windows platform plugin, and installed CLI startup.
+
+Windows testing also performs a real `cmake --install` from a fresh temporary working directory with a relative prefix, verifies both executables, the Qt runtime files, and `qt.conf` in `bin`, checks the Windows platform plugin under `plugins\platforms`, and then starts the installed CLI.
+
+Windows 測試亦會喺全新暫存工作目錄用相對 prefix 做一次真實 `cmake --install`，核對兩個 executable、Qt runtime DLL 同 `qt.conf` 喺 `bin`，Windows platform plugin 喺 `plugins\platforms`，再實際啟動安裝後嘅 CLI。
 
 Tests inject or inspect external operations; they do not intentionally service a real Windows image or install packages on the developer machine.
 
@@ -82,10 +89,15 @@ cmake --build build-capture --config Debug --target WimForge --parallel
 ./scripts/verify-documentation-screenshots.ps1
 ```
 
-That build embeds `asInvoker` and exits unless it receives `--screenshot` with
-exactly one of `--demo` or `--project-start`. It is not a servicing build. The
-default, bootstrap, package, and release configurations keep the audited
+That build embeds `asInvoker`. Automated capture requires `--screenshot` with
+exactly one of `--demo` or `--project-start`. Launching it without
+`--screenshot`, `--demo`, `--project-start`, or `--project` instead opens an
+isolated interactive QA session with the safe demo; `--page`, `--language`,
+`--theme`, and `--customize-section` may select its initial view. The default,
+bootstrap, package, and release configurations keep the audited
 `requireAdministrator` manifest.
+
+呢個 build 會內置 `asInvoker`。自動拍攝要用 `--screenshot`，並且喺 `--demo` 同 `--project-start` 之中只揀一個。冇帶 `--screenshot`、`--demo`、`--project-start` 或 `--project` 啟動時，佢會用安全 demo 開一個隔離嘅互動 QA session；可以用 `--page`、`--language`、`--theme` 同 `--customize-section` 揀起始畫面。預設、bootstrap、package 同 release 設定仍然保留已審核嘅 `requireAdministrator` manifest。
 
 ## Bootstrap a release build
 
@@ -96,7 +108,7 @@ From a clean WimForge checkout, first inspect the no-change plan and then run th
 .\scripts\bootstrap-build.ps1
 ```
 
-When the script is downloaded outside a checkout, it searches the current/script ancestry first and otherwise plans a clone of `https://github.com/codingmachineedge/WimForge.git` to the explicit `-RepositoryPath` or the default user source directory. Start it from a normal, non-administrator 64-bit Windows PowerShell session. Per-user Ninja and aqt repair runs first under that original identity. The script requests UAC only when a bounded machine package-repair child is needed and passes that child an allowlisted set of exact WinGet package IDs plus the already validated, signed App Installer executable from protected Program Files. This remains valid when UAC uses separate administrator credentials: the child never installs user-scoped tools, executes a user-profile Qt tool, or invokes source-controlled build logic. After it exits, the parent keeps aqt's Qt archive-hash verification enabled while installing Qt under the normal token, then verifies the live CMake, Git, Ninja, MSVC, x64 Windows SDK tools/libraries, Qt MSVC/x64 components, and Inno Setup evidence. Normal website usage therefore downloads Qt, clones, configures, compiles, tests, and packages without an administrator token before delegating to the release entrypoint below.
+When the script is downloaded outside a checkout, it searches the current/script ancestry first and otherwise plans a clone of `https://github.com/Ding-Ding-Projects/WimForge.git` to the explicit `-RepositoryPath` or the default user source directory. Start it from a normal, non-administrator 64-bit Windows PowerShell session. Per-user Ninja and aqt repair runs first under that original identity. The script requests UAC only when a bounded machine package-repair child is needed and passes that child an allowlisted set of exact WinGet package IDs plus the already validated, signed App Installer executable from protected Program Files. This remains valid when UAC uses separate administrator credentials: the child never installs user-scoped tools, executes a user-profile Qt tool, or invokes source-controlled build logic. After it exits, the parent keeps aqt's Qt archive-hash verification enabled while installing Qt under the normal token, then verifies the live CMake, Git, Ninja, MSVC, x64 Windows SDK tools/libraries, Qt MSVC/x64 components, and Inno Setup evidence. Normal website usage therefore downloads Qt, clones, configures, compiles, tests, and packages without an administrator token before delegating to the release entrypoint below.
 
 The bootstrap intentionally refuses a dirty checkout: the packaged `build-info.json` records a commit, so publishing bytes produced from uncommitted or untracked source would be unverifiable. It explicitly overrides Git settings that hide untracked files and rejects assume-unchanged or skip-worktree index flags. The release itself runs from a unique local clone pinned to that verified commit, which excludes ignored working-tree files and gives every run fresh build/output paths; tracked source and HEAD are checked again before artifacts are accepted. It never runs `git clean`, reset, checkout, stash, or force-update against the user's checkout. Build/output deletion is confined to a marker-owned `build-bootstrap` directory after reparse-point checks. Logs use unique names by default, an explicit existing log is appended rather than overwritten, and successful artifacts are checked for type/size and printed with SHA-256.
 
@@ -161,8 +173,8 @@ The workflow contains no upload-artifact or download-artifact action. Installer 
 Audit with:
 
 ```powershell
-gh api repos/codingmachineedge/WimForge/actions/artifacts --jq '.total_count'
-gh release view --repo codingmachineedge/WimForge `
+gh api repos/Ding-Ding-Projects/WimForge/actions/artifacts --jq '.total_count'
+gh release view --repo Ding-Ding-Projects/WimForge `
   --json tagName,isDraft,isPrerelease,assets
 ```
 
@@ -172,11 +184,11 @@ The first result should be `0`; the release should be final/non-prerelease with 
 
 Executables and installers are not currently code-signed. GitHub provides release-asset SHA-256 digests and the workflow verifies uploaded digests, but publisher identity through Authenticode remains a future hardening step. Test both installer and portable package in a clean Windows VM before broad use.
 
-Read [`docs/release-design.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/release-design.md) for the pipeline contract. Primary references: [Qt Windows deployment](https://doc.qt.io/qt-6/windows-deployment.html), [`install-qt-action`](https://github.com/jurplel/install-qt-action), and [`gh release create`](https://cli.github.com/manual/gh_release_create).
+Read [`docs/release-design.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/release-design.md) for the pipeline contract. Primary references: [Qt Windows deployment](https://doc.qt.io/qt-6/windows-deployment.html), [`install-qt-action`](https://github.com/jurplel/install-qt-action), and [`gh release create`](https://cli.github.com/manual/gh_release_create).
 
 ## 香港粵語建置提示
 
-Visual Studio 直接產生嘅 `build\Debug\WimForge.exe` 唔係自我完備版；要先 `cmake --install` 去絕對 `dev-runtime` 路徑，Qt/MSVC runtime 先會對齊，否則可能出現少 `Qt6Guid.dll`。正常 release 會 build、跑全部 tests、編 installer、驗便攜 ZIP，再先上載去 draft release 做 hash/asset/commit 合約檢查。公開版現時未簽名，請在乾淨 VM 測 installer 同 portable，並核對 GitHub SHA-256。
+Visual Studio 直接產生嘅 `build\Debug\WimForge.exe` 唔係自我完備版；要先 `cmake --install` 去 `dev-runtime` 路徑，再由 `dev-runtime\bin\WimForge.exe` 開啟。絕對 prefix 最清楚，相對 prefix 亦會喺 Qt deployment 前轉正。兩個 executable、`qt.conf` 同 Qt／MSVC runtime DLL 會一齊喺 `bin`；Qt plugin 同 QML module 會喺同層嘅 `plugins`／`qml`。少咗其中一部分，就可能出現少 `Qt6Guid.dll`、其他 Qt DLL 或 plugin 嘅錯誤。正常 release 會 build、跑全部 tests、編 installer、驗便攜 ZIP，再先上載去 draft release 做 hash／asset／commit 合約檢查。公開版現時未簽名，請在乾淨 VM 測 installer 同 portable，並核對 GitHub SHA-256。
 
 ---
 

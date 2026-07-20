@@ -2,7 +2,7 @@
 
 Package Studio describes software that WimForge can add to a Windows image and produces a safe, repeatable first-logon installer. A profile is portable JSON; ISO staging is a separate manifest, so a profile never needs to contain credentials or machine-specific state.
 
-The built-in **Full AI Development** profile is available at [`templates/ai-development.json`](https://github.com/codingmachineedge/WimForge/blob/main/templates/ai-development.json). It combines native build tools, common runtimes, desktop developer tools, and AI coding clients.
+The built-in **Full AI Development** profile is available at [`templates/ai-development.json`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/templates/ai-development.json). It combines native build tools, common runtimes, desktop developer tools, and AI coding clients.
 
 ## Supported package sources
 
@@ -56,7 +56,7 @@ OpenCode therefore installs automatically only when `opencode --version` fails. 
 
 The desktop's host helper is separate from the target-image package plan. Because the desktop is elevated, startup never searches `PATH` or user-profile npm locations and never launches a developer tool. The operator must select **Verify / install now** in Package Studio to approve discovery and setup for the current session. An existing executable is not considered ready until `opencode --version` exits normally with code zero and nonempty output.
 
-After that approval, if no executable is found, WimForge uses an existing npm or installs `OpenJS.NodeJS.LTS` through WinGet, then runs `npm install -g opencode-ai@latest`. It locates the resulting executable and performs the same live verification before reporting success. OpenCode-assisted studio actions never start setup implicitly; they remain disabled with an actionable error until the explicit setup succeeds. A missing executable, failed start, nonzero exit, or empty version output becomes non-modal in-app error feedback; the rest of WimForge remains usable.
+After that approval, if no executable is found, WimForge uses an existing npm or installs `OpenJS.NodeJS.LTS` through WinGet, then runs `npm install -g opencode-ai@latest`. It locates the resulting executable and performs the same live verification before reporting success. OpenCode-assisted studio actions never start setup implicitly; they remain disabled with an actionable error until the explicit setup succeeds. Host and request status changes immediately with the selected English, 香港粵語, or bilingual mode. A missing executable, failed start, nonzero exit, or empty version output becomes non-modal in-app error feedback; a localized label retains the bounded native process diagnostic, and the rest of WimForge remains usable.
 
 ## Verified ISO staging bundle
 
@@ -140,4 +140,4 @@ Licenses in the catalog are informational metadata for review; they do not grant
 
 ## 香港粵語重點
 
-Package Studio 只會執行有明確 provider、驗證方法同 trust 資料嘅項目；唔會自己作一個 WinGet ID，亦唔會幫你繞過授權或廠商登入。桌面版 OpenCode helper 同目標 Windows 內安裝 OpenCode 係兩件事：前者要你在 Package Studio 親自撳 **Verify / install now** 才會搜尋或安裝；後者係受審閱嘅映像 package plan。兩邊都唔會放入你嘅登入資料。
+Package Studio 只會執行有明確 provider、驗證方法同 trust 資料嘅項目；唔會自己作一個 WinGet ID，亦唔會幫你繞過授權或廠商登入。桌面版 OpenCode helper 同目標 Windows 內安裝 OpenCode 係兩件事：前者要你在 Package Studio 親自撳 **Verify / install now** 才會搜尋或安裝；後者係受審閱嘅映像 package plan。Host 同 request 狀態會即時跟介面語言；外部 process 失敗時，本地化標籤後面仍然會保留有上限嘅原始診斷，方便搵原因。兩邊都唔會放入你嘅登入資料。

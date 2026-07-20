@@ -980,6 +980,7 @@ ApplicationWindow {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 22
                 motionEnabled: app.motionEnabled
+                tr: root.tr2
             }
 
             SearchPalette {
@@ -993,6 +994,7 @@ ApplicationWindow {
                 parent: Overlay.overlay
                 branchName: "main"
                 motionEnabled: app.motionEnabled
+                tr: root.tr2
                 onUndoRequested: function(eventId) {
                     if (app.undoHistoryEvent(eventId)) events = app.contextualHistory(contextKey, elementId)
                 }

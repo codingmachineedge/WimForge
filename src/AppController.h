@@ -453,7 +453,8 @@ public:
     Q_INVOKABLE bool openApplicationLogFolder();
     Q_INVOKABLE void retryBackgroundPersistence();
 
-    bool loadDemoProject(QString *error = nullptr);
+    bool loadDemoProject(QString *error = nullptr,
+                         const QString &isolatedRoot = {});
 
 signals:
     void stateChanged();
@@ -561,6 +562,9 @@ private:
     bool requireIdleProjectHistory();
     void runOpenCode(const QString &prompt, const std::function<void(const QString &)> &completed);
     void processNextOpenCodeRequest();
+    void setOpenCodeRequestStatus(const QString &english, const QString &cantonese);
+    void setWinForgeRuntimeStatus(const QString &english, const QString &cantonese);
+    void setWinForgeBridgeStatus(const QString &english, const QString &cantonese);
     void recreateVmLab();
     void refreshVmValidationRuns();
     void updateVmStatus(const QString &message, const QString &tone = QStringLiteral("info"),
@@ -619,10 +623,13 @@ private:
     QString m_gpoStatus = QStringLiteral("Policy catalog has not been loaded yet.");
     QString m_pendingGpoQuery;
     bool m_pendingGpoRegularExpression = false;
-    QString m_openCodeRequestStatus;
+    QString m_openCodeRequestStatusEnglish;
+    QString m_openCodeRequestStatusCantonese;
     QString m_winForgeRuntimePath;
-    QString m_winForgeRuntimeStatus = QStringLiteral("No WinForge runtime has been detected yet.");
-    QString m_winForgeBridgeStatus = QStringLiteral("Recipe is ready for review.");
+    QString m_winForgeRuntimeStatusEnglish = QStringLiteral("No WinForge runtime has been detected yet.");
+    QString m_winForgeRuntimeStatusCantonese = QStringLiteral("仲未偵測到 WinForge runtime。");
+    QString m_winForgeBridgeStatusEnglish = QStringLiteral("Recipe is ready for review.");
+    QString m_winForgeBridgeStatusCantonese = QStringLiteral("Recipe 已準備好俾你檢查。");
     QString m_searchQuery;
     QVariantList m_searchResults;
     QVariantList m_driverCatalogItems;

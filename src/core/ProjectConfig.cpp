@@ -989,7 +989,13 @@ bool ProjectConfig::save(QString *error, const QString &commitMessage) const
         return false;
     }
 
-    if (autoExport && QFileInfo(autoExportPath).absoluteFilePath()
+    // `.wimforge` is the complete ProjectBundle format. AppController writes
+    // that bundle after this project commit succeeds; never replace a prior
+    // bundle with legacy JSON while the real atomic bundle export is pending.
+    const bool completeBundleDestination = QFileInfo(autoExportPath).suffix().compare(
+        QStringLiteral("wimforge"), Qt::CaseInsensitive) == 0;
+    if (autoExport && !completeBundleDestination
+        && QFileInfo(autoExportPath).absoluteFilePath()
             != QFileInfo(projectFilePath()).absoluteFilePath()
         && !writeJson(autoExportPath, toJson(), &gitError)) {
         setError(error, QStringLiteral("Project was saved and committed, but auto-export failed: %1")

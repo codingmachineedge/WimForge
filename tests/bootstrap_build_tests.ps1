@@ -137,7 +137,7 @@ try {
         throw "Clone plan failed: $($cloneOutput -join [Environment]::NewLine)"
     }
     $cloneText = $cloneOutput -join "`n"
-    if ($cloneText -notmatch 'clone https://github\.com/codingmachineedge/WimForge\.git') {
+    if ($cloneText -notmatch 'clone https://github\.com/Ding-Ding-Projects/WimForge\.git') {
         throw 'Clone plan did not identify the pinned WimForge repository.'
     }
     if (Test-Path -LiteralPath $cloneTarget) {

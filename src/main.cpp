@@ -20,8 +20,10 @@
 #include <QSettings>
 #include <QSize>
 #include <QTextStream>
+#include <QTemporaryDir>
 #include <QTimer>
 
+#include <memory>
 #include <utility>
 
 #ifdef Q_OS_WIN
@@ -199,7 +201,7 @@ void writeCliOutput(const QString &standardOutput, const QString &standardError)
 int main(int argc, char *argv[])
 {
     QCoreApplication::setOrganizationName(QStringLiteral("WimForge"));
-    QCoreApplication::setOrganizationDomain(QStringLiteral("github.com/codingmachineedge"));
+    QCoreApplication::setOrganizationDomain(QStringLiteral("github.com/Ding-Ding-Projects"));
     QCoreApplication::setApplicationName(QStringLiteral("WimForge"));
     QCoreApplication::setApplicationVersion(QString::fromLatin1(WIMFORGE_VERSION));
 
@@ -307,6 +309,8 @@ int main(int argc, char *argv[])
     int screenshotDelayMilliseconds = 1500;
     bool interactiveQaCapture = false;
 #ifdef WIMFORGE_DOCUMENTATION_CAPTURE
+    std::unique_ptr<QTemporaryDir> interactiveQaDirectory;
+    QString interactiveDemoRoot;
     projectStartCapture = parser.isSet(QStringLiteral("project-start"));
     const bool demoCapture = parser.isSet(QStringLiteral("demo"));
     interactiveQaCapture = !parser.isSet(QStringLiteral("screenshot"))
@@ -381,13 +385,28 @@ int main(int argc, char *argv[])
     QString captureSettingsPath =
         qEnvironmentVariable("WIMFORGE_CAPTURE_SETTINGS").trimmed();
     if (interactiveQaCapture) {
-        const QString interactiveRoot = QDir::temp().filePath(
-            QStringLiteral("WimForge-Interactive-QA"));
+        interactiveQaDirectory = std::make_unique<QTemporaryDir>(
+            QDir::temp().filePath(QStringLiteral("WimForge-Interactive-QA-XXXXXX")));
+        if (!interactiveQaDirectory->isValid()) {
+            qCritical().noquote() << QStringLiteral(
+                "Unable to create an isolated interactive QA directory. / 建立唔到隔離嘅互動 QA 資料夾。");
+            logSession.setExitCode(12);
+            return 12;
+        }
+        const QString interactiveRoot = interactiveQaDirectory->path();
         captureSettingsPath = QDir(interactiveRoot).filePath(QStringLiteral("settings"));
         const QString notificationPath = QDir(interactiveRoot)
             .filePath(QStringLiteral("notifications"));
-        QDir().mkpath(captureSettingsPath);
-        QDir().mkpath(notificationPath);
+        interactiveDemoRoot = QDir(interactiveRoot)
+            .filePath(QStringLiteral("demo"));
+        if (!QDir().mkpath(captureSettingsPath)
+            || !QDir().mkpath(notificationPath)
+            || !QDir().mkpath(interactiveDemoRoot)) {
+            qCritical().noquote() << QStringLiteral(
+                "Unable to prepare the isolated interactive QA directory. / 準備唔到隔離嘅互動 QA 資料夾。");
+            logSession.setExitCode(12);
+            return 12;
+        }
         qputenv("WIMFORGE_NOTIFICATION_STORE",
                 QFile::encodeName(notificationPath));
     }
@@ -408,19 +427,25 @@ int main(int argc, char *argv[])
 #ifdef WIMFORGE_DOCUMENTATION_CAPTURE
     controller.setThemeMode(captureTheme == QStringLiteral("light") ? 1 : 2);
 #endif
-    wimforge::EmbeddedTerminalSession terminalSession;
-    if (parser.isSet(QStringLiteral("demo")) || interactiveQaCapture) {
-        QString error;
-        if (!controller.loadDemoProject(&error))
-            qWarning().noquote() << error;
-    } else if (parser.isSet(QStringLiteral("project"))) {
-        controller.openProject(parser.value(QStringLiteral("project")));
-    }
     const QString language = parser.value(QStringLiteral("language")).toLower();
     if (language == QStringLiteral("en")) controller.setLanguageMode(0);
     else if (language == QStringLiteral("zh-hk") || language == QStringLiteral("yue")) controller.setLanguageMode(1);
     else if (language == QStringLiteral("bilingual")) controller.setLanguageMode(2);
 
+    wimforge::EmbeddedTerminalSession terminalSession;
+    if (parser.isSet(QStringLiteral("demo")) || interactiveQaCapture) {
+        QString error;
+#ifdef WIMFORGE_DOCUMENTATION_CAPTURE
+        const QString isolatedDemoRoot = interactiveQaCapture
+            ? interactiveDemoRoot : QString();
+#else
+        const QString isolatedDemoRoot;
+#endif
+        if (!controller.loadDemoProject(&error, isolatedDemoRoot))
+            qWarning().noquote() << error;
+    } else if (parser.isSet(QStringLiteral("project"))) {
+        controller.openProject(parser.value(QStringLiteral("project")));
+    }
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("app"), &controller);
     engine.rootContext()->setContextProperty(QStringLiteral("terminalSession"),

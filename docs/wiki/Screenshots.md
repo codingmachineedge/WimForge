@@ -12,66 +12,74 @@ real Windows image, private project, account name, or secret.
 
 ### Project Start / 工程起始頁
 
-![WimForge Project Start showing bilingual create, open, import, and recent-project actions](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/project-start.png)
+![WimForge Project Start showing bilingual create, open, import, and recent-project actions](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/project-start.png)
 
 呢個係 app 開啟後嘅第一個畫面：可以建立新工程、開啟現有資料夾、匯入 `.json` / `.wimforge`，或由最近清單繼續。
 
 ### Overview
 
-![WimForge Overview showing project metrics, the four-step build flow, safety rails, and current-job status](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/overview.png)
+![WimForge Overview showing project metrics, the five-step build flow, safety rails, and current-job status / WimForge 總覽顯示工程指標、五步建置流程、安全護欄同目前工序狀態](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/overview.png)
 
 ### Source and editions
 
-![Source and editions showing neutral ISO and working-image paths, clone-before-editing, edition selection, mount path, and output format](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/source.png)
+![Source and editions showing neutral ISO and working-image paths, clone-before-editing, edition selection, mount path, and output format](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/source.png)
 
 ### Customize
 
-![Customize showing the update and language-package queue, navigation across all configuration categories, and a neutral demo payload](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/customize.png)
+![Customize showing the update and language-package queue, navigation across all configuration categories, and a neutral demo payload](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/customize.png)
 
 ### Group Policy Studio
 
-![Group Policy Studio showing the installed ADMX catalog, a selected Delivery Optimization policy, three-state draft controls, a schema-generated numeric editor, registry target, and Git-backed commit action](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/group-policy.png)
+![Group Policy Studio showing the installed ADMX catalog, a selected Delivery Optimization policy, three-state draft controls, a schema-generated numeric editor, registry target, and Git-backed commit action](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/group-policy.png)
 
 ### Unattended Studio
 
-![Unattended Studio showing computer-name behavior, Microsoft-published installation keys, the generic answer-file editor, and setup-pass values](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/unattended.png)
+![Unattended Studio showing computer-name behavior, Microsoft-published installation keys, the generic answer-file editor, and setup-pass values](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/unattended.png)
 
 ### Package Studio
 
-![Package Studio showing the Full AI Development profile, provider-backed software cards, selection count, and staging controls](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/package-studio.png)
+![Package Studio showing the Full AI Development profile, provider-backed software cards, selection count, and staging controls](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/package-studio.png)
 
 ### WinForge Bridge
 
-![WinForge Bridge showing typed recipe actions, runtime contract detection, portable recipe controls, and verified ISO staging](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/winforge-bridge.png)
+![WinForge Bridge showing typed recipe actions, runtime contract detection, portable recipe controls, and verified ISO staging](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/winforge-bridge.png)
 
 ### Virtual Machine Lab
 
-![Virtual Machine Lab in its safe empty state, showing unavailable provider discovery, inventory filters, workflow tabs, and no selected machine](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/virtual-machine-lab.png)
+![Virtual Machine Lab in its safe empty state, showing unavailable provider discovery, inventory filters, workflow tabs, and no selected machine](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/virtual-machine-lab.png)
 
 ### Review and run
 
-![Review and run showing the reviewed operation list, deterministic verification steps, concurrency control, checkpoint setting, and explicit run button](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/review-run.png)
+![Review and run showing the reviewed operation list, deterministic verification steps, concurrency control, checkpoint setting, and explicit run button](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/review-run.png)
 
 ### History and recovery
 
-![History Time Machine showing append-only actions, branch and bookmark controls, guarded undo and restore actions, and the A/B comparison pane](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/history.png)
+![History Time Machine showing append-only actions, branch and bookmark controls, guarded undo and restore actions, and the A/B comparison pane](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/history.png)
 
 ### Settings
 
-![Settings showing language, Material theme, interface density, motion, concurrency, scratch-space reserve, and failsafe controls](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/settings.png)
+![Settings showing language, Material theme, interface density, motion, concurrency, scratch-space reserve, and failsafe controls](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/settings.png)
 
 ### Embedded terminal
 
-![Embedded Terminal ready state showing a trusted administrator shell selector, neutral working directory, empty bounded ConPTY viewport, command input, and inactive stop controls](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/embedded-terminal.png)
+![Embedded Terminal ready state showing a trusted administrator shell selector, neutral working directory, empty bounded ConPTY viewport, command input, and inactive stop controls](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/embedded-terminal.png)
 
 ## Reproduce the gallery
 
 Build the restricted documentation harness, then run the committed capture
 script from the repository root. The harness uses an `asInvoker` manifest so a
-13-route automation run does not display 13 UAC prompts, and it refuses to run
-unless `--screenshot` is present with exactly one of `--demo` or
-`--project-start`. Normal and release builds still embed
+13-route automation run does not display 13 UAC prompts. Automated capture
+requires `--screenshot` with exactly one of `--demo` or `--project-start`.
+Launching the harness without `--screenshot`, `--demo`, `--project-start`, or
+`--project` instead opens an isolated interactive QA session with the safe demo;
+`--page`, `--language`, `--theme`, and `--customize-section` may select its
+initial view. Each interactive launch gets a unique temporary demo, settings,
+and notification root, so an interrupted earlier launch cannot poison the next
+session. An orderly exit removes that session root; a forced termination may
+leave only its isolated folder behind. Normal and release builds still embed
 `requireAdministrator`.
+
+先建置受限制嘅文件 capture harness，再由 repository root 執行已提交嘅 capture script。Harness 用 `asInvoker` manifest，所以 13 個 route 嘅自動拍攝唔會彈 13 次 UAC。自動拍攝要用 `--screenshot`，並且喺 `--demo` 同 `--project-start` 之中只揀一個。冇帶 `--screenshot`、`--demo`、`--project-start` 或 `--project` 啟動時，harness 會用安全 demo 開一個隔離嘅互動 QA session；可以用 `--page`、`--language`、`--theme` 同 `--customize-section` 揀起始畫面。每次互動啟動都會用獨立嘅暫存 demo、settings 同通知資料夾，所以上一次中斷唔會整壞下一次 session；正常退出會刪走今次 session folder，強制終止就可能只留低嗰個隔離資料夾。正常同 release build 仍然會內置 `requireAdministrator`。
 
 ```powershell
 cmake -S . -B build-capture -G "Visual Studio 17 2022" -A x64 `
@@ -86,7 +94,11 @@ route with `--demo --language bilingual --page <id>`, gives every route a clean
 public fixture and notification ledger, waits for the window to settle, and uses
 WimForge's `--screenshot` option to save the normalized Qt Quick client area. It
 fails if a route exits unsuccessfully, omits its image, or produces anything
-other than the complete thirteen-file, true-PNG, 1,440×900 set.
+other than the complete thirteen-file, true-PNG, 1,440×900 set. The requested
+language is applied before the demo project loads, so backend-generated status
+text follows the same single-language or bilingual capture profile.
+
+指定語言會喺 demo 工程載入之前套用，所以 backend 產生嘅狀態文字都會跟返同一個單語或者雙語 capture profile，唔會混入上一次儲存嘅語言模式。
 
 | Page | Page ID | Image |
 | --- | --- | --- |
@@ -106,18 +118,18 @@ other than the complete thirteen-file, true-PNG, 1,440×900 set.
 
 ## Documentation-site viewport captures / 文件網站 viewport 截圖
 
-Refresh the application gallery first because the documentation-site hero embeds `overview.png`. Build the current documentation with `python -m mkdocs build --strict`, serve it locally with `python -m mkdocs serve --dev-addr 127.0.0.1:8000`, then capture `http://127.0.0.1:8000/WimForge/` as viewport-only, explicitly PNG-encoded images at device scale factor 1:
+Refresh the application gallery first because the documentation-site hero embeds `overview.png`. Build the current documentation with `python -m mkdocs build --strict`, serve it locally with `python -m mkdocs serve --dev-addr 127.0.0.1:8000`, then capture `http://127.0.0.1:8000/WimForge/docs/` as viewport-only, explicitly PNG-encoded images at device scale factor 1:
 
 | View | Browser metrics | Image |
 | --- | --- | --- |
 | Desktop | 1,280×720, non-mobile | `site-home-desktop.png` |
 | Mobile | 390×844, mobile emulation | `site-home-mobile.png` |
 
-![WimForge documentation home at the desktop viewport](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/site-home-desktop.png)
+![WimForge documentation home at the desktop viewport](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/site-home-desktop.png)
 
-![WimForge documentation home at the mobile viewport](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/site-home-mobile.png)
+![WimForge documentation home at the mobile viewport](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/site-home-mobile.png)
 
-先重拍 app 畫廊，因為文件網站 hero 會直接用 `overview.png`。之後用本機嚴格 MkDocs build 開 `http://127.0.0.1:8000/WimForge/`，desktop 用 1,280×720／非 mobile，mobile 用 390×844／mobile emulation，device scale factor 固定做 1，而且一定要明確輸出真正 PNG，唔可以用 JPEG 資料扮 `.png`。
+先重拍 app 畫廊，因為文件網站 hero 會直接用 `overview.png`。之後用本機嚴格 MkDocs build 開 `http://127.0.0.1:8000/WimForge/docs/`，desktop 用 1,280×720／非 mobile，mobile 用 390×844／mobile emulation，device scale factor 固定做 1，而且一定要明確輸出真正 PNG，唔可以用 JPEG 資料扮 `.png`。
 
 After both capture stages, enforce the complete tracked-file contract:
 

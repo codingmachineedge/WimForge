@@ -42,4 +42,4 @@
 - [Contributing / 參與開發](Contributing)
 - [NTLite Feature Comparison / NTLite 功能比較](NTLite-Feature-Comparison)
 
-[Documentation / 文件](https://codingmachineedge.github.io/WimForge/) · [Source / 原始碼](https://github.com/codingmachineedge/WimForge) · [Releases / 發佈](https://github.com/codingmachineedge/WimForge/releases) · [Issues / 問題](https://github.com/codingmachineedge/WimForge/issues)
+[Documentation / 文件](https://ding-ding-projects.github.io/WimForge/docs/) · [Source / 原始碼](https://github.com/Ding-Ding-Projects/WimForge) · [Releases / 發佈](https://github.com/Ding-Ding-Projects/WimForge/releases) · [Issues / 問題](https://github.com/Ding-Ding-Projects/WimForge/issues)

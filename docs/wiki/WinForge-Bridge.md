@@ -15,9 +15,9 @@ The bridge is a strict contract boundary, not a guessed command-line wrapper.
 7. Choose the ISO workspace with its folder picker, then stage the recipe, optional runtime, and payloads.
 8. Review the main project history and servicing plan; every recipe edit is a project mutation and is undoable.
 
-The runtime-folder, recipe open/save, and ISO-staging pickers are non-modal and each has a purpose-specific accessibility name. The page itself scrolls vertically; at 900×640 it switches dense cards and path/action groups into compact layouts so the lower staging controls remain reachable. Invalid input becomes inline/snackbar/notification feedback while other work continues.
+The runtime-folder, recipe open/save, and ISO-staging pickers are non-modal and each has a purpose-specific accessibility name. The page itself scrolls vertically; at 900×640 it switches dense cards and path/action groups into compact layouts so the lower staging controls remain reachable. Readiness labels and explanations follow the selected English, Hong Kong Cantonese, or bilingual interface mode; low-level parser and contract diagnostics remain verbatim behind a localized technical-detail label. Invalid input becomes inline/snackbar/notification feedback while other work continues.
 
-頁面嘅 runtime folder、**開啟 recipe……**、**儲存 recipe……** 同 ISO staging workspace 都有相應非 modal folder 或 file picker，每個掣嘅無障礙名稱都講清楚用途，唔使手打完整路徑。成頁可以直向捲動；900×640 時密集卡片同路徑／動作群組會改做 compact layout，下面嘅 staging 操作仍然撳得到。有輸入錯誤時，其他工作仍然可以繼續。
+頁面嘅 runtime folder、**開啟 recipe……**、**儲存 recipe……** 同 ISO staging workspace 都有相應非 modal folder 或 file picker，每個掣嘅無障礙名稱都講清楚用途，唔使手打完整路徑。成頁可以直向捲動；900×640 時密集卡片同路徑／動作群組會改做 compact layout，下面嘅 staging 操作仍然撳得到。準備狀態嘅標籤同解釋會跟返你揀嘅英文、香港粵語或者雙語介面；低層 parser／contract 診斷會原樣放喺本地化「技術詳情」標籤後面。有輸入錯誤時，其他工作仍然可以繼續。
 
 ## Recipe actions
 
@@ -139,7 +139,7 @@ The project save carries configuration and Git history. The ISO staging bundle c
 
 `validate`/`status`/`stage` can omit the recipe path when `--project` selects a project containing one. `stage` accepts `--include-runtime` or `--without-runtime`; an existing different bundle requires `--overwrite`. Project-backed staging commits the recipe/runtime choice and adds the staged OEM tree to the main servicing plan.
 
-Implementation detail lives in [`docs/winforge-bridge.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/winforge-bridge.md).
+Implementation detail lives in [`docs/winforge-bridge.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/winforge-bridge.md).
 
 ---
 

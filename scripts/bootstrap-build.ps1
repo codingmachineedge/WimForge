@@ -42,7 +42,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$cloneUri = 'https://github.com/codingmachineedge/WimForge.git'
+$cloneUri = 'https://github.com/Ding-Ding-Projects/WimForge.git'
 $minimumQtVersion = [Version]'6.8.0'
 $minimumCMakeVersion = [Version]'3.24.0'
 $managedWorkspaceMarker = 'WimForge bootstrap build workspace v1'

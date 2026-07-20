@@ -92,7 +92,7 @@ A legacy `.json` project export/import is still available for configuration inte
 
 Use `--overwrite` only after reviewing the destination. The safe importer protects the old destination, but a retained backup still consumes disk space and must be handled deliberately.
 
-Implementation detail lives in [`docs/project-bundles.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/project-bundles.md).
+Implementation detail lives in [`docs/project-bundles.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/project-bundles.md).
 
 ## 香港粵語重點
 

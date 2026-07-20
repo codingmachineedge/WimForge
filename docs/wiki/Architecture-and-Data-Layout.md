@@ -14,7 +14,7 @@ Both user-facing executables share the core configuration, history, servicing, s
 
 ## Desktop data flow
 
-1. `qml/Main.qml` owns the shell, navigation, sheets, notification drawer, contextual history surface, and the ten page components under `qml/pages`.
+1. `qml/Main.qml` owns the shell, navigation, sheets, notification drawer, contextual history surface, and the twelve page components under `qml/pages`. / `qml/Main.qml` 負責 shell、導覽、sheet、通知 drawer、相關歷史介面，同埋 `qml/pages` 入面十二個頁面 component。
 2. `AppController` exposes typed Qt properties, invokable actions, and signals to QML. It owns the current project, studio state, notification store, file watcher, and job engine.
 3. Classes under `src/core` validate and serialize projects, build servicing plans, run operations, record Git/action history, manage notification events, create project bundles, and implement the Package/GPO/Unattended/WinForge domains.
 4. External work uses `QProcess` with an executable and argument list. DISM, Git, `oscdimg`, WinGet, npm, installers, and vendor tools remain separate trust domains.
@@ -130,7 +130,7 @@ The current architecture does **not** imply that these are complete:
 
 Track repository claims against current tests and the [NTLite Feature Comparison](NTLite-Feature-Comparison), not against planned UI labels.
 
-Implementation references: [`CMakeLists.txt`](https://github.com/codingmachineedge/WimForge/blob/main/CMakeLists.txt), [`src/AppController.h`](https://github.com/codingmachineedge/WimForge/blob/main/src/AppController.h), [`docs/servicing-plan.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/servicing-plan.md), and [`docs/context-history.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/context-history.md).
+Implementation references: [`CMakeLists.txt`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/CMakeLists.txt), [`src/AppController.h`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/src/AppController.h), [`docs/servicing-plan.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/servicing-plan.md), and [`docs/context-history.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/context-history.md).
 
 ## 香港粵語架構重點
 

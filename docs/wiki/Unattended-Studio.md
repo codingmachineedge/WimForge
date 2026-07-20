@@ -112,7 +112,7 @@ AI assistance is not Windows SIM validation and must not be used to invent crede
 
 Primary Microsoft references: [Answer Files Overview](https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/wsim/answer-files-overview), [`ComputerName`](https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-shell-setup-computername), and [authoring best practices](https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/wsim/best-practices-for-authoring-answer-files).
 
-Implementation detail lives in [`docs/unattended-studio.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/unattended-studio.md).
+Implementation detail lives in [`docs/unattended-studio.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/unattended-studio.md).
 
 ---
 

@@ -240,7 +240,7 @@ ScrollView {
                         model: [
                             ["Source images are never overwritten by default", "預設永遠唔會覆蓋原裝映像"],
                             ["Every config edit is committed automatically", "每次改設定都自動 commit"],
-                            ["Jobs checkpoint before destructive steps", "危險工序之前一定落檢查點"],
+                            ["Plans mark destructive steps for checkpoint review", "計劃會標示危險工序要檢查點審閱"],
                             ["Interrupted mounts are detected on restart", "重開會搵返中斷咗嘅掛載"]
                         ]
                         delegate: RowLayout {

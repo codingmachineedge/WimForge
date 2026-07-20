@@ -30,7 +30,7 @@ private:
     int m_failures = 0;
 };
 
-bool waitUntil(const std::function<bool()> &predicate, int timeoutMs)
+[[maybe_unused]] bool waitUntil(const std::function<bool()> &predicate, int timeoutMs)
 {
     QElapsedTimer timer;
     timer.start();

@@ -5,15 +5,16 @@ import QtQuick.Layouts
 
 Item {
     id: root
+    required property var tr
     property string message: ""
     property string tone: "info"
     property string actionText: ""
     property bool motionEnabled: true
     readonly property bool darkTheme: Material.theme === Material.Dark
-    readonly property string toneLabel: tone === "error" ? qsTr("Error")
-                                                : tone === "warning" ? qsTr("Warning")
-                                                : tone === "success" ? qsTr("Success")
-                                                : qsTr("Information")
+    readonly property string toneLabel: tone === "error" ? root.tr("Error", "錯誤")
+                                                : tone === "warning" ? root.tr("Warning", "警告")
+                                                : tone === "success" ? root.tr("Success", "成功")
+                                                : root.tr("Information", "資訊")
     readonly property color toneBackground: DesignTokens.toneContainer(tone, darkTheme)
     readonly property color toneForeground: DesignTokens.toneForeground(tone, darkTheme)
     readonly property color toneBorder: DesignTokens.toneStrong(tone, darkTheme)
@@ -73,7 +74,7 @@ Item {
             }
             WfIconButton {
                 glyph: "×"
-                accessibleName: qsTr("Dismiss notification")
+                accessibleName: root.tr("Dismiss notification", "關閉通知")
                 toolTip: accessibleName
                 buttonSize: 36
                 dark: root.darkTheme

@@ -179,7 +179,9 @@ public:
                                              QString *error = nullptr);
 
     // save() is the canonical write path: it writes project.json and creates a
-    // commit in the project's own repository on every successful call.
+    // commit in the project's own repository on every successful call. A
+    // configured legacy JSON auto-export remains supported, while `.wimforge`
+    // destinations are reserved for AppController's atomic ProjectBundle pass.
     bool save(QString *error = nullptr, const QString &commitMessage = {}) const;
     bool exportJson(const QString &destinationFile, QString *error = nullptr) const;
     static std::optional<ProjectConfig> importJson(const QString &sourceFile,

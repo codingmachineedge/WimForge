@@ -225,6 +225,19 @@ wimforge_add_core_test(cli_runner_tests
 )
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+if(NOT WIMFORGE_CLI_ONLY)
+    add_test(
+        NAME repository_publication_contract_tests
+        COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/website/tools/check_site.py
+            --repo-root ${PROJECT_SOURCE_DIR}
+            --require-assets
+    )
+    set_tests_properties(repository_publication_contract_tests PROPERTIES
+        LABELS "documentation;repository"
+        TIMEOUT 30
+    )
+endif()
 add_test(
     NAME provisioning_server_tests
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/provisioning_server_tests.py
@@ -266,6 +279,23 @@ if(WIN32)
         set_tests_properties(startup_elevation_contract_tests PROPERTIES
             LABELS "windows-powershell;elevation"
             TIMEOUT 30
+        )
+        add_test(
+            NAME install_layout_contract_tests
+            COMMAND ${WIMFORGE_POWERSHELL_EXECUTABLE}
+                -NoLogo
+                -NoProfile
+                -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/install_layout_contract_tests.ps1
+                -CMakeExecutable ${CMAKE_COMMAND}
+                -BuildDirectory ${CMAKE_BINARY_DIR}
+                $<$<BOOL:$<CONFIG>>:-Configuration>
+                $<$<BOOL:$<CONFIG>>:$<CONFIG>>
+        )
+        set_tests_properties(install_layout_contract_tests PROPERTIES
+            LABELS "windows-powershell;install;deployment"
+            RUN_SERIAL TRUE
+            TIMEOUT 180
         )
     endif()
     add_test(

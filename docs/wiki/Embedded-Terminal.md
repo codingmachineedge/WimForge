@@ -4,7 +4,7 @@ The Embedded Terminal is WimForge's twelfth desktop route. It hosts an
 interactive Windows shell inside the application so commands, output, status,
 and cancellation stay in one window. Its startup page ID is `terminal`.
 
-![Embedded Terminal in its safe ready state, showing the administrator-shell selector, neutral working directory, empty bounded ConPTY viewport, command input, and inactive stop controls](https://raw.githubusercontent.com/codingmachineedge/WimForge/main/docs/screenshots/embedded-terminal.png)
+![Embedded Terminal in its safe ready state, showing the administrator-shell selector, neutral working directory, empty bounded ConPTY viewport, command input, and inactive stop controls](https://raw.githubusercontent.com/Ding-Ding-Projects/WimForge/main/docs/screenshots/embedded-terminal.png)
 
 ## What is embedded
 

@@ -4,7 +4,7 @@ WimForge is a standalone, open-source Windows image customization studio built w
 
 It is an independent alternative to tools such as NTLite. WimForge is not affiliated with or endorsed by NTLite, and this early release does not claim one-for-one parity with a mature commercial product. Its distinguishing contract is that configuration changes remain inspectable, Git-backed, portable, and reversible.
 
-[Open the WimForge website](https://codingmachineedge.github.io/WimForge/) · [Read the Material documentation](https://codingmachineedge.github.io/WimForge/docs/) · [Search the full Wiki](https://codingmachineedge.github.io/WimForge/docs/wiki/) · [Browse Windows releases](https://github.com/codingmachineedge/WimForge/releases) · [Report an issue](https://github.com/codingmachineedge/WimForge/issues)
+[Open the WimForge website](https://ding-ding-projects.github.io/WimForge/) · [Read the Material documentation](https://ding-ding-projects.github.io/WimForge/docs/) · [Search the full Wiki](https://ding-ding-projects.github.io/WimForge/docs/wiki/) · [Browse Windows releases](https://github.com/Ding-Ding-Projects/WimForge/releases) · [Report an issue](https://github.com/Ding-Ding-Projects/WimForge/issues)
 
 ## A tour of the app
 
@@ -43,13 +43,15 @@ The desktop interface is available in English, Hong Kong Cantonese, or a bilingu
 - Package Studio — validated profiles for WinGet, npm, pip, signed direct installers, offline payloads, and structured custom executables; dependency ordering; offline/online modes; trust checks; and a resumable first-logon installer.
 - Full AI Development template — Git/Git LFS, Node/npm, Python, .NET, Java, Go, Rust, LLVM, CMake, Ninja, Visual Studio Build Tools, VS Code, PowerShell, 7-Zip, Docker, OpenCode, Codex CLI, Claude Code, and Claude Desktop. Desktop payloads without a trustworthy package identity remain disabled slots until the ISO author supplies the official file, hash, signer, and reviewed command.
 - Explicit OpenCode host setup — the elevated desktop does not discover or launch PATH/user-profile developer tools at startup. After the operator selects **Verify / install now** in Package Studio, WimForge live-verifies `opencode --version`; if approved setup is needed, it can install Node.js LTS through WinGet and then `opencode-ai@latest` through npm. Progress and failure stay non-modal, and assisted actions remain disabled until verification succeeds.
+- OpenCode host and request status follows the selected English, 香港粵語, or bilingual interface mode instead of forcing bilingual copy into every mode. A failed external process keeps its bounded native diagnostic behind a localized label. / OpenCode host 同 request 狀態會即時跟返你揀嘅英文、香港粵語或者雙語介面，唔會喺每個模式都硬係顯示雙語；外部 process 失敗時，亦會喺本地化標籤後保留有上限嘅原始診斷資料。
 - Group Policy Studio — reads all ADMX definitions and installed ADML languages from the selected PolicyDefinitions store, retains schema constraints and registry actions, creates schema-driven Material editors, supports text/validated-regex search, exports bilingual documentation, and can ask OpenCode to propose a search.
 - Unattended Studio — portable JSON profiles, Windows answer-file XML import/export with native file pickers, the seven setup passes, Full Automation and AI Development templates, Random/Fixed/Prompt/Serial computer-name modes, typed convenience cards for OOBE screens, regional and language settings, owner/time-zone/licensing, OEM information, and Narrator sign-in autostart, Microsoft-published GVLK selection with licensing warnings, and OpenCode-assisted fills that are validated before commit.
-- Docker provisioning — a non-root Linux service and one-shot renderer that maps UUID/serial/MAC inventory to a validated fixed pre-OOBE computer name, an operator profile, and typed locale/time-zone/OOBE overrides; an included fail-closed WinPE client supplies the result to `setup.exe /unattend` before installation.
+- Docker provisioning — a non-root Linux service and one-shot renderer that maps UUID/serial/MAC inventory to a validated fixed pre-OOBE computer name, an operator profile, and typed locale/time-zone/OOBE overrides; an included fail-closed WinPE client supplies the result to `setup.exe /unattend` before installation. Docker context excludes every repository-root `build-*` tree so local Qt outputs are never uploaded to the builder. / Docker context 會排除 repository root 下面所有 `build-*` tree，唔會將本機 Qt build output 上載去 builder。
 - Virtual Machine Lab — discovers VMware Workstation/Player and VirtualBox, manages project-scoped and external machines, powers and snapshots them, attaches installation media, and records profile-aware validation milestones behind immutable previews and typed destructive confirmations.
 - Embedded terminal — hosts trusted PowerShell or Command Prompt shells through the documented Windows ConPTY API, keeps bounded output and task status inside WimForge, resizes with the UI, and contains the shell process tree without opening a separate console window.
 - Elevated desktop — the GUI manifest requests administrator rights at launch because image servicing and VM workflows require them; embedded-terminal commands inherit that elevation and remain explicitly operator-controlled.
 - WinForge Bridge — records approved typed actions, can include a complete self-contained WinForge runtime, and stages a verified, resumable OEM bundle into installation media. Runtime capabilities are contract-checked; WimForge never guesses unsupported WinForge command-line switches.
+- WinForge readiness labels and explanations follow the selected interface language; low-level parser and contract diagnostics remain verbatim behind a localized technical-detail label. / WinForge 準備狀態嘅標籤同解釋會跟返你揀嘅介面語言；低層 parser 同 contract 診斷會原樣保留喺本地化「技術詳情」標籤後面。
 - Complete CLI — project/config editing, plan/dry-run/apply, Git and contextual history, notification events, `.wimforge` bundles, unattended profiles, Package Studio, installed GPO catalogs, WinForge recipe validation/staging, deterministic JSON output, response files, and stable exit codes.
 
 ## The core workflow
@@ -169,10 +171,12 @@ cmake --build build --config Debug --parallel
 ctest --test-dir build -C Debug --output-on-failure
 $runtime = Join-Path (Resolve-Path .).Path 'build\dev-runtime'
 cmake --install build --config Debug --prefix $runtime
-& "$runtime\WimForge.exe" --demo
+& "$runtime\bin\WimForge.exe" --demo
 ```
 
-The install step deploys the matching Qt/MSVC runtime beside the developer executable. A bare Visual Studio output such as `build\Debug\WimForge.exe` is not self-contained and will report a missing `Qt6Guid.dll` unless the matching Qt `bin` directory is already on `PATH`.
+The install step puts both developer executables, `qt.conf`, and the matching Qt/MSVC runtime DLLs together under `dev-runtime\bin`; Qt plugins and QML modules use the sibling `dev-runtime\plugins` and `dev-runtime\qml` directories referenced by `qt.conf`. An absolute prefix is clearest in scripts, while a caller-relative prefix is normalized to the same layout before Qt deployment. A bare Visual Studio output such as `build\Debug\WimForge.exe` is not self-contained and will report a missing `Qt6Guid.dll` unless the matching Qt `bin` directory is already on `PATH`.
+
+安裝步驟會將兩個開發版 executable、`qt.conf` 同配對嘅 Qt／MSVC runtime DLL 一齊放喺 `dev-runtime\bin`；Qt plugin 同 QML module 就分別放喺 `dev-runtime\plugins` 同 `dev-runtime\qml`，由 `qt.conf` 指去正確位置。寫 script 用絕對 prefix 最清楚；如果由 caller 傳入相對 prefix，WimForge 亦會喺 Qt deployment 之前轉做同一個安裝 layout。直接開 `build\Debug\WimForge.exe` 呢類未 deploy 嘅 Visual Studio output 並唔完整；除非配對嘅 Qt `bin` 已經喺 `PATH`，否則會報少咗 `Qt6Guid.dll`。
 
 Or set `QT_ROOT_DIR`, put Qt's `bin` directory on `PATH`, and use Ninja:
 
@@ -234,8 +238,8 @@ Read the expanded [NTLite Feature Comparison](docs/wiki/NTLite-Feature-Compariso
 
 ## Documentation map
 
-- [Material documentation site](https://codingmachineedge.github.io/WimForge/)
-- [Search the full Wiki](https://codingmachineedge.github.io/WimForge/wiki-search/)
+- [Material documentation site](https://ding-ding-projects.github.io/WimForge/docs/)
+- [Search the full Wiki](https://ding-ding-projects.github.io/WimForge/docs/wiki-search/)
 - [Application Tour](docs/wiki/Application-Tour.md)
 - [Getting Started](docs/wiki/Getting-Started.md)
 - [Projects and Sources](docs/wiki/Projects-and-Sources.md)
@@ -260,6 +264,7 @@ Read the expanded [NTLite Feature Comparison](docs/wiki/NTLite-Feature-Compariso
 - [Building and Releases](docs/wiki/Building-and-Releases.md)
 - [Contributing](docs/wiki/Contributing.md)
 - [NTLite Feature Comparison](docs/wiki/NTLite-Feature-Comparison.md)
+- [Three-pass usage test audit / 三輪完整使用測試紀錄](docs/audits/2026-07-20-three-pass-usage-test.md)
 
 ## Primary references
 

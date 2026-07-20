@@ -2,7 +2,7 @@
 
 WimForge is a standalone, MIT-licensed Windows image customization studio written in C++20 and Qt 6.8. It gives one desktop home to offline Windows servicing, software selection, installed Group Policy definitions, unattended setup, WinForge-family staging, reviewed VMware/VirtualBox management, an elevated in-app terminal, non-blocking notifications, and Git-backed history.
 
-[Material documentation](https://codingmachineedge.github.io/WimForge/) · [Source repository](https://github.com/codingmachineedge/WimForge) · [Windows releases](https://github.com/codingmachineedge/WimForge/releases) · [Issues](https://github.com/codingmachineedge/WimForge/issues)
+[Material documentation](https://ding-ding-projects.github.io/WimForge/docs/) · [Source repository](https://github.com/Ding-Ding-Projects/WimForge) · [Windows releases](https://github.com/Ding-Ding-Projects/WimForge/releases) · [Issues](https://github.com/Ding-Ding-Projects/WimForge/issues)
 
 WimForge is an independent alternative to NTLite, not an NTLite product. It is early software and does not claim commercial feature parity. The central design is different: project state and user mutations are explicit, locally committed, exportable, and reversible, while the Windows image operation graph remains reviewable before it runs.
 

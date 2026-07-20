@@ -27,7 +27,7 @@ Optional features are tri-state. **Unchanged** removes the project override; it 
 
 The Apps surface keeps package-name removal separate from file-based provisioning. The file picker accepts existing `.appx`, `.appxbundle`, `.msix`, and `.msixbundle` files. WimForge validates the path and extension when queueing; DISM performs the package-signature and image-applicability checks during servicing. Queue signed framework dependencies before the main bundle, then verify the exact order in **Review & run**. WimForge does not provide a Store browser or dependency resolver.
 
-Scheduled tasks use paths relative to `Windows\System32\Tasks`. Enable and Disable atomically edit the offline task XML. Delete removes the task definition, so the desktop and controller both require an explicit compatibility override; the servicing plan also requires a checkpoint. The editor does not claim to inventory every task or provide build-specific compatibility advice.
+Scheduled tasks use paths relative to `Windows\System32\Tasks`. Enable and Disable atomically edit the offline task XML. Delete removes the task definition, so the desktop and controller both require an explicit compatibility override; the servicing plan marks the removal as checkpoint-required for review, but the operator must create and verify that checkpoint. The editor does not claim to inventory every task or provide build-specific compatibility advice.
 
 ## 類型化功能、能力、App 同排程工作變更
 
@@ -35,7 +35,7 @@ Scheduled tasks use paths relative to `Windows\System32\Tasks`. Enable and Disab
 
 Apps 畫面會分開「按套件名移除」同「按檔案預載」。File picker 只收現有 `.appx`、`.appxbundle`、`.msix` 同 `.msixbundle`；WimForge 排隊時會驗路徑同副檔名，而套件簽署同映像適用性就由 DISM 喺維護期間驗。已簽署 framework 依賴要排喺主 bundle 前面，之後去 **Review & run** 對清楚次序。WimForge 暫時冇 Store browser，亦冇依賴 resolver。
 
-排程工作路徑係相對於 `Windows\System32\Tasks`。啟用同停用會原子修改離線工作 XML；刪除會移走工作定義，所以畫面同 controller 都一定要你明確確認相容性解鎖，servicing plan 亦會要求檢查點。呢個 editor 唔會扮識晒每個 Windows build 嘅工作清單同相容性。
+排程工作路徑係相對於 `Windows\System32\Tasks`。啟用同停用會原子修改離線工作 XML；刪除會移走工作定義，所以畫面同 controller 都一定要你明確確認相容性解鎖，servicing plan 亦會標示為需要檢查點審閱，不過操作員要自行建立兼核實個檢查點。呢個 editor 唔會扮識晒每個 Windows build 嘅工作清單同相容性。
 
 ## Built-in settings
 
@@ -60,7 +60,7 @@ Before enabling, disabling, or removing an item:
 
 1. Confirm the identity exists in the selected image/build.
 2. Review dependencies and servicing output.
-3. Keep the destructive-operation checkpoint enabled.
+3. Review the checkpoint-required marker, then create and verify an appropriate backup or checkpoint yourself before execution.
 4. Boot-test the result and the recovery environment in a disposable VM.
 
 ## Payload responsibility

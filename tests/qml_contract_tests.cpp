@@ -282,6 +282,8 @@ int main(int argc, char *argv[])
     const QString sourceRoot = QString::fromUtf8(WIMFORGE_SOURCE_DIR);
     const QString controllerHeader = readText(
         sourceRoot + QStringLiteral("/src/AppController.h"), &test);
+    const QString mainSource = readText(
+        sourceRoot + QStringLiteral("/src/main.cpp"), &test);
 
     const QRegularExpression propertyExpression(
         QStringLiteral(R"(Q_PROPERTY\([^\n\)]*\b([A-Za-z_][A-Za-z0-9_]*)\s+READ\b)"));
@@ -712,6 +714,129 @@ int main(int argc, char *argv[])
                QStringLiteral("Settings must use the redesigned category surfaces, not legacy GroupBox cards"));
     test.check(!hasLeadingSymbolTitle(settingsPage),
                QStringLiteral("Settings titles must use text/semantic components, not emoji-prefixed title literals"));
+    test.check(settingsPage.contains(QStringLiteral(
+                    "current external tool launches do not use this preference"))
+                   && settingsPage.contains(QStringLiteral(
+                       "current planner does not pause jobs at this threshold"))
+                   && !settingsPage.contains(QStringLiteral(
+                       "Caps worker threads without changing Windows processor affinity"))
+                    && !settingsPage.contains(QStringLiteral(
+                        "Jobs pause before temporary storage falls below this threshold")),
+                QStringLiteral("Settings must describe CPU and scratch controls as saved future preferences, not active enforcement"));
+    test.check(settingsPage.contains(QStringLiteral(
+                    "Saves this preference for future journal policy"))
+                    && settingsPage.contains(QStringLiteral(
+                        "而家 job engine 會獨立維護復原 journal"))
+                    && !settingsPage.contains(QStringLiteral(
+                        "Flush state after every transition so interrupted jobs can resume safely")),
+                QStringLiteral("Settings must not claim that the saved crash-journal preference changes the current job engine"));
+    test.check(settingsPage.contains(QStringLiteral(
+                    "Saves checkpoint intent for future enforcement"))
+                    && settingsPage.contains(QStringLiteral(
+                        "而家執行唔會因為呢個偏好自動建立 Git 檢查點"))
+                    && !settingsPage.contains(QStringLiteral(
+                        "Require a Git-backed checkpoint before an irreversible servicing step")),
+                QStringLiteral("Settings must describe destructive checkpoint control as an unenforced future preference"));
+    test.check(settingsPage.contains(QStringLiteral(
+                    "Recoverable notification deletion"))
+                    && settingsPage.contains(QStringLiteral(
+                        "Deleting a notification writes a tombstone"))
+                    && !settingsPage.contains(QStringLiteral(
+                        "permanently deleting project state")),
+                QStringLiteral("Settings must scope recoverable tombstones to notification history"));
+    test.check(settingsPage.contains(QStringLiteral(
+                    "Open structured local logs with Windows"))
+                    && settingsPage.contains(QStringLiteral(
+                        "用 Windows 開結構化本機日誌"))
+                    && !settingsPage.contains(QStringLiteral(
+                        "without leaving WimForge")),
+                QStringLiteral("Settings must disclose that log actions open the Windows viewer or folder"));
+    test.check(settingsPage.contains(QStringLiteral(
+                    "reject a mismatch when an expected hash is configured"))
+                    && !settingsPage.contains(QStringLiteral(
+                        "reject unexpected source changes")),
+                QStringLiteral("Settings must distinguish hash computation from configured expected-hash enforcement"));
+    test.check(settingsPage.contains(QStringLiteral(
+                    "Best-effort JSONL logging"))
+                    && settingsPage.contains(QStringLiteral("BEST EFFORT"))
+                    && !settingsPage.contains(QStringLiteral(
+                        "JSONL logs rotate automatically and secret-like values are redacted")),
+                QStringLiteral("Settings must not claim that structured logging initialized successfully when startup can continue without it"));
+    test.check(settingsPage.contains(QStringLiteral(
+                    "Write a complete .wimforge project bundle"))
+                    && settingsPage.contains(QStringLiteral(
+                        "Choose a .wimforge path before enabling automatic export"))
+                    && settingsPage.contains(QStringLiteral(
+                        "readOnly: !root.app.projectLoaded"))
+                    && settingsPage.contains(QStringLiteral(
+                        "enabled: root.app.projectLoaded"))
+                    && controllerSource.contains(QStringLiteral(
+                        "isWimForgeBundlePath"))
+                    && controllerSource.contains(QStringLiteral(
+                        "Choose a .wimforge project-bundle destination before enabling automatic export"))
+                    && controllerSource.contains(QStringLiteral(
+                        "Automatic export needs a destination ending in .wimforge")),
+                QStringLiteral("Automatic export must validate and write complete .wimforge bundles without a path-selection deadlock"));
+    test.check(controllerSource.contains(QStringLiteral(
+                    "localized(m_openCodeSetup->statusEnglish()"))
+                   && controllerSource.contains(QStringLiteral(
+                       "m_openCodeSetup->statusCantonese()"))
+                   && controllerSource.contains(QStringLiteral(
+                       "openCodeStatus(), QStringLiteral(\"success\")"))
+                   && controllerSource.contains(QStringLiteral(
+                        "showError(openCodeError())")),
+                QStringLiteral("OpenCode status, notifications, and errors must follow the selected desktop language instead of always showing prejoined bilingual text"));
+    test.check(controllerHeader.contains(QStringLiteral(
+                    "m_openCodeRequestStatusEnglish"))
+                    && controllerHeader.contains(QStringLiteral(
+                        "m_openCodeRequestStatusCantonese"))
+                    && controllerHeader.contains(QStringLiteral(
+                        "m_winForgeRuntimeStatusEnglish"))
+                    && controllerHeader.contains(QStringLiteral(
+                        "m_winForgeRuntimeStatusCantonese"))
+                    && controllerHeader.contains(QStringLiteral(
+                        "m_winForgeBridgeStatusEnglish"))
+                    && controllerHeader.contains(QStringLiteral(
+                        "m_winForgeBridgeStatusCantonese"))
+                    && controllerSource.contains(QStringLiteral(
+                        "localized(m_openCodeRequestStatusEnglish"))
+                    && controllerSource.contains(QStringLiteral(
+                        "localized(m_winForgeRuntimeStatusEnglish"))
+                    && controllerSource.contains(QStringLiteral(
+                        "localized(m_winForgeBridgeStatusEnglish"))
+                    && controllerSource.contains(QStringLiteral(
+                        "技術詳情（可能只得 English）")),
+                QStringLiteral("OpenCode request and WinForge status must retain separate language variants for live switching"));
+    test.check(controllerSource.contains(QStringLiteral(
+                    "setWinForgeBridgeStatus(QStringLiteral(\"Recipe is ready for review.\")"))
+                    && controllerSource.contains(QStringLiteral(
+                        "QStringLiteral(\"Recipe 已準備好俾你檢查。\")")),
+                QStringLiteral("Loading a project must reset WinForge readiness status before applying any project-specific error"));
+    const qsizetype languageSetterStart = controllerSource.indexOf(
+        QStringLiteral("void AppController::setLanguageMode"));
+    const qsizetype languageSetterEnd = controllerSource.indexOf(
+        QStringLiteral("void AppController::setThemeMode"), languageSetterStart);
+    test.check(languageSetterStart >= 0 && languageSetterEnd > languageSetterStart
+                    && controllerSource.mid(languageSetterStart,
+                                            languageSetterEnd - languageSetterStart)
+                           .contains(QStringLiteral("emit studioChanged();")),
+                QStringLiteral("Changing language must notify studio-bound localized status properties immediately"));
+    const qsizetype captureLanguageOffset = mainSource.indexOf(
+        QStringLiteral("controller.setLanguageMode"));
+    const qsizetype demoLoadOffset = mainSource.indexOf(
+        QStringLiteral("controller.loadDemoProject"));
+    test.check(captureLanguageOffset >= 0 && demoLoadOffset >= 0
+                   && captureLanguageOffset < demoLoadOffset,
+               QStringLiteral("The requested language must be active before demo/project state creates localized status text"));
+    test.check(mainSource.contains(QStringLiteral(
+                   "WimForge-Interactive-QA-XXXXXX"))
+                   && mainSource.contains(QStringLiteral(
+                       "controller.loadDemoProject(&error, isolatedDemoRoot)"))
+                   && controllerSource.contains(QStringLiteral(
+                       "const QString requestedDemoRoot = isolatedRoot.trimmed()"))
+                   && !mainSource.contains(QStringLiteral("WIMFORGE_DEMO_ROOT"))
+                   && !controllerSource.contains(QStringLiteral("WIMFORGE_DEMO_ROOT")),
+               QStringLiteral("Interactive QA must pass its unique demo root directly instead of exposing an elevated environment-path override"));
 
     const QString sourcePage = readText(
         sourceRoot + QStringLiteral("/qml/pages/SourcePage.qml"), &test);
@@ -734,18 +859,24 @@ int main(int argc, char *argv[])
         sourceRoot + QStringLiteral("/qml/components/WfPageHeader.qml"), &test);
     const QString catalogSheet = readText(
         sourceRoot + QStringLiteral("/qml/components/UpdateCatalogSheet.qml"), &test);
+    const qsizetype catalogContentOffset = catalogSheet.indexOf(
+        QStringLiteral("contentItem: ColumnLayout"));
+    const qsizetype catalogDialogRoleOffset = catalogSheet.indexOf(
+        QStringLiteral("Accessible.role: Accessible.Dialog"));
     test.check(fieldComponent.contains(QStringLiteral("Accessible.description: root.accessibleDescription"))
                    && !headerComponent.contains(QStringLiteral("maximumLineCount: 3")),
                QStringLiteral("Shared fields must expose descriptions and page headers must not clip bilingual copy"));
     test.check(catalogSheet.contains(QStringLiteral("modal: false"))
                     && catalogSheet.contains(QStringLiteral("showAutomatic(targetCategory)"))
-                    && catalogSheet.contains(QStringLiteral("Accessible.role: Accessible.Dialog"))
+                    && catalogContentOffset >= 0
+                    && catalogDialogRoleOffset > catalogContentOffset
+                    && !catalogSheet.left(catalogContentOffset).contains(QStringLiteral("Accessible."))
                    && catalogSheet.contains(QStringLiteral("Accessible.role: Accessible.List"))
                    && catalogSheet.contains(QStringLiteral("app.openMicrosoftUpdateCatalog(query)"))
                    && !catalogSheet.contains(QStringLiteral(
                        "app.updateCatalogResults.length === 0"))
                     && catalogSheet.contains(QStringLiteral("Download %1")),
-               QStringLiteral("Update Catalog results must be non-blocking, ISO-driven, and uniquely named for accessibility"));
+               QStringLiteral("Update Catalog results must be non-blocking, ISO-driven, and attach dialog accessibility to the content Item rather than the Popup"));
 
     const QString searchPalette = readText(
         sourceRoot + QStringLiteral("/qml/components/SearchPalette.qml"), &test);
@@ -786,6 +917,25 @@ int main(int argc, char *argv[])
                    && mainQml.contains(QStringLiteral("tr: root.tr2"))
                    && mainQml.contains(QStringLiteral("bell.forceActiveFocus")),
                QStringLiteral("The notification drawer must be a bilingual dialog with initial focus, Escape close, and focus restoration"));
+    const QString contextHistoryPanel = readText(
+        sourceRoot + QStringLiteral("/qml/components/ContextHistoryPanel.qml"), &test);
+    const QString snackbarComponent = readText(
+        sourceRoot + QStringLiteral("/qml/components/Snackbar.qml"), &test);
+    test.check(contextHistoryPanel.contains(QStringLiteral("required property var tr"))
+                   && contextHistoryPanel.contains(QStringLiteral("呢度嘅歷史"))
+                   && contextHistoryPanel.contains(QStringLiteral("關閉相關歷史"))
+                   && contextHistoryPanel.contains(QStringLiteral(
+                       "root.tr(\"Contextual history\", \"相關歷史\") + \": \" + root.contextTitle"))
+                   && !contextHistoryPanel.contains(QStringLiteral("Contextual history for %1"))
+                   && !contextHistoryPanel.contains(QStringLiteral("qsTr("))
+                   && snackbarComponent.contains(QStringLiteral("required property var tr"))
+                   && snackbarComponent.contains(QStringLiteral("關閉通知"))
+                   && snackbarComponent.contains(QStringLiteral("Information\", \"資訊"))
+                   && !snackbarComponent.contains(QStringLiteral("qsTr("))
+                   && mainQml.contains(QStringLiteral("Snackbar {"))
+                   && mainQml.contains(QStringLiteral("ContextHistoryPanel {"))
+                   && mainQml.count(QStringLiteral("tr: root.tr2")) >= 3,
+               QStringLiteral("Context history and snackbar copy must use the shell English, Cantonese, and bilingual translator"));
     test.check(mainQml.contains(QStringLiteral("compactToolbar"))
                     && mainQml.contains(QStringLiteral("Accessible.role: Accessible.PageTab"))
                    && mainQml.contains(QStringLiteral("Accessible.selected:"))
@@ -804,6 +954,17 @@ int main(int argc, char *argv[])
         sourceRoot + QStringLiteral("/qml/pages/HistoryPage.qml"), &test);
     const QString dashboardPage = readText(
         sourceRoot + QStringLiteral("/qml/pages/DashboardPage.qml"), &test);
+    test.check(planPage.contains(QStringLiteral(
+                    "Save future checkpoint-policy preference (not enforced yet)"))
+                    && dashboardPage.contains(QStringLiteral(
+                        "Plans mark destructive steps for checkpoint review"))
+                    && customizePage.contains(QStringLiteral(
+                        "marks the operation as checkpoint-required for review"))
+                    && !planPage.contains(QStringLiteral(
+                        "Create recovery checkpoint before destructive steps"))
+                    && !dashboardPage.contains(QStringLiteral(
+                        "Jobs checkpoint before destructive steps")),
+                QStringLiteral("Review, dashboard, and Customize copy must not claim that checkpoint metadata creates a checkpoint"));
     test.check(settingsPage.contains(QStringLiteral("autoExportDialog"))
                    && terminalPage.contains(QStringLiteral("workingDirectoryDialog"))
                    && winForgePage.contains(QStringLiteral("runtimeFolderDialog"))
@@ -856,6 +1017,13 @@ int main(int argc, char *argv[])
                        "Choose the WinForge recipe export destination"))
                    && winForgePage.contains(QStringLiteral("modality: Qt.NonModal")),
                QStringLiteral("Every WinForge Bridge path picker must expose a distinct accessible name and nonmodal dialog"));
+    test.check(controllerSource.contains(QStringLiteral(
+                   "QString AppController::winForgeBridgeStatus() const"))
+                   && controllerHeader.contains(QStringLiteral(
+                       "m_winForgeBridgeStatusEnglish = QStringLiteral(\"Recipe is ready for review.\")"))
+                   && controllerHeader.contains(QStringLiteral(
+                       "m_winForgeBridgeStatusCantonese = QStringLiteral(\"Recipe 已準備好俾你檢查。\")")),
+               QStringLiteral("The default WinForge readiness status must follow English, Cantonese, and bilingual interface modes"));
     test.check(packagePage.contains(QStringLiteral("id: packagePageScroll"))
                    && planPage.contains(QStringLiteral("id: planPageScroll"))
                    && historyPage.contains(QStringLiteral("id: historyPageScroll"))

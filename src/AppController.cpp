@@ -52,6 +52,14 @@ QString cleanPath(const QString &value)
     return trimmed.isEmpty() ? QString() : QDir::cleanPath(trimmed);
 }
 
+bool isWimForgeBundlePath(const QString &value)
+{
+    const QString path = cleanPath(value);
+    return !path.isEmpty()
+        && QFileInfo(path).suffix().compare(QStringLiteral("wimforge"),
+                                            Qt::CaseInsensitive) == 0;
+}
+
 QString bilingualCommitMessage(const QString &english, const QString &cantonese)
 {
     return english + QStringLiteral(" / ") + cantonese;
@@ -846,7 +854,7 @@ AppController::AppController(QObject *parent)
     m_openCodeSetup = std::make_unique<OpenCodeSetup>();
     connect(m_openCodeSetup.get(), &OpenCodeSetup::changed, this, [this] {
         if (m_openCodeSetup->busy() || m_openCodeSetup->state() == OpenCodeSetupState::Failed)
-            m_openCodeRequestStatus.clear();
+            setOpenCodeRequestStatus({}, {});
         emit studioChanged();
     });
     connect(m_openCodeSetup.get(), &OpenCodeSetup::becameReady, this,
@@ -854,11 +862,11 @@ AppController::AppController(QObject *parent)
         if (installedDuringAttempt) {
             notify(localized(QStringLiteral("OpenCode installed and verified"),
                              QStringLiteral("OpenCode 已安裝兼驗證")),
-                   m_openCodeSetup->status(), QStringLiteral("success"));
+                   openCodeStatus(), QStringLiteral("success"));
         }
     });
     connect(m_openCodeSetup.get(), &OpenCodeSetup::failed, this,
-            [this](const QString &error) { showError(error); });
+            [this](const QString &) { showError(openCodeError()); });
 
     m_languageMode = qBound(0, m_settings.value(QStringLiteral("ui/language"), 2).toInt(), 2);
     m_themeMode = qBound(0, m_settings.value(QStringLiteral("ui/theme"), 0).toInt(), 2);
@@ -923,19 +931,29 @@ AppController::AppController(QObject *parent)
                     return;
                 guard->m_winForgeRuntimePath = runtimePath;
                 guard->m_winForgeRuntimeContract = contract;
-                guard->m_winForgeRuntimeStatus = contract.runtimeFound
-                    ? guard->localized(
-                          QStringLiteral("Detected %1 runtime; capabilities: %2")
-                              .arg(contract.declaredContract
-                                       ? QStringLiteral("declared-contract")
-                                       : QStringLiteral("legacy"),
-                                   contract.capabilities.join(QStringLiteral(", "))),
-                          QStringLiteral("偵測到 %1 runtime；功能：%2")
-                              .arg(contract.declaredContract
-                                       ? QStringLiteral("已宣告合約")
-                                       : QStringLiteral("舊版"),
-                                   contract.capabilities.join(QStringLiteral(", "))))
-                    : bridgeError;
+                if (contract.runtimeFound) {
+                    guard->setWinForgeRuntimeStatus(
+                        QStringLiteral("Detected %1 runtime; capabilities: %2")
+                            .arg(contract.declaredContract
+                                     ? QStringLiteral("declared-contract")
+                                     : QStringLiteral("legacy"),
+                                 contract.capabilities.join(QStringLiteral(", "))),
+                        QStringLiteral("偵測到 %1 runtime；功能：%2")
+                            .arg(contract.declaredContract
+                                     ? QStringLiteral("已宣告合約")
+                                     : QStringLiteral("舊版"),
+                                 contract.capabilities.join(QStringLiteral(", "))));
+                } else {
+                    const QString detail = bridgeError.trimmed();
+                    guard->setWinForgeRuntimeStatus(
+                        detail.isEmpty()
+                            ? QStringLiteral("No compatible WinForge runtime was found.")
+                            : detail,
+                        detail.isEmpty()
+                            ? QStringLiteral("搵唔到相容嘅 WinForge runtime。")
+                            : QStringLiteral("偵測唔到 WinForge runtime。技術詳情（可能只得 English）：%1")
+                                  .arg(detail));
+                }
                 emit guard->studioChanged();
             }, Qt::QueuedConnection);
         });
@@ -1330,16 +1348,22 @@ QString AppController::openCodeState() const
 
 QString AppController::openCodeStatus() const
 {
-    if (!m_openCodeRequestStatus.isEmpty())
-        return m_openCodeRequestStatus;
-    return m_openCodeSetup ? m_openCodeSetup->status()
+    if (!m_openCodeRequestStatusEnglish.isEmpty()
+        || !m_openCodeRequestStatusCantonese.isEmpty()) {
+        return localized(m_openCodeRequestStatusEnglish,
+                         m_openCodeRequestStatusCantonese);
+    }
+    return m_openCodeSetup ? localized(m_openCodeSetup->statusEnglish(),
+                                       m_openCodeSetup->statusCantonese())
                            : localized(QStringLiteral("OpenCode status is unavailable."),
                                        QStringLiteral("而家攞唔到 OpenCode 狀態。"));
 }
 
 QString AppController::openCodeError() const
 {
-    return m_openCodeSetup ? m_openCodeSetup->error() : QString();
+    return m_openCodeSetup ? localized(m_openCodeSetup->errorEnglish(),
+                                       m_openCodeSetup->errorCantonese())
+                           : QString();
 }
 
 QVariantList AppController::winForgeBridgeActions() const
@@ -1374,8 +1398,16 @@ QVariantList AppController::winForgeBridgeActions() const
 
 bool AppController::winForgeBridgeIncludeRuntime() const { return m_winForgeIncludeRuntime; }
 QString AppController::winForgeBridgeRuntimePath() const { return m_winForgeRuntimePath; }
-QString AppController::winForgeBridgeRuntimeStatus() const { return m_winForgeRuntimeStatus; }
-QString AppController::winForgeBridgeStatus() const { return m_winForgeBridgeStatus; }
+QString AppController::winForgeBridgeRuntimeStatus() const
+{
+    return localized(m_winForgeRuntimeStatusEnglish,
+                     m_winForgeRuntimeStatusCantonese);
+}
+QString AppController::winForgeBridgeStatus() const
+{
+    return localized(m_winForgeBridgeStatusEnglish,
+                     m_winForgeBridgeStatusCantonese);
+}
 QVariantList AppController::vmProviders() const
 {
     QVariantList result;
@@ -1492,6 +1524,7 @@ void AppController::setLanguageMode(int value)
     if (m_languageMode == value) return;
     m_languageMode = value; m_settings.setValue(QStringLiteral("ui/language"), value);
     emit preferencesChanged(); emit stateChanged(); emit notificationsChanged();
+    emit studioChanged();
 }
 void AppController::setThemeMode(int value) { value = qBound(0, value, 2); if (m_themeMode == value) return; m_themeMode = value; m_settings.setValue(QStringLiteral("ui/theme"), value); emit preferencesChanged(); }
 void AppController::setColorScheme(int value) { value = qBound(0, value, 2); if (m_colorScheme == value) return; m_colorScheme = value; m_settings.setValue(QStringLiteral("ui/colorScheme"), value); emit preferencesChanged(); }
@@ -1504,8 +1537,42 @@ void AppController::setCrashJournalEnabled(bool value) { if (m_crashJournalEnabl
 void AppController::setVerifySourceHash(bool value) { if (m_verifySourceHash == value) return; m_verifySourceHash = value; m_settings.setValue(QStringLiteral("safety/hash"), value); if (m_project) mutateProject(bilingualCommitMessage(QStringLiteral("safety: change payload verification"), QStringLiteral("安全：更改 payload 驗證")), [value](ProjectConfig &p) { p.options.verifyPayloads = value; }); emit preferencesChanged(); }
 void AppController::setCheckpointBeforeDestructive(bool value) { if (m_checkpointBeforeDestructive == value) return; m_checkpointBeforeDestructive = value; m_settings.setValue(QStringLiteral("safety/checkpoint"), value); emit preferencesChanged(); }
 void AppController::setAutoImport(bool value) { if (m_project) mutateProject(bilingualCommitMessage(QStringLiteral("automation: change auto import"), QStringLiteral("自動化：更改自動匯入")), [value](ProjectConfig &p) { p.autoImport = value; }); }
-void AppController::setAutoExport(bool value) { if (m_project) mutateProject(bilingualCommitMessage(QStringLiteral("automation: change auto export"), QStringLiteral("自動化：更改自動匯出")), [value](ProjectConfig &p) { p.autoExport = value; }); }
-void AppController::setAutoExportPath(const QString &value) { if (m_project) mutateProject(bilingualCommitMessage(QStringLiteral("automation: change export destination"), QStringLiteral("自動化：更改匯出目的地")), [value](ProjectConfig &p) { p.autoExportPath = cleanPath(value); }); }
+void AppController::setAutoExport(bool value)
+{
+    if (!m_project)
+        return;
+    if (value && !isWimForgeBundlePath(m_project->autoExportPath)) {
+        showError(localized(
+            QStringLiteral("Choose a .wimforge project-bundle destination before enabling automatic export."),
+            QStringLiteral("啟用自動匯出之前，請先揀一個 .wimforge 工程 bundle 目的地。")));
+        emit stateChanged();
+        return;
+    }
+    mutateProject(bilingualCommitMessage(
+                      QStringLiteral("automation: change auto export"),
+                      QStringLiteral("自動化：更改自動匯出")),
+                  [value](ProjectConfig &project) { project.autoExport = value; });
+}
+
+void AppController::setAutoExportPath(const QString &value)
+{
+    if (!m_project)
+        return;
+    const QString cleaned = cleanPath(value);
+    if (!isWimForgeBundlePath(cleaned)) {
+        showError(localized(
+            QStringLiteral("Automatic export needs a destination ending in .wimforge."),
+            QStringLiteral("自動匯出目的地必須用 .wimforge 結尾。")));
+        emit stateChanged();
+        return;
+    }
+    mutateProject(bilingualCommitMessage(
+                      QStringLiteral("automation: change export destination"),
+                      QStringLiteral("自動化：更改匯出目的地")),
+                  [cleaned](ProjectConfig &project) {
+                      project.autoExportPath = cleaned;
+                  });
+}
 
 void AppController::loadRecentProjects()
 {
@@ -1979,8 +2046,7 @@ void AppController::beginNextProjectMutation()
                 .record(action, nullptr, &historyError);
 
             if (pending.project.autoExport
-                && QFileInfo(pending.project.autoExportPath).suffix().compare(
-                       QStringLiteral("wimforge"), Qt::CaseInsensitive) == 0) {
+                && isWimForgeBundlePath(pending.project.autoExportPath)) {
                 QMutexLocker locker(notificationMutex.get());
                 const QList<ProjectBundleRepository> repositories{
                     {ProjectBundle::ProjectRepositoryRole,
@@ -4499,6 +4565,8 @@ void AppController::restoreStudioState()
     bool packageLoaded = false;
     bool unattendLoaded = false;
     bool bridgeLoaded = false;
+    setWinForgeBridgeStatus(QStringLiteral("Recipe is ready for review."),
+                            QStringLiteral("Recipe 已準備好俾你檢查。"));
     if (m_project) {
         const QJsonValue packageValue = m_project->settings.value(QStringLiteral("_packageProfile"));
         if (packageValue.isObject()) {
@@ -4526,7 +4594,10 @@ void AppController::restoreStudioState()
                 m_winForgeRecipe = *recipe;
                 bridgeLoaded = true;
             } else {
-                m_winForgeBridgeStatus = QStringLiteral("Saved WinForge recipe is invalid: %1").arg(error);
+                setWinForgeBridgeStatus(
+                    QStringLiteral("Saved WinForge recipe is invalid: %1").arg(error),
+                    QStringLiteral("已儲存嘅 WinForge recipe 無效。技術詳情（可能只得 English）：%1")
+                        .arg(error));
             }
         }
         const QJsonValue includeRuntime = m_project->settings.value(
@@ -5077,16 +5148,37 @@ void AppController::runOpenCode(const QString &prompt,
     processNextOpenCodeRequest();
 }
 
+void AppController::setOpenCodeRequestStatus(const QString &english,
+                                             const QString &cantonese)
+{
+    m_openCodeRequestStatusEnglish = english;
+    m_openCodeRequestStatusCantonese = cantonese;
+}
+
+void AppController::setWinForgeRuntimeStatus(const QString &english,
+                                             const QString &cantonese)
+{
+    m_winForgeRuntimeStatusEnglish = english;
+    m_winForgeRuntimeStatusCantonese = cantonese;
+}
+
+void AppController::setWinForgeBridgeStatus(const QString &english,
+                                            const QString &cantonese)
+{
+    m_winForgeBridgeStatusEnglish = english;
+    m_winForgeBridgeStatusCantonese = cantonese;
+}
+
 void AppController::processNextOpenCodeRequest()
 {
     if (m_openCodeRequestBusy || m_openCodeRequests.isEmpty())
         return;
     if (!m_openCodeSetup || !m_openCodeSetup->ready()) {
         m_openCodeRequests.clear();
-        m_openCodeRequestStatus = localized(
+        setOpenCodeRequestStatus(
             QStringLiteral("OpenCode host integration lost readiness. Select Verify / install now again before retrying."),
             QStringLiteral("OpenCode host 整合已經唔再 ready。請再撳 Verify / install now，之後先重試。"));
-        showError(m_openCodeRequestStatus);
+        showError(openCodeStatus());
         emit studioChanged();
         return;
     }
@@ -5094,10 +5186,10 @@ void AppController::processNextOpenCodeRequest()
     OpenCodeRequest request = m_openCodeRequests.dequeue();
     const QString executable = m_openCodeSetup->executablePath();
     if (executable.isEmpty()) {
-        m_openCodeRequestStatus = localized(
+        setOpenCodeRequestStatus(
             QStringLiteral("OpenCode was verified but its executable is no longer available."),
             QStringLiteral("OpenCode 本來已驗證，但而家搵唔到佢個執行檔。"));
-        showError(m_openCodeRequestStatus);
+        showError(openCodeStatus());
         m_openCodeRequests.clear();
         emit studioChanged();
         return;
@@ -5107,8 +5199,8 @@ void AppController::processNextOpenCodeRequest()
     m_openCodeProcess = process;
     m_openCodeRequestBusy = true;
     m_openCodeRequestTimedOut = false;
-    m_openCodeRequestStatus = localized(QStringLiteral("OpenCode is reasoning locally…"),
-                                        QStringLiteral("OpenCode 喺本機諗緊…"));
+    setOpenCodeRequestStatus(QStringLiteral("OpenCode is reasoning locally…"),
+                             QStringLiteral("OpenCode 喺本機諗緊…"));
     process->setProgram(resolveExecutableForLaunch(executable));
     process->setArguments({QStringLiteral("run"), request.prompt,
                            QStringLiteral("--format"), QStringLiteral("json")});
@@ -5140,18 +5232,20 @@ void AppController::processNextOpenCodeRequest()
                 m_openCodeRequestTimedOut = false;
                 process->deleteLater();
                 if (timedOut || status != QProcess::NormalExit || code != 0) {
-                    m_openCodeRequestStatus = timedOut
-                        ? localized(
-                              QStringLiteral("OpenCode request timed out after five minutes."),
-                              QStringLiteral("OpenCode 要求等咗五分鐘都未完成，已經逾時。"))
-                        : localized(
-                              QStringLiteral("OpenCode request failed: %1")
-                                  .arg(QString::fromUtf8(output).trimmed()),
-                              QStringLiteral("OpenCode 要求失敗：%1")
-                                  .arg(QString::fromUtf8(output).trimmed()));
-                    showError(m_openCodeRequestStatus);
+                    if (timedOut) {
+                        setOpenCodeRequestStatus(
+                            QStringLiteral("OpenCode request timed out after five minutes."),
+                            QStringLiteral("OpenCode 要求等咗五分鐘都未完成，已經逾時。"));
+                    } else {
+                        setOpenCodeRequestStatus(
+                            QStringLiteral("OpenCode request failed: %1")
+                                .arg(QString::fromUtf8(output).trimmed()),
+                            QStringLiteral("OpenCode 要求失敗：%1")
+                                .arg(QString::fromUtf8(output).trimmed()));
+                    }
+                    showError(openCodeStatus());
                 } else {
-                    m_openCodeRequestStatus = localized(
+                    setOpenCodeRequestStatus(
                         QStringLiteral("OpenCode completed the request."),
                         QStringLiteral("OpenCode 已經完成要求。"));
                     if (request.completed)
@@ -5170,13 +5264,13 @@ void AppController::processNextOpenCodeRequest()
                 m_openCodeProcess = nullptr;
                 m_openCodeRequestBusy = false;
                 m_openCodeRequestTimedOut = false;
-                m_openCodeRequestStatus = localized(
+                setOpenCodeRequestStatus(
                     QStringLiteral("OpenCode request could not start: %1")
                         .arg(process->errorString()),
                     QStringLiteral("OpenCode 要求開始唔到：%1")
                         .arg(process->errorString()));
                 process->deleteLater();
-                showError(m_openCodeRequestStatus);
+                showError(openCodeStatus());
                 emit studioChanged();
                 processNextOpenCodeRequest();
         });
@@ -5299,7 +5393,7 @@ void AppController::proposeWinForgeBridgeActions(const QString &intent)
             if (persistWinForgeBridgeRecipe(bilingualCommitMessage(
                     QStringLiteral("winforge: add OpenCode proposal %1").arg(page),
                     QStringLiteral("WinForge：加入 OpenCode 提議 %1").arg(page)), candidate)) {
-                m_winForgeBridgeStatus = localized(
+                setWinForgeBridgeStatus(
                     QStringLiteral("OpenCode proposed '%1'. Review it, then switch it on to approve.")
                         .arg(proposal.value(QStringLiteral("title")).toString(page)),
                     QStringLiteral("OpenCode 提議咗「%1」；睇清楚先撳掣批准。")
@@ -5372,7 +5466,7 @@ bool AppController::addWinForgeBridgeAction(const QString &kind,
         QStringLiteral("WinForge：加入 %1 草稿").arg(actionKind)),
         candidate);
     if (saved) {
-        m_winForgeBridgeStatus = localized(
+        setWinForgeBridgeStatus(
             QStringLiteral("Draft added. Switch it on only after reviewing its exact typed fields."),
             QStringLiteral("草稿已加入；睇清楚 typed 欄位先好開啟。"));
         emit studioChanged();
@@ -5449,7 +5543,9 @@ void AppController::setWinForgeBridgeRuntimePath(const QString &path)
         return;
     m_winForgeRuntimePath = cleaned;
     m_winForgeRuntimeContract = {};
-    m_winForgeRuntimeStatus = QStringLiteral("Runtime path changed; detect its contract before approval.");
+    setWinForgeRuntimeStatus(
+        QStringLiteral("Runtime path changed; detect its contract before approval."),
+        QStringLiteral("Runtime 路徑已更改；批准之前請先偵測佢嘅合約。"));
     m_settings.setValue(QStringLiteral("bridge/runtimePath"), cleaned);
     if (m_project) {
         mutateProject(bilingualCommitMessage(
@@ -5467,22 +5563,39 @@ void AppController::detectWinForgeBridgeRuntime()
     QString error;
     m_winForgeRuntimeContract = WinForgeBridge::detectRuntimeContract(m_winForgeRuntimePath, &error);
     if (!m_winForgeRuntimeContract.runtimeFound) {
-        m_winForgeRuntimeStatus = error.isEmpty()
-            ? QStringLiteral("No compatible WinForge runtime was found.") : error;
-        showError(m_winForgeRuntimeStatus);
+        setWinForgeRuntimeStatus(
+            error.isEmpty() ? QStringLiteral("No compatible WinForge runtime was found.")
+                            : error,
+            error.isEmpty() ? QStringLiteral("搵唔到相容嘅 WinForge runtime。")
+                            : QStringLiteral("偵測唔到 WinForge runtime。技術詳情（可能只得 English）：%1")
+                                  .arg(error));
+        showError(winForgeBridgeRuntimeStatus());
         emit studioChanged();
         return;
     }
     const WinForgeBridgeValidation validation = WinForgeBridge::validateAgainstRuntime(
         m_winForgeRecipe, m_winForgeRuntimeContract);
-    m_winForgeRuntimeStatus = QStringLiteral("%1 runtime · contract %2 · %3")
-        .arg(m_winForgeRuntimeContract.declaredContract ? QStringLiteral("Declared")
-                                                        : QStringLiteral("Legacy"))
-        .arg(m_winForgeRuntimeContract.contractVersion)
-        .arg(m_winForgeRuntimeContract.capabilities.join(QStringLiteral(", ")));
-    m_winForgeBridgeStatus = validation.ok()
-        ? QStringLiteral("Recipe and runtime contract are compatible.")
-        : validation.message();
+    setWinForgeRuntimeStatus(
+        QStringLiteral("%1 runtime · contract %2 · %3")
+            .arg(m_winForgeRuntimeContract.declaredContract ? QStringLiteral("Declared")
+                                                            : QStringLiteral("Legacy"))
+            .arg(m_winForgeRuntimeContract.contractVersion)
+            .arg(m_winForgeRuntimeContract.capabilities.join(QStringLiteral(", "))),
+        QStringLiteral("%1 runtime · 合約 %2 · %3")
+            .arg(m_winForgeRuntimeContract.declaredContract ? QStringLiteral("已宣告")
+                                                            : QStringLiteral("舊版"))
+            .arg(m_winForgeRuntimeContract.contractVersion)
+            .arg(m_winForgeRuntimeContract.capabilities.join(QStringLiteral(", "))));
+    if (validation.ok()) {
+        setWinForgeBridgeStatus(
+            QStringLiteral("Recipe and runtime contract are compatible."),
+            QStringLiteral("Recipe 同 runtime contract 相容。"));
+    } else {
+        setWinForgeBridgeStatus(
+            validation.message(),
+            QStringLiteral("Recipe 同 runtime contract 唔相容。技術詳情（可能只得 English）：%1")
+                .arg(validation.message()));
+    }
     showSuccess(localized(QStringLiteral("WinForge runtime contract detected."),
                           QStringLiteral("WinForge runtime contract 偵測完成。")));
     emit studioChanged();
@@ -5578,12 +5691,14 @@ bool AppController::stageWinForgeBridgeIntoIso(const QString &isoStagingPath)
         });
     if (!saved)
         return false;
-    m_winForgeBridgeStatus = localized(
+    setWinForgeBridgeStatus(
         QStringLiteral("Staged %1 file(s), %2 bytes. The verified OEM tree is now part of the reviewed ISO plan.")
             .arg(staged->fileCount).arg(staged->totalBytes),
         QStringLiteral("已放入 %1 個檔、%2 bytes；驗證過嘅 OEM tree 已加入 ISO 計劃。")
             .arg(staged->fileCount).arg(staged->totalBytes));
-    notify(QStringLiteral("WinForge bridge staged"), m_winForgeBridgeStatus,
+    notify(localized(QStringLiteral("WinForge bridge staged"),
+                     QStringLiteral("WinForge bridge 已放入媒體")),
+           winForgeBridgeStatus(),
            QStringLiteral("success"));
     emit studioChanged();
     return true;
@@ -6801,10 +6916,20 @@ bool AppController::openApplicationLogFolder()
     return true;
 }
 
-bool AppController::loadDemoProject(QString *error)
+bool AppController::loadDemoProject(QString *error,
+                                    const QString &isolatedRoot)
 {
-    const QString directory = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
-        .filePath(QStringLiteral("WimForge-Demo"));
+    const QString requestedDemoRoot = isolatedRoot.trimmed();
+    if (!requestedDemoRoot.isEmpty()
+        && !QFileInfo(requestedDemoRoot).isAbsolute()) {
+        setError(error, QStringLiteral(
+            "The isolated demo root must be an absolute path."));
+        return false;
+    }
+    const QString directory = requestedDemoRoot.isEmpty()
+        ? QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+              .filePath(QStringLiteral("WimForge-Demo"))
+        : QDir::cleanPath(requestedDemoRoot);
     QDir().mkpath(QDir(directory).filePath(QStringLiteral("payloads/drivers")));
     QDir().mkpath(QDir(directory).filePath(QStringLiteral("payloads/updates")));
     auto touch = [](const QString &path) {
@@ -7088,12 +7213,12 @@ void AppController::loadProjectState()
     restoreStudioState();
     if (m_winForgeRuntimePath.isEmpty()) {
         m_winForgeRuntimeContract = {};
-        m_winForgeRuntimeStatus = localized(
+        setWinForgeRuntimeStatus(
             QStringLiteral("Choose a WinForge runtime folder to detect its contract."),
             QStringLiteral("揀 WinForge runtime 資料夾，WimForge 就會偵測佢嘅合約。"));
     } else {
         const QString runtimePath = m_winForgeRuntimePath;
-        m_winForgeRuntimeStatus = localized(
+        setWinForgeRuntimeStatus(
             QStringLiteral("Detecting the WinForge runtime contract in the background…"),
             QStringLiteral("正喺後台偵測 WinForge runtime 合約……"));
         const QPointer<AppController> guard(this);
@@ -7111,13 +7236,29 @@ void AppController::loadProjectState()
                     return;
                 }
                 guard->m_winForgeRuntimeContract = contract;
-                guard->m_winForgeRuntimeStatus = contract.runtimeFound
-                    ? QStringLiteral("%1 runtime · contract %2 · %3")
-                          .arg(contract.declaredContract ? QStringLiteral("Declared")
-                                                        : QStringLiteral("Legacy"))
-                          .arg(contract.contractVersion)
-                          .arg(contract.capabilities.join(QStringLiteral(", ")))
-                    : bridgeError;
+                if (contract.runtimeFound) {
+                    guard->setWinForgeRuntimeStatus(
+                        QStringLiteral("%1 runtime · contract %2 · %3")
+                            .arg(contract.declaredContract ? QStringLiteral("Declared")
+                                                          : QStringLiteral("Legacy"))
+                            .arg(contract.contractVersion)
+                            .arg(contract.capabilities.join(QStringLiteral(", "))),
+                        QStringLiteral("%1 runtime · 合約 %2 · %3")
+                            .arg(contract.declaredContract ? QStringLiteral("已宣告")
+                                                          : QStringLiteral("舊版"))
+                            .arg(contract.contractVersion)
+                            .arg(contract.capabilities.join(QStringLiteral(", "))));
+                } else {
+                    const QString detail = bridgeError.trimmed();
+                    guard->setWinForgeRuntimeStatus(
+                        detail.isEmpty()
+                            ? QStringLiteral("No compatible WinForge runtime was found.")
+                            : detail,
+                        detail.isEmpty()
+                            ? QStringLiteral("搵唔到相容嘅 WinForge runtime。")
+                            : QStringLiteral("偵測唔到 WinForge runtime。技術詳情（可能只得 English）：%1")
+                                  .arg(detail));
+                }
                 emit guard->studioChanged();
             }, Qt::QueuedConnection);
         });

@@ -2,7 +2,7 @@ name: wimforge
 
 services:
   provisioning:
-    image: ghcr.io/codingmachineedge/wimforge-provisioning:latest
+    image: ghcr.io/ding-ding-projects/wimforge-provisioning:latest
     build:
       context: .
       dockerfile: Dockerfile

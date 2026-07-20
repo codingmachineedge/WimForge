@@ -254,7 +254,8 @@ void testNotConfiguredOwnership(TestRun &test)
     ProjectConfig project;
     project.registryTweaks.append(RegistryTweak{
         QStringLiteral("HKLM"), QStringLiteral("Software\\Unrelated"),
-        QStringLiteral("Keep"), QStringLiteral("REG_SZ"), QStringLiteral("yes"), false});
+        QStringLiteral("Keep"), QStringLiteral("REG_SZ"), QStringLiteral("yes"), false,
+        false, QString()});
     GpoPolicyCompilation enabled = compileGpoPolicy(
         policy, QStringLiteral("userEnabled"), values, project.registryTweaks);
     mergeGpoPolicyCompilation(project, enabled);

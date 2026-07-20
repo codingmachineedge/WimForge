@@ -4,7 +4,7 @@ Focused issues and pull requests are welcome. WimForge handles destructive image
 
 ## Before starting
 
-1. Search the [issues](https://github.com/codingmachineedge/WimForge/issues) and current documentation.
+1. Search the [issues](https://github.com/Ding-Ding-Projects/WimForge/issues) and current documentation.
 2. Keep one change focused enough to review and test.
 3. Identify the affected trust boundary: project state, external process, mount/media write, package payload, answer file, history, notification store, or bundle import/export.
 4. For a user-visible feature, define its validation, failure, cancellation, history, CLI, accessibility, and documentation behavior before implementation.

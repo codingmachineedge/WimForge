@@ -94,7 +94,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
     parser.add_argument(
         "--repository",
-        default=os.environ.get("GITHUB_REPOSITORY", "codingmachineedge/WimForge"),
+        default=os.environ.get("GITHUB_REPOSITORY", "Ding-Ding-Projects/WimForge"),
     )
     parser.add_argument("--token-env", default="GITHUB_TOKEN")
     parser.add_argument(

@@ -139,9 +139,11 @@ ProjectConfig sampleProject(const QString &root)
         RegistryTweak{QStringLiteral("HKLM"),
                       QStringLiteral("SOFTWARE\\WimForge"),
                       QStringLiteral("Configured"),
-                      QStringLiteral("REG_DWORD"),
-                      QStringLiteral("1"),
-                      false},
+                       QStringLiteral("REG_DWORD"),
+                       QStringLiteral("1"),
+                       false,
+                       false,
+                       QString()},
     };
     project.registryTweaks[0].ownerId = QStringLiteral("gpo:WimForge.Tests::Policy:element:Number");
     RegistryTweak clearListValues;
@@ -509,8 +511,26 @@ int main(int argc, char **argv)
     QString treeError;
     test.check(!constrainedTree.revertLatest(&treeError)
                    && treeError.contains(QStringLiteral("unexpected"), Qt::CaseInsensitive),
-               QStringLiteral("revert rejects commits outside its narrow state-file set: %1")
-                   .arg(treeError));
+                QStringLiteral("revert rejects commits outside its narrow state-file set: %1")
+                    .arg(treeError));
+
+    ProjectConfig bundleReserved;
+    bundleReserved.projectDirectory = QDir(temporary.path())
+                                          .filePath(QStringLiteral("projects/bundle-reserved"));
+    bundleReserved.projectName = QStringLiteral("Reserved bundle destination");
+    bundleReserved.autoExport = true;
+    bundleReserved.autoExportPath = QDir(temporary.path())
+                                        .filePath(QStringLiteral("backups/last-good.wimforge"));
+    const QByteArray lastGoodBundle("WIMFORGE-BUNDLE-SENTINEL");
+    test.check(!makeFile(bundleReserved.autoExportPath, lastGoodBundle).isEmpty(),
+               QStringLiteral("last-good bundle sentinel exists"));
+    test.check(bundleReserved.save(&error),
+               QStringLiteral("project save reserves .wimforge for the bundle exporter: %1")
+                   .arg(error));
+    QFile preservedBundle(bundleReserved.autoExportPath);
+    test.check(preservedBundle.open(QIODevice::ReadOnly)
+                   && preservedBundle.readAll() == lastGoodBundle,
+               QStringLiteral("project JSON save never overwrites a prior .wimforge bundle"));
 
     ProjectConfig invalid = project;
     invalid.projectDirectory = QStringLiteral("relative/project");

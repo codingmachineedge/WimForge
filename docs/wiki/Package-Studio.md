@@ -37,7 +37,7 @@ Select **Full AI Development** to start from a maintained development workstatio
 - Claude Code and Claude Desktop
 - disabled official-payload slots for OpenCode Desktop, the Codex app, and ChatGPT Desktop
 
-The profile orders Git before Claude Code, Node before npm-based AI clients, and build-system dependencies before consumers. The committed [`templates/ai-development.json`](https://github.com/codingmachineedge/WimForge/blob/main/templates/ai-development.json) is the exact portable profile.
+The profile orders Git before Claude Code, Node before npm-based AI clients, and build-system dependencies before consumers. The committed [`templates/ai-development.json`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/templates/ai-development.json) is the exact portable profile.
 
 Desktop slots without a verified package identity are intentionally disabled. Enabling one requires an official payload, a current SHA-256, its expected Authenticode publisher, and a reviewed silent structured install command. WimForge does not invent a WinGet ID.
 
@@ -46,6 +46,7 @@ Desktop slots without a verified package identity are intentionally disabled. En
 These are separate workflows:
 
 - **WimForge host helper:** the elevated desktop performs no PATH/user-profile discovery at startup. The operator selects **Verify / install now** to approve discovery and setup for the current session. WimForge then live-verifies `opencode --version`; if missing, the approved action can install Node.js LTS through WinGet and run `npm install -g opencode-ai@latest`. GPO and unattended helpers use only a verified host installation and never trigger setup implicitly.
+- **Status language:** host-helper and request status changes immediately with the selected English, 香港粵語, or bilingual interface mode; English-only and Cantonese-only modes no longer receive a prejoined bilingual sentence. When an external process fails, a localized label keeps its bounded native diagnostic so the operator still has an actionable cause.
 - **Target machine package:** the Full AI Development profile puts OpenCode in the target's first-logon dependency plan. It first verifies `opencode --version` and installs only when absent.
 
 Neither workflow embeds credentials or signs a user in. Installation success is verified after the installer returns; a zero installer exit code alone is not accepted when the executable remains missing.
@@ -134,11 +135,11 @@ Primary sources:
 
 Package metadata is informational and does not grant redistribution rights. Review Microsoft, Docker, Anthropic, OpenAI, and every other vendor's license/terms before placing software on distributable media.
 
-Implementation detail lives in [`docs/package-studio.md`](https://github.com/codingmachineedge/WimForge/blob/main/docs/package-studio.md).
+Implementation detail lives in [`docs/package-studio.md`](https://github.com/Ding-Ding-Projects/WimForge/blob/main/docs/package-studio.md).
 
 ## 香港粵語重點
 
-Package Studio 將 WinGet、npm、pip、已簽名 installer、offline payload 同結構化 custom executable 放入可審閱依賴圖。Profile 匯入同匯出各有非 modal picker，頁面亦可以捲到底，唔使喺窄視窗手打路徑或者搵唔到 staging 掣。佢唔會代你登入廠商、贈送 licence 或估 hash/signer；冇可信資料嘅 slot 預設關閉。Host OpenCode helper 喺提權 app 開啟時唔會自動搜 PATH/用戶 profile；你要喺 Package Studio 撳 **Verify / install now** 明確批准，驗到 `opencode --version` 正常先算 ready。
+Package Studio 將 WinGet、npm、pip、已簽名 installer、offline payload 同結構化 custom executable 放入可審閱依賴圖。Profile 匯入同匯出各有非 modal picker，頁面亦可以捲到底，唔使喺窄視窗手打路徑或者搵唔到 staging 掣。佢唔會代你登入廠商、贈送 licence 或估 hash/signer；冇可信資料嘅 slot 預設關閉。Host OpenCode helper 喺提權 app 開啟時唔會自動搜 PATH/用戶 profile；你要喺 Package Studio 撳 **Verify / install now** 明確批准，驗到 `opencode --version` 正常先算 ready。Host helper 同 request 狀態會即時跟返你揀嘅英文、香港粵語或者雙語介面，唔會喺單語模式硬係混入另一種語言；外部 process 失敗時，本地化標籤後面仍然會保留有上限嘅原始診斷，方便搵原因。
 
 ---
 

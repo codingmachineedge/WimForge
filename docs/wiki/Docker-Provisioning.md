@@ -1,5 +1,9 @@
 # Docker Provisioning
 
+The checked-in `.dockerignore` excludes the root `build` directory and every root `build-*` variant. Local Qt, capture, documentation-smoke, and install-smoke outputs therefore never inflate or leak into the Docker build context.
+
+Repository 入面嘅 `.dockerignore` 會排除 root `build` 同所有 root `build-*` 變體，所以本機 Qt、capture、文件 smoke 同 install smoke output 都唔會塞大或者混入 Docker build context。
+
 WimForge can run a small Linux container that assigns a reviewed unattended profile and fixed pre-OOBE computer name to known hardware. It is a Qt Core renderer/API, not the desktop application or a Linux replacement for DISM.
 
 ## Quick start
@@ -37,7 +41,7 @@ The WinPE client fails before Setup starts on an unknown device, authentication/
 - The WinPE client refuses redirects/downgrades, streams a size-bounded response, retries transient failures with bounded backoff, and can write its redacted pre-Setup log to a persistent technician share.
 - Validate the final XML in Windows SIM and perform a clean VM installation with no input before production use.
 
-The complete schema, custom-profile, API, token, one-shot-render, WinPE, and test instructions are in [Docker provisioning](https://codingmachineedge.github.io/WimForge/docker-provisioning/).
+The complete schema, custom-profile, API, token, one-shot-render, WinPE, and test instructions are in [Docker provisioning](https://ding-ding-projects.github.io/WimForge/docs/docker-provisioning/).
 
 ---
 

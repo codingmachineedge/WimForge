@@ -16,7 +16,7 @@ Use only legally obtained Windows images and software payloads. WimForge does no
 
 ## Install or run portable
 
-Open the [Windows releases page](https://github.com/codingmachineedge/WimForge/releases) and choose one of the two x64 assets from the newest successful release:
+Open the [Windows releases page](https://github.com/Ding-Ding-Projects/WimForge/releases) and choose one of the two x64 assets from the newest successful release:
 
 - `WimForge-Setup-x64-<version>.exe` requests administrator approval and installs under protected Program Files.
 - `WimForge-portable-x64-<version>.zip` can be extracted into a trusted, access-controlled directory.
@@ -118,7 +118,9 @@ The Settings page selects English, Hong Kong Cantonese, or bilingual presentatio
 .\WimForge.exe --demo --language bilingual --page overview
 ```
 
-Recognized page IDs include `overview`, `source`, `customize`, `gpo`, `unattended`, `packages`, `winforge`, `plan`, `history`, and `settings` in builds where the matching page is linked.
+The twelve recognized page IDs are `overview`, `source`, `customize`, `gpo`, `unattended`, `packages`, `winforge`, `plan`, `history`, `vmlab`, `settings`, and `terminal` in builds where the matching page is linked.
+
+目前十二個有效 page ID 係 `overview`、`source`、`customize`、`gpo`、`unattended`、`packages`、`winforge`、`plan`、`history`、`vmlab`、`settings` 同 `terminal`，但 build 要有連結對應頁面先用得。
 
 At the supported 900×640 minimum window, use vertical scrolling to reach actions below the fold. Search results activate with Enter and close with Escape; VM inventory rows select with Enter/Space; the notification drawer puts focus on its close control, closes with Escape, and returns focus to the bell. Settings categories, color schemes, and GPO policy results expose visible keyboard focus and selected-state semantics.
 

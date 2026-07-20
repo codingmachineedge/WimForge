@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.24)
 
 project(WimForge VERSION 0.1.0 LANGUAGES CXX)
 
+include(GNUInstallDirs)
+
 option(WIMFORGE_DOCUMENTATION_CAPTURE
     "Build a demo+screenshot-only GUI with an asInvoker manifest"
     OFF)
@@ -118,7 +120,21 @@ else()
     target_compile_options(WimForgeCli PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-install(TARGETS WimForgeCli RUNTIME DESTINATION .)
+# Qt's generated Windows deployment script expects an absolute install prefix,
+# while `cmake --install --prefix` also accepts caller-relative paths. Normalize
+# the latter before any install rule runs so both forms produce the same layout.
+if(WIN32)
+    install(CODE [=[
+        if(NOT IS_ABSOLUTE "${CMAKE_INSTALL_PREFIX}")
+            get_filename_component(CMAKE_INSTALL_PREFIX
+                "${CMAKE_INSTALL_PREFIX}" ABSOLUTE)
+        endif()
+    ]=])
+endif()
+
+install(TARGETS WimForgeCli
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
 
 if(NOT WIMFORGE_CLI_ONLY)
     qt_add_executable(WimForge WIN32
@@ -225,7 +241,7 @@ if(NOT WIMFORGE_CLI_ONLY)
 
     install(TARGETS WimForge
         BUNDLE DESTINATION .
-        RUNTIME DESTINATION .
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 
     qt_generate_deploy_qml_app_script(

@@ -40,7 +40,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/codingmachineedge/wimforge-provisioning
+  IMAGE_NAME: ghcr.io/ding-ding-projects/wimforge-provisioning
 
 jobs:
   container:

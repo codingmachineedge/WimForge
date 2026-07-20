@@ -50,7 +50,7 @@ jobs:
       - name: Build strict Material documentation under /docs
         shell: bash
         run: |
-          sed 's#^site_url:.*#site_url: https://codingmachineedge.github.io/WimForge/docs/#' \
+          sed 's#^site_url:.*#site_url: https://ding-ding-projects.github.io/WimForge/docs/#' \
             mkdocs.yml > _mkdocs-pages.yml
           mkdocs build --strict --clean --config-file _mkdocs-pages.yml \
             --site-dir _mkdocs-site

@@ -1,8 +1,8 @@
 site_name: WimForge
 site_description: Open-source, Git-backed Windows image customization studio.
-site_url: https://codingmachineedge.github.io/WimForge/
-repo_url: https://github.com/codingmachineedge/WimForge
-repo_name: codingmachineedge/WimForge
+site_url: https://ding-ding-projects.github.io/WimForge/docs/
+repo_url: https://github.com/Ding-Ding-Projects/WimForge
+repo_name: Ding-Ding-Projects/WimForge
 edit_uri: edit/main/docs/
 docs_dir: docs
 site_dir: site
@@ -90,7 +90,7 @@ extra_javascript:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/codingmachineedge/WimForge
+      link: https://github.com/Ding-Ding-Projects/WimForge
       name: WimForge on GitHub
   generator: false
 

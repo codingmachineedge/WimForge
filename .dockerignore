@@ -6,7 +6,8 @@
 .env
 .env.*
 
-build
+/build
+/build-*
 dist
 site
 

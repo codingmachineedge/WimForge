@@ -412,7 +412,7 @@ Item {
                 CheckBox {
                     id: checkpointCheck
                     Layout.fillWidth: true
-                    text: root.tr("Create recovery checkpoint before destructive steps", "危險工序之前建立復原檢查點")
+                    text: root.tr("Save future checkpoint-policy preference (not enforced yet)", "儲存日後檢查點 policy 偏好（而家未執行）")
                     checked: root.app.checkpointBeforeDestructive
                     font.family: DesignTokens.fontBody
                     font.pixelSize: 12

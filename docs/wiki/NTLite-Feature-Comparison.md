@@ -46,7 +46,7 @@ Status meanings:
 | Installed ADMX/ADML policy catalog | **Implemented** | Reads every definition/language in selected store; schema-driven controls and bilingual docs |
 | Curated tweak/privacy compatibility library | **Partial** | Generic settings, registry, and installed GPO definitions exist; no NTLite-sized curated compatibility database |
 | Windows services editor | **Not implemented** | No dedicated service inventory/dependency UI |
-| Scheduled-tasks editor | **Implemented** | Typed enable/disable/remove changes, validated offline task paths/XML, reviewed operations, and a desktop editor; no built-in task inventory or build-specific compatibility catalog, and removal requires an explicit override/checkpoint |
+| Scheduled-tasks editor | **Implemented** | Typed enable/disable/remove changes, validated offline task paths/XML, reviewed operations, and a desktop editor; no built-in task inventory or build-specific compatibility catalog, and removal requires an explicit override plus operator-created checkpoint after the plan marks it for review |
 | Unattended Windows Setup | **Implemented** | JSON/XML, seven passes, templates, computer-name modes, GVLKs; Windows SIM validation still required |
 | Post-setup commands | **Implemented** | Transparent SetupComplete entries plus structured Package/Bridge runners; review raw entries carefully |
 | Presets/import/export | **Implemented** | WimForge JSON, package/unattend/recipe profiles, and complete `.wimforge` saves |
@@ -98,7 +98,7 @@ These differences do not make every workload safer automatically. The ISO author
 
 ## 香港粵語總結
 
-WimForge 而家已經有 ISO/media/WIM/ESD/SWM 來源、Drivers/Updates、Features/FOD、Appx、registry/GPO、Unattended、packages、WinForge bridge、VM Lab、Git-backed history/tabs 同結構化 logging。ISO 檢查會讀架構、完整版本同 build，再自動搜尋 Microsoft Update Catalog 嘅 Updates／Drivers；下載只限可信 Microsoft 主機並加入審閱隊列。Scheduled Tasks 亦已經係 typed 功能：可以 enable、disable 或 remove，有離線路徑/XML 驗證、desktop editor 同可審閱操作；remove 一定要 compatibility override 同 checkpoint。
+WimForge 而家已經有 ISO/media/WIM/ESD/SWM 來源、Drivers/Updates、Features/FOD、Appx、registry/GPO、Unattended、packages、WinForge bridge、VM Lab、Git-backed history/tabs 同結構化 logging。ISO 檢查會讀架構、完整版本同 build，再自動搜尋 Microsoft Update Catalog 嘅 Updates／Drivers；下載只限可信 Microsoft 主機並加入審閱隊列。Scheduled Tasks 亦已經係 typed 功能：可以 enable、disable 或 remove，有離線路徑/XML 驗證、desktop editor 同可審閱操作；remove 一定要 compatibility override，plan 會標示需要檢查點，而操作員要自行建立兼核實個檢查點。
 
 不過唔好將「有功能」當成「已經有 NTLite 多年累積嘅相容性智慧」。現時仍然冇：
 
